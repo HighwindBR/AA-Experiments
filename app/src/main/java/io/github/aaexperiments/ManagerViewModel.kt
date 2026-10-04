@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.aaexperiments.core.*
@@ -159,7 +160,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 context.contentResolver.openInputStream(uri).use { input -> requireNotNull(input); archive.outputStream().use(input::copyTo) }
                 val resolved = ArchiveInputResolver.resolve(archive, directory); val base = resolved.base
                 val info = context.packageManager.getPackageArchiveInfo(base.absolutePath, ManifestCatalog.PACKAGE_FLAGS)
-                val identity = BuildFingerprint.compute(info?.longVersionCode ?: 0, base, resolved.splits)
+                val versionCode = info?.let { PackageInfoCompat.getLongVersionCode(it) }
+                val identity = BuildFingerprint.compute(versionCode ?: 0L, base, resolved.splits)
                 val previous = database.latestEditableMappings()
                 val inventory = DexCatalogAnalyzer().analyze(
                     base,
@@ -172,7 +174,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     if (info == null) scanned else scanned.copy(identifiers = (scanned.identifiers + ManifestCatalog.components(info)).distinctBy { it.key }.sortedBy { it.key })
                 }
                 database.put(inventory, ::reportScanProgress)
-                AaInstallation(installed=true, versionName=info?.versionName, versionCode=info?.longVersionCode, baseSha256=inventory.baseSha256,
+                AaInstallation(installed=true, versionName=info?.versionName, versionCode=versionCode, baseSha256=inventory.baseSha256,
                     dexSha256=inventory.dexSha256, identifierCount=inventory.identifiers.size, editableCount=inventory.identifiers.count { it.editable },
                     discoveryErrorCount=inventory.errors.size, runtimeTarget=false, buildFingerprintSha256=inventory.buildFingerprintSha256,
                     packageArtifactSha256=inventory.packageArtifactSha256)

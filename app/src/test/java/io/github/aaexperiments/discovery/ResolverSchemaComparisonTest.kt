@@ -1,6 +1,7 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -9,7 +10,7 @@ import java.io.File
 
 class ResolverSchemaComparisonTest {
     @Test fun compareReferencedFieldHeuristicWithFieldToReturnProof() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }.first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
         assertTrue(archive.isFile)
         val resolved = ArchiveInputResolver.resolve(archive, File(root, "app/build/tmp/resolver-comparison"))

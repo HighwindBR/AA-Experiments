@@ -3,6 +3,7 @@ package io.github.aaexperiments.resolver
 import io.github.aaexperiments.discovery.DiscoveredType
 import io.github.aaexperiments.discovery.MethodFingerprint
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.jf.dexlib2.Opcodes
 import org.jf.dexlib2.dexbacked.DexBackedDexFile
 import org.jf.dexlib2.iface.instruction.ReferenceInstruction
@@ -19,8 +20,7 @@ import java.util.zip.ZipFile
 class SubgraphOracleRegressionTest {
     companion object { private val methodCache = mutableMapOf<String, List<MethodFingerprint>>() }
     @Test fun realWrapperOracleRejectsKnownFalsePositive() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-17.8.163744.apkm", "aa-17.8.663814.apkm")
         // Section 19 of the final report is explicitly a daily -> stable 17.8 oracle.
         val oldApk = ArchiveInputResolver.baseApk(File(root, "fixtures/apks/aa-17.8.163744.apkm"), File(root, "app/build/tmp/subgraph-oracle/daily"))
         val newApk = ArchiveInputResolver.baseApk(File(root, "fixtures/apks/aa-17.8.663814.apkm"), File(root, "app/build/tmp/subgraph-oracle/new"))
@@ -38,8 +38,7 @@ class SubgraphOracleRegressionTest {
     }
 
     @Test fun realMessagingMetaCacheComponentUsesGlobalAssignment() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-17.8.163744.apkm", "aa-17.8.663814.apkm")
         val dailyApk = ArchiveInputResolver.baseApk(File(root, "fixtures/apks/aa-17.8.163744.apkm"), File(root, "app/build/tmp/subgraph-component/daily"))
         val stableApk = ArchiveInputResolver.baseApk(File(root, "fixtures/apks/aa-17.8.663814.apkm"), File(root, "app/build/tmp/subgraph-component/stable"))
         val daily = methods(dailyApk)

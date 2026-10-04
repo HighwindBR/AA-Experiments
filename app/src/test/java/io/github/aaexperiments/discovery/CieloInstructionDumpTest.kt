@@ -1,6 +1,7 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.jf.dexlib2.Opcodes
 import org.jf.dexlib2.dexbacked.DexBackedDexFile
 import org.jf.dexlib2.iface.instruction.*
@@ -13,7 +14,7 @@ import java.util.zip.ZipFile
 
 class CieloInstructionDumpTest {
     @Test fun dump() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }.first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-16.9.666314.apkm", "aa-17.8.663814.apkm")
         val out = StringBuilder()
         listOf("16.9.666314", "17.8.663814").forEach { version ->
             val base = ArchiveInputResolver.baseApk(File(root, "fixtures/apks/aa-$version.apkm"), File(root, "app/build/tmp/cielo-dump/$version"))

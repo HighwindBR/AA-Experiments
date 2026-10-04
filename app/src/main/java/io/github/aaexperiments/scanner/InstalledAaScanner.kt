@@ -2,6 +2,7 @@ package io.github.aaexperiments.scanner
 
 import android.content.Context
 import android.content.pm.PackageManager
+import androidx.core.content.pm.PackageInfoCompat
 import io.github.aaexperiments.core.AaInstallation
 import io.github.aaexperiments.core.BuildFingerprint
 import io.github.aaexperiments.discovery.DexCatalogAnalyzer
@@ -16,7 +17,8 @@ class InstalledAaScanner(private val context: Context) {
         val app = info.applicationInfo ?: return AaInstallation(false, scanError = "ApplicationInfo unavailable")
         val base = app.sourceDir
         val splits = app.splitSourceDirs?.toList().orEmpty()
-        val identity = BuildFingerprint.compute(info.longVersionCode, File(base), splits.map(::File))
+        val versionCode = PackageInfoCompat.getLongVersionCode(info)
+        val identity = BuildFingerprint.compute(versionCode, File(base), splits.map(::File))
         val baseHash = identity.baseSha256
         val database = CatalogDatabase(context)
         var summary = database.summary(identity.fingerprintSha256)
@@ -40,7 +42,7 @@ class InstalledAaScanner(private val context: Context) {
         AaInstallation(
             installed = true,
             versionName = info.versionName,
-            versionCode = info.longVersionCode,
+            versionCode = versionCode,
             basePath = base,
             splitPaths = splits,
             baseSha256 = baseHash,

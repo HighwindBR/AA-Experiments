@@ -1,18 +1,17 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.junit.Assert.*
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 
 class FixtureRegressionTest {
     @Test fun knownApkmFixturesRemainAnalyzable() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }.first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-16.9.666314.apkm", "aa-17.8.663814.apkm")
         val fixtures = File(root, "fixtures/apks")
         val oldFile = File(fixtures, "aa-16.9.666314.apkm")
         val stableFile = File(fixtures, "aa-17.8.663814.apkm")
-        assumeTrue(oldFile.isFile && stableFile.isFile)
         val temporary = File(root, "app/build/tmp/fixture-regression").apply { mkdirs() }
         val analyzer = DexCatalogAnalyzer()
         val old = analyzer.analyze(ArchiveInputResolver.baseApk(oldFile, temporary))

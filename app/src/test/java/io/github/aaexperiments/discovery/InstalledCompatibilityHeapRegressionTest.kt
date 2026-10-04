@@ -1,6 +1,7 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -11,10 +12,8 @@ import org.json.JSONArray
 /** Mirrors a schema rebuild/new-build scan that has a compact previous getter baseline. */
 class InstalledCompatibilityHeapRegressionTest {
     @Test fun installedCatalogWithPreviousGetterBaselineFitsSingleProcessHeap() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
-        assumeTrue(archive.isFile)
         val resolved = ArchiveInputResolver.resolve(archive, File(root, "app/build/tmp/installed-compatibility-heap-regression"))
 
         val baseline = readBaseline(File(root, "fixtures/compatibility-17.8.663814.json"))

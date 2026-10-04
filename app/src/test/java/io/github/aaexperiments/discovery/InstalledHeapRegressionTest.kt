@@ -1,19 +1,17 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 
 /** Run with -Daa.test.heap=256m to mirror the manager process heap on the device. */
 class InstalledHeapRegressionTest {
     @Test fun stableInstalledCatalogFitsSingleProcessHeap() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
-            .first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
-        assumeTrue(archive.isFile)
         val resolved = ArchiveInputResolver.resolve(archive, File(root, "app/build/tmp/installed-heap-regression"))
         val inventory = DexCatalogAnalyzer().analyze(resolved.base, resolved.splits)
         // Alpha23 demotes 21 textual/library artifacts that used to pass as editable.

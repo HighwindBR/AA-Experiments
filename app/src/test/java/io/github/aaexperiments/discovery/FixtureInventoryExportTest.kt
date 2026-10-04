@@ -1,6 +1,7 @@
 package io.github.aaexperiments.discovery
 
 import io.github.aaexperiments.scanner.ArchiveInputResolver
+import io.github.aaexperiments.test.fixtureRootOrSkip
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -9,7 +10,7 @@ import java.io.File
 
 class FixtureInventoryExportTest {
     @Test fun exportThreeVersionCatalogAndDiffs() {
-        val root = generateSequence(File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }.first { File(it, "fixtures/apks").isDirectory }
+        val root = fixtureRootOrSkip("aa-16.9.666314.apkm", "aa-17.8.163744.apkm", "aa-17.8.663814.apkm")
         val temporary = File(root, "app/build/tmp/fixture-export").apply { mkdirs() }
         val output = File(root, "outputs/discovery").apply { mkdirs() }
         val versions = linkedMapOf(
