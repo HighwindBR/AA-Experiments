@@ -1,0 +1,95 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+android {
+    namespace 'io.github.aaexperiments'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.highwindbr.aaxp'
+        minSdk 27
+        targetSdk 35
+        versionCode 141
+        versionName '1.0.0-beta1'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+
+    buildFeatures { compose true }
+
+    testOptions {
+        unitTests.all {
+            // The fixture regression intentionally retains three complete AA inventories
+            // to compare them. B1 stores richer per-occurrence evidence, so the default
+            // Gradle test-worker heap is insufficient even though a normal app scan keeps
+            // only one inventory at a time.
+            maxHeapSize = System.getProperty('aa.test.heap', '1536m')
+        }
+    }
+
+    signingConfigs {
+        if (System.getenv('AAXP_DEBUG_STORE_FILE')) {
+            localDebug {
+                storeFile file(System.getenv('AAXP_DEBUG_STORE_FILE'))
+                storePassword System.getenv('AAXP_DEBUG_STORE_PASSWORD')
+                keyAlias System.getenv('AAXP_DEBUG_KEY_ALIAS')
+                keyPassword System.getenv('AAXP_DEBUG_KEY_PASSWORD')
+            }
+        }
+        if (System.getenv('AAXP_RELEASE_STORE_FILE')) {
+            release {
+                storeFile file(System.getenv('AAXP_RELEASE_STORE_FILE'))
+                storePassword System.getenv('AAXP_RELEASE_STORE_PASSWORD')
+                keyAlias System.getenv('AAXP_RELEASE_KEY_ALIAS')
+                keyPassword System.getenv('AAXP_RELEASE_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // CI uses AGP's disposable debug key. Restricted local builders may inject another
+            // disposable key without making the repository depend on a machine-specific file.
+            if (signingConfigs.findByName('localDebug') != null) signingConfig signingConfigs.localDebug
+        }
+        release {
+            minifyEnabled false
+            if (signingConfigs.findByName('release') != null) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    packaging {
+        resources.excludes += ['/META-INF/{AL2.0,LGPL2.1}']
+    }
+}
+
+dependencies {
+    implementation platform('androidx.compose:compose-bom:2024.12.01')
+    implementation 'androidx.activity:activity-compose:1.10.0'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7'
+    implementation 'androidx.core:core-ktx:1.15.0'
+    implementation 'io.github.libxposed:service:101.0.0'
+    implementation 'org.smali:dexlib2:2.5.2'
+    compileOnly 'io.github.libxposed:api:101.0.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}
+
+configurations.configureEach {
+    // Kotlin 1.8 folded these compatibility artifacts into kotlin-stdlib. The
+    // empty legacy JARs are unnecessary and trigger a JDK 20 zipfs/realpath
+    // failure under the restricted Windows build account.
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AA Experiments</string>
+    <string name="module_description">Manage reversible Android Auto experiment overrides through modern LSPosed API 101.</string>
+</resources>
