@@ -118,4 +118,4 @@ jobs:
           AAExperiments-1.0.0-beta1.apk
           AAExperiments-1.0.0-beta1.apk.sha256
           --title "AA Experiments ${GITHUB_REF_NAME}"
-          --generate-notes
+          --notes-file docs/RELEASE_NOTES_1.0.0-beta1.md

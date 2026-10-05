@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-beta1 — pending device validation
+## 1.0.0-beta1 — pending publication
 
 ### Added
 - Atomic immutable runtime override snapshots and strongly retained preference listener.
@@ -8,8 +8,12 @@
 - Canonical documentation with indexed alpha history.
 
 ### Changed
-- Long-analysis foreground-service lifetime is now cancellation-safe.
-- Version is frozen at beta1 until automated and physical validation pass.
+- Long-analysis foreground-service lifetime is cancellation-safe.
+- Automated private release gates and the physical smoke test have passed for beta1.
+- Version remains frozen at `1.0.0-beta1` / versionCode 141 for publication.
+
+### Known issues
+- Active scans and deep analyses may stall or fail to complete if the device screen turns off. Keep the device awake until analysis completes. This is an accepted non-blocking beta1 limitation.
 
 ## Pre-beta development
 
