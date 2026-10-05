@@ -105,7 +105,9 @@ jobs:
           AAXP_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: gradle --no-daemon --max-workers=1 :app:assembleRelease
       - name: Verify v2 signature
-        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+        run: >-
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose
+          app/build/outputs/apk/release/app-release.apk
       - name: Name artifact and publish checksum
         run: |
           cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta1.apk
