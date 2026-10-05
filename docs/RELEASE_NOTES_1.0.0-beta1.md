@@ -21,3 +21,21 @@ invalidate already completed analysis results or runtime overrides generated fro
 profile.
 
 Additional limitations and recovery guidance are documented in `docs/KNOWN_LIMITATIONS.md`.
+
+
+## Privacy, licensing and development transparency
+
+AA Experiments is released under `GPL-3.0-or-later`, with third-party license notices distributed
+with the release and inside the APK.
+
+The app performs its scanning and resolver analysis locally and has no developer-operated backend,
+analytics, advertising, tracking, or OpenAI runtime integration. AA Experiments itself does not
+send scan results, Android Auto metadata, LSPosed information, experiment values, or device data to
+the developer or to OpenAI.
+
+OpenAI Codex assisted with implementation, code analysis, refactoring, documentation, and automated
+tests during development. Codex is not part of the released application. AI-assisted changes were
+reviewed before inclusion, and physical-device, LSPosed/Android Auto, and vehicle head-unit testing
+were performed manually by the developer.
+
+See `PRIVACY.md`, `LICENSE`, and `THIRD_PARTY_NOTICES.md` in the source repository for details.

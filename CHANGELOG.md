@@ -3,6 +3,8 @@
 ## 1.0.0-beta1 — pending publication
 
 ### Added
+- GPL-3.0-or-later project licensing, bundled third-party notices, and explicit copyright attribution.
+- Privacy and AI-assisted-development documentation covering local processing, lack of developer/OpenAI runtime data collection, and manual physical/head-unit validation.
 - Atomic immutable runtime override snapshots and strongly retained preference listener.
 - Fixture hash gates, release lint and published APK checksum.
 - Canonical documentation with indexed alpha history.
