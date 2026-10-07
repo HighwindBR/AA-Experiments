@@ -23,6 +23,33 @@ tracks independent confidence for mapping, type, consumer and semantics. Registr
 proves literal/default arguments through fields to zero-argument getters. CFG-aware def-use tracks
 branches, switches, returns, stores, forwarded arguments, receivers and scalar transformations.
 
+### Catalog size and editability
+
+The scanner is intentionally broader than the runtime override surface. A complete Android Auto
+build can produce **more than 50,000 catalogued identifiers**, while only a much smaller subset is
+eventually classified as editable. For example, the frozen Android Auto 17.8.663814 regression
+corpus contains at least 54,000 identifiers but only **919 editable mappings**.
+
+A catalogued identifier is therefore not the same thing as an editable experiment. The scanner
+collects a wide range of evidence from the DEX so that the resolver can distinguish real
+configuration paths from resources, textual or library artifacts, diagnostic values, ambiguous
+references and unsupported data structures.
+
+An identifier becomes editable only when the resolver can establish sufficient evidence for the
+mapping and for the value that would be intercepted at runtime. This includes proving the relevant
+getter or equivalent scalar path, its type and its compatibility with the runtime override ABI.
+Ambiguous or shared-infrastructure mappings remain read-only instead of being guessed.
+
+The current runtime override ABI is deliberately limited to scalar values: BOOLEAN,
+byte/short/char/int-compatible INT, LONG, FLOAT, DOUBLE and STRING. Complex objects, callbacks,
+IPC-derived values, incomplete enum domains and Protobuf values without a sufficiently proven
+schema are not exposed for editing merely because the scanner can identify or describe them.
+
+This separation is intentional. AA Experiments favors **precision over recall**: cataloguing tens
+of thousands of candidates is useful for analysis and rediscovery, but exposing only the subset
+that can be mapped with sufficient confidence reduces the risk of hooking an unrelated method,
+returning an invalid type or corrupting Android Auto behavior.
+
 A bounded reverse graph classifies consumers, caches, activation scope and callsite outcomes.
 Structural fingerprints and global one-to-one matching rediscover mappings across obfuscation
 changes. Directed deep resolve reuses one DEX graph and streams each result to SQLite.

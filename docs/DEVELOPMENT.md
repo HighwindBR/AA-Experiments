@@ -129,11 +129,39 @@ to inject obfuscated fixture names or mappings into production resolution logic.
 The private release workflow stages the exact APKM fixtures on a self-hosted runner and verifies
 their hashes before fixture-dependent gates run.
 
-The isolated 256 MiB regression workers cover:
+### Why the 256 MiB memory gates matter
 
-- installed-package-style catalog scanning;
-- compatibility scanning against a frozen baseline; and
-- directed deep resolve.
+AA Experiments analyzes large Android Auto DEX sets and may build catalogs containing tens of
+thousands of identifiers, occurrences, getter candidates, consumer relationships and resolver
+metadata. These operations can create significant temporary memory pressure even when the final
+catalog itself is much smaller.
+
+Passing the regular unit suite alone does not prove that these operations are safe under
+device-like memory constraints. Some regression tests intentionally retain multiple complete
+inventories at the same time and therefore use a larger Gradle test-worker heap by default.
+For that reason, the release process separately executes the main single-build analysis paths with
+the JVM heap explicitly limited to **256 MiB**.
+
+These tests act as memory regressions: a change that still produces correct results but starts
+retaining too much intermediate state, constructing unnecessarily large graphs or keeping complete
+analysis results alive for too long can fail with an `OutOfMemoryError` under the 256 MiB limit.
+Such a failure is treated as a release-blocking regression because the same class of memory growth
+could make scans or deep analysis unreliable on an Android device.
+
+The isolated 256 MiB workers cover:
+
+- **installed catalog scanning** — verifies that a complete Android Auto build can be scanned and
+  catalogued within the constrained heap;
+- **compatibility scanning** — verifies that rebuilding a catalog while comparing it with a
+  previous compact mapping baseline remains within the same memory budget; and
+- **directed deep resolve** — verifies the streaming deep-analysis path without retaining the
+  complete result set in memory.
+
+The 256 MiB limit is a regression budget for these critical paths, not a guarantee that every
+Android device exposes exactly that amount of heap or that every future Android Auto build will
+have identical memory requirements. Its purpose is to catch substantial memory regressions before
+they reach users, especially regressions that could otherwise appear as an `OutOfMemoryError`
+during scanning or flag analysis.
 
 The full-corpus test is separately opt-in through `-Daa.full.deep=true` and uses fixture-specific
 expectations. Those counts describe a frozen regression corpus, not a rule for future Android Auto
