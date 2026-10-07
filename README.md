@@ -34,6 +34,8 @@ developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 
 ## Documentation
 
+For a practical overview of the breadth of Android Auto behavior that can be customized by modifying experiment flags, see the [Feature Catalog](FEATURE_CATALOG.md).
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Resolver](docs/RESOLVER.md)
 - [Runtime](docs/RUNTIME.md)
