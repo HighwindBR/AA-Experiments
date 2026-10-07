@@ -13,12 +13,17 @@ promise that every value is safe or that a server/head unit will enable the feat
 
 - Android 8.1 or newer
 - LSPosed with modern API 101 and Android Auto in module scope
-- JDK 17 and Android SDK platform 36 for local builds
-- Gradle 8.9, installed normally or supplied through the private development toolchain
+- JDK 17, Android SDK platform 36/build-tools 35.0.0 and Gradle 8.9 for local source builds
 
-Build with `gradle --no-daemon --max-workers=1 :app:testDebugUnitTest :app:assembleDebug`.
-Proprietary Android Auto regression APKMs are not part of public source bundles. Fixture-dependent
-release gates require the exact files and hashes listed in `fixtures/SHA256SUMS`.
+A normal source build does **not** require any proprietary Android Auto APKM fixture. Build and
+forking instructions, including signing and optional fixture-dependent tests, are documented in
+[Development](docs/DEVELOPMENT.md).
+
+The regular local build command is:
+
+```text
+gradle --no-daemon --max-workers=1 :app:testDebugUnitTest :app:assembleDebug
+```
 
 ## Privacy and development transparency
 
@@ -37,11 +42,7 @@ developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 For a practical overview of the breadth of Android Auto behavior that can be customized by modifying experiment flags, see the [**Feature Catalog**](FEATURE_CATALOG.md).
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Resolver](docs/RESOLVER.md)
-- [Runtime](docs/RUNTIME.md)
-- [Compatibility](docs/COMPATIBILITY.md)
-- [Building](docs/BUILDING.md)
-- [Testing](docs/TESTING.md)
+- [Development, building, testing and forking](docs/DEVELOPMENT.md)
 - [Release process](docs/RELEASE.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Privacy](PRIVACY.md)
@@ -51,6 +52,22 @@ For a practical overview of the breadth of Android Auto behavior that can be cus
 Use only while parked and disconnected from active projection. If Android Auto becomes unstable,
 restore all overrides in the Manager or disable the module in LSPosed. This project is not
 affiliated with Google, Android Auto or LSPosed.
+
+## Roadmap
+
+### Beta hardening
+
+- Physical lifecycle, live-listener and rapid snapshot-swap validation.
+- Compatibility reports across Android Auto, ROM, device and LSPosed versions.
+- Explicit recovery documentation and release-key/fixture operations.
+
+### Later
+
+- Canonical logical identities for imported splits.
+- Structurally proven safety decisions.
+- Numeric enum domains and schema-backed Protobuf editing.
+- Object/callback/IPC provenance and negotiated snapshots.
+- Reverse observability or crash attribution only when a reliable channel exists.
 
 ## License
 
