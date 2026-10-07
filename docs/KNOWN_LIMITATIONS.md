@@ -1,6 +1,6 @@
 # Known limitations
 
-- Long scans and deep analyses may stall or fail to complete if the device screen turns off while analysis is running. Keep the device awake until analysis completes. The foreground data-sync service is present, but screen-off handling is not yet reliable enough to treat this path as supported in beta1. Results already committed before an interruption remain preserved.
+- Long scans and deep analyses may stall or fail to complete if the device screen turns off while analysis is running. **Keep the device awake until analysis completes.** The foreground data-sync service is present, but **screen-off handling is not *yet* reliable enough** to treat this path as supported in beta1. Results already committed before an interruption remain preserved.
 - Static proof does not guarantee that a visible feature will activate. Server eligibility, account state, negotiated capabilities, SDK/hardware gates, head-unit support and remote services can still prevent an effect.
 - LSPosed API 101 has no reverse telemetry channel. Runtime confirmation still requires `PROFILE_ACCEPTED`, `HOOK_INSTALLED` and `OVERRIDE_RETURNED` in LSPosed logs.
 - Automatic crash-loop attribution is not implemented. Hooks fail open, profiles are tied to the complete installed-build fingerprint, and incompatible overrides are suspended before publication.
