@@ -128,11 +128,38 @@ Exposes the gates and thresholds Android Auto uses to classify the projected dis
 
 Controls where the Coolwalk palette comes from and allows the base palette color to be overridden.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `Coolwalk__neutralized_theme_kill_switch` | `true` | `true` | `true` keeps legacy primary-color theming; releasing it opens the wallpaper/seed-derived path. Kill-switch polarity: **TRUE** keeps the legacy primary-color theming path; **FALSE** releases the wallpaper/seed-derived palette path. |
-| BOOLEAN | `Coolwalk__use_phone_primary_color` | `false` | `—` | Historical 17.8 control that explicitly used the phone primary color. |
-| STRING | `Coolwalk__palette_base_color` | `configurable; default not recorded` | `configurable; default not recorded` | Overrides the base color used to derive the Coolwalk palette. Recognized examples include `#4285F4`, `#FF4285F4`, `0x4285F4`, and `0xFF4285F4`. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Coolwalk__neutralized_theme_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td><code>true</code> keeps legacy primary-color theming; releasing it opens the wallpaper/seed-derived path. Kill-switch polarity: <strong>TRUE</strong> keeps the legacy primary-color theming path; <strong>FALSE</strong> releases the wallpaper/seed-derived palette path.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Coolwalk__use_phone_primary_color</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Historical 17.8 control that explicitly used the phone primary color.</td>
+    </tr>
+    <tr>
+      <td>STRING</td>
+      <td><code>Coolwalk__palette_base_color</code></td>
+      <td colspan="2" align="center"><code>configurable; default not recorded</code></td>
+      <td>Overrides the base color used to derive the Coolwalk palette. Recognized examples include <code>#4285F4</code>, <code>#FF4285F4</code>, <code>0x4285F4</code>, and <code>0xFF4285F4</code>.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured. `Coolwalk__use_phone_primary_color` disappears, while palette control remains through the other paths.
 
@@ -140,11 +167,38 @@ Controls where the Coolwalk palette comes from and allows the base palette color
 
 Controls the wallpaper/backdrop behind the UI, the inset threshold used for eligibility, and historically a `CarInfo`-based denylist.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `SystemUi__wallpaper_backdrop_enabled` | `false` | `false` | Master gate. |
-| LONG | `SystemUi__wallpaper_backdrop_threshold` | `20` | `20` | Inset/stable-area threshold; the raw unit is not proven by the inspected consumer. |
-| BOOLEAN | `SystemUi__use_denylist_to_prevent_wallpaper_backdrop_from_showing_kill_switch` | `true` | `—` | Historical `CarInfo`-based denylist gate. Kill-switch polarity: **TRUE** consults/applies the `CarInfo` denylist; **FALSE** ignores that denylist gate. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>SystemUi__wallpaper_backdrop_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Master gate.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>SystemUi__wallpaper_backdrop_threshold</code></td>
+      <td colspan="2" align="center"><code>20</code></td>
+      <td>Inset/stable-area threshold; the raw unit is not proven by the inspected consumer.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>SystemUi__use_denylist_to_prevent_wallpaper_backdrop_from_showing_kill_switch</code></td>
+      <td><code>true</code></td>
+      <td><code>—</code></td>
+      <td>Historical <code>CarInfo</code>-based denylist gate. Kill-switch polarity: <strong>TRUE</strong> consults/applies the <code>CarInfo</code> denylist; <strong>FALSE</strong> ignores that denylist gate.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured; the configurable denylist disappears.
 
@@ -188,25 +242,122 @@ Controls support and force-enable behavior for cutouts/display geometry in the H
 
 ## Other UI & visual capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| Quick Settings in Notification Center | BOOLEAN — `SystemUi__quick_settings_enabled` | `false` | `false` | Adds Theme, Battery Saver, DND, and Settings controls to Notification Center. |
-| Compose rail implementation | BOOLEAN — `SystemUi__use_compose_rail` | `false` | `false` | Replaces the legacy rail/facet bar with the Compose implementation. |
-| Cielo system-theme mode | STRING — `CieloFeature__cielo_status` | `default not recorded` | `default not recorded` | Selects the Cielo visual path tied to the system theme. Recognized value: `system_theme`. |
-| Twin Smarts / Energy Shader notifications | LONG — `SystemUi__twin_smarts_mode` | `0` | `0` | Magic-number gate for the animated Energy Shader on `ProjectionNotification` cards. `13007` enables Twin Smarts; any other value keeps normal behavior. |
-| Edge-to-edge maps/apps | BOOLEAN — `SystemUi__edge_to_edge_maps_enabled` | `false` | `false` | Negotiates/renders eligible maps and apps edge-to-edge. |
-| Dynamic phone/manufacturer font family | BOOLEAN — `PhoneThemeFeature__enable_dynamic_font_family` | `false` | `false` | Selects a manufacturer-specific font-family overlay; Samsung is present in the inspected default mapping. |
-| Core Maps shared labeler | BOOLEAN — `CoreMaps__enable_shared_labeler` | `false` | `false` | Replaces the Legacy Labeler with the Shared Labeler in the Maps renderer. |
-| Hero theming API | BOOLEAN — `HeroFeature__theming_enabled` | `true` | `true` | Enables `HERO_THEMING` and the Hero theming API. Requires Hero. |
-| Hero punch-through / integrated overlay | BOOLEAN — `HeroFeature__punch_through_enabled` | `false` | `false` | Enables `HERO_PUNCH_THROUGH` and `IntegratedOverlayManager`. Requires Hero. |
-| Dashboard third-party notifications with actions | BOOLEAN — `Coolwalk__dashboard_show_3p_notifications_with_actions_enabled` | `false` | `false` | Allows third-party dashboard/HUN notifications with actions, subject to other filters. |
-| DND-driven notification suppression | BOOLEAN — `SystemUi__dnd_suppress_notifications_enabled` | `false` | `false` | Connects phone DND state to HUN/audio notification suppression. |
-| Navigation-window border | LONG — `Coolwalk__nav_app_border_width` | `0` | `0` | Controls the navigation projection-window border width; the raw unit is not proven to be dp. |
-| Notification Center bell visibility | BOOLEAN — `SystemUi__display_bell_when_status_elements_hidden` | `false` | `false` | Keeps the Notification Center bell visible when other status elements are hidden. |
-| HUN action-button stacking | BOOLEAN — `SystemUi__stack_hun_buttons_if_actions_contain_text_enabled` | `false` | `false` | Stacks HUN actions when action labels contain text. |
-| Rail status-bar theme overlays | BOOLEAN — `SystemUi__status_bar_theme_overlay_kill_switch` | `true` | `true` | Controls Coolwalk light/dark overlays on the Rail Status Bar. Kill-switch polarity: **TRUE** applies the Coolwalk light/dark Rail Status Bar overlay path; **FALSE** uses the normal/non-overlay path. |
-| Independent night mode | BOOLEAN — `IndependentNightModeFeature__enabled` | `false` | `false` | Enables independent night mode for CarWindow/Projected Presentation. |
-| Satellite-aware network status | BOOLEAN — `SystemUi__satellite_network_status` | `false` | `—` | Historical satellite-aware network-status provider for API 36+ and compatible hardware. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Quick Settings in Notification Center</td>
+      <td>BOOLEAN — <code>SystemUi__quick_settings_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Adds Theme, Battery Saver, DND, and Settings controls to Notification Center.</td>
+    </tr>
+    <tr>
+      <td>Compose rail implementation</td>
+      <td>BOOLEAN — <code>SystemUi__use_compose_rail</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Replaces the legacy rail/facet bar with the Compose implementation.</td>
+    </tr>
+    <tr>
+      <td>Cielo system-theme mode</td>
+      <td>STRING — <code>CieloFeature__cielo_status</code></td>
+      <td colspan="2" align="center"><code>default not recorded</code></td>
+      <td>Selects the Cielo visual path tied to the system theme. Recognized value: <code>system_theme</code>.</td>
+    </tr>
+    <tr>
+      <td>Twin Smarts / Energy Shader notifications</td>
+      <td>LONG — <code>SystemUi__twin_smarts_mode</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Magic-number gate for the animated Energy Shader on <code>ProjectionNotification</code> cards. <code>13007</code> enables Twin Smarts; any other value keeps normal behavior.</td>
+    </tr>
+    <tr>
+      <td>Edge-to-edge maps/apps</td>
+      <td>BOOLEAN — <code>SystemUi__edge_to_edge_maps_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Negotiates/renders eligible maps and apps edge-to-edge.</td>
+    </tr>
+    <tr>
+      <td>Dynamic phone/manufacturer font family</td>
+      <td>BOOLEAN — <code>PhoneThemeFeature__enable_dynamic_font_family</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Selects a manufacturer-specific font-family overlay; Samsung is present in the inspected default mapping.</td>
+    </tr>
+    <tr>
+      <td>Core Maps shared labeler</td>
+      <td>BOOLEAN — <code>CoreMaps__enable_shared_labeler</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Replaces the Legacy Labeler with the Shared Labeler in the Maps renderer.</td>
+    </tr>
+    <tr>
+      <td>Hero theming API</td>
+      <td>BOOLEAN — <code>HeroFeature__theming_enabled</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Enables <code>HERO_THEMING</code> and the Hero theming API. Requires Hero.</td>
+    </tr>
+    <tr>
+      <td>Hero punch-through / integrated overlay</td>
+      <td>BOOLEAN — <code>HeroFeature__punch_through_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables <code>HERO_PUNCH_THROUGH</code> and <code>IntegratedOverlayManager</code>. Requires Hero.</td>
+    </tr>
+    <tr>
+      <td>Dashboard third-party notifications with actions</td>
+      <td>BOOLEAN — <code>Coolwalk__dashboard_show_3p_notifications_with_actions_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Allows third-party dashboard/HUN notifications with actions, subject to other filters.</td>
+    </tr>
+    <tr>
+      <td>DND-driven notification suppression</td>
+      <td>BOOLEAN — <code>SystemUi__dnd_suppress_notifications_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Connects phone DND state to HUN/audio notification suppression.</td>
+    </tr>
+    <tr>
+      <td>Navigation-window border</td>
+      <td>LONG — <code>Coolwalk__nav_app_border_width</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Controls the navigation projection-window border width; the raw unit is not proven to be dp.</td>
+    </tr>
+    <tr>
+      <td>Notification Center bell visibility</td>
+      <td>BOOLEAN — <code>SystemUi__display_bell_when_status_elements_hidden</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Keeps the Notification Center bell visible when other status elements are hidden.</td>
+    </tr>
+    <tr>
+      <td>HUN action-button stacking</td>
+      <td>BOOLEAN — <code>SystemUi__stack_hun_buttons_if_actions_contain_text_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Stacks HUN actions when action labels contain text.</td>
+    </tr>
+    <tr>
+      <td>Rail status-bar theme overlays</td>
+      <td>BOOLEAN — <code>SystemUi__status_bar_theme_overlay_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Controls Coolwalk light/dark overlays on the Rail Status Bar. Kill-switch polarity: <strong>TRUE</strong> applies the Coolwalk light/dark Rail Status Bar overlay path; <strong>FALSE</strong> uses the normal/non-overlay path.</td>
+    </tr>
+    <tr>
+      <td>Independent night mode</td>
+      <td>BOOLEAN — <code>IndependentNightModeFeature__enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables independent night mode for CarWindow/Projected Presentation.</td>
+    </tr>
+    <tr>
+      <td>Satellite-aware network status</td>
+      <td>BOOLEAN — <code>SystemUi__satellite_network_status</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Historical satellite-aware network-status provider for API 36+ and compatible hardware.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -280,20 +431,76 @@ Selects the adaptive minimum-buffer calculation path and exposes the default min
 
 ## Other media & audio capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| Multiple dashboard media cards | BOOLEAN — `Media__support_multiple_dashboard_media_cards` | `false` | `false` | Allows multiple media cards on the dashboard. |
-| Dynamic media playback background | BOOLEAN — `Media__update_playback_background` | `false` | `false` | Dynamically updates player colors/background. |
-| Synthetic ±10-second media actions | BOOLEAN — `Media__force_skip_10s_media_actions_enabled` | `false` | `false` | Synthesizes ±10 s controls when seek is available. |
-| Neoplan buffered media source | LONG — `NeoplanFeature__enabled` | `0` | `0` | Magic-number gate for an experimental buffered-media service using `CarBufferedMediaSourceService` and a Cronet-backed data path. |
-| Synchronized Media master gate | BOOLEAN — `SynchronizedMediaFeature__enable_sync` | `false` | `false` | Enables the configurable protocol-level A/V synchronization mechanism. |
-| Audio flow-control queue | LONG — `AudioFlowControl__transmission_queue_max_capacity` | `240` | `240` | Sets the maximum audio transmission-queue capacity in frames; `0` means no configured capacity limit. |
-| Playback-only media sessions | BOOLEAN — `Media__support_playback_only_media` | `false` | `false` | Supports playback-only sessions without a complete browse tree. |
-| ASR audio-channel hold | BOOLEAN — `AudioFocus__hold_channels_for_asr` | `true` | `true` | Keeps channels held/reserved during ASR. |
-| Radio DTS station-name preference | BOOLEAN — `HeroFeature__radio_dts_prefer_station_name_kill_switch` | `—` | `true` | Prefers station name in enriched DTS radio metadata. Kill-switch polarity: **TRUE** prefers station name in enriched DTS radio metadata; **FALSE** does not apply that preference. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Multiple dashboard media cards</td>
+      <td>BOOLEAN — <code>Media__support_multiple_dashboard_media_cards</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Allows multiple media cards on the dashboard.</td>
+    </tr>
+    <tr>
+      <td>Dynamic media playback background</td>
+      <td>BOOLEAN — <code>Media__update_playback_background</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Dynamically updates player colors/background.</td>
+    </tr>
+    <tr>
+      <td>Synthetic ±10-second media actions</td>
+      <td>BOOLEAN — <code>Media__force_skip_10s_media_actions_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Synthesizes ±10 s controls when seek is available.</td>
+    </tr>
+    <tr>
+      <td>Neoplan buffered media source</td>
+      <td>LONG — <code>NeoplanFeature__enabled</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Magic-number gate for an experimental buffered-media service using <code>CarBufferedMediaSourceService</code> and a Cronet-backed data path.</td>
+    </tr>
+    <tr>
+      <td>Synchronized Media master gate</td>
+      <td>BOOLEAN — <code>SynchronizedMediaFeature__enable_sync</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables the configurable protocol-level A/V synchronization mechanism.</td>
+    </tr>
+    <tr>
+      <td>Audio flow-control queue</td>
+      <td>LONG — <code>AudioFlowControl__transmission_queue_max_capacity</code></td>
+      <td colspan="2" align="center"><code>240</code></td>
+      <td>Sets the maximum audio transmission-queue capacity in frames; <code>0</code> means no configured capacity limit.</td>
+    </tr>
+    <tr>
+      <td>Playback-only media sessions</td>
+      <td>BOOLEAN — <code>Media__support_playback_only_media</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Supports playback-only sessions without a complete browse tree.</td>
+    </tr>
+    <tr>
+      <td>ASR audio-channel hold</td>
+      <td>BOOLEAN — <code>AudioFocus__hold_channels_for_asr</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Keeps channels held/reserved during ASR.</td>
+    </tr>
+    <tr>
+      <td>Radio DTS station-name preference</td>
+      <td>BOOLEAN — <code>HeroFeature__radio_dts_prefer_station_name_kill_switch</code></td>
+      <td><code>—</code></td>
+      <td><code>true</code></td>
+      <td>Prefers station name in enriched DTS radio metadata. Kill-switch polarity: <strong>TRUE</strong> prefers station name in enriched DTS radio metadata; <strong>FALSE</strong> does not apply that preference.</td>
+    </tr>
+  </tbody>
+</table>
 
-> [!NOTE]
-> `SynchronizedMediaFeature__average_lag_weight` is real and active, but remains intentionally excluded from the confirmed catalog because the receiving-side mathematical interpretation of its value could not be proven.
+> **ℹ️ Note:** `SynchronizedMediaFeature__average_lag_weight` is real and active, but remains intentionally excluded from the confirmed catalog because the receiving-side mathematical interpretation of its value could not be proven.
 
 ---
 
@@ -354,37 +561,135 @@ Adds browser-aware foreground/search-results behavior and can feed host transcri
 | BOOLEAN | `Watevra__foreground_search_fab_enabled` | `false` | Enables foreground/browser-aware search flow. |
 | BOOLEAN | `Watevra__transcription_enabled` | `false` | Integrates host transcription into the CAL search field. |
 
-> [!NOTE]
-> `Watevra__foreground_search_fab_component_denylist` is intentionally not cataloged as a behavior switch: in these builds it only reaches dump/config plumbing and does not control Foreground Search behavior.
+> **ℹ️ Note:** `Watevra__foreground_search_fab_component_denylist` is intentionally not cataloged as a behavior switch: in these builds it only reaches dump/config plumbing and does not control Foreground Search behavior.
 
 ## CAL ConversationItem driving line limit — ★★★★
 
 Controls message-line limits while driving; 17.9 adds a dedicated gate around the dynamic limit path.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| LONG | `CarAppLibrary__conversation_item_max_message_lines_while_driving` | `2` | `2` | Maximum message lines in a `ConversationItem` while driving. |
-| BOOLEAN | `CarAppLibrary__conversation_item_max_message_lines_kill_switch` | `—` | `true` | New 17.9 gate around the dynamic line-limit behavior. Kill-switch polarity: **unknown** — the retained evidence confirms the gate and the dynamic line-limit path, but does not safely establish both TRUE/FALSE branches. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LONG</td>
+      <td><code>CarAppLibrary__conversation_item_max_message_lines_while_driving</code></td>
+      <td colspan="2" align="center"><code>2</code></td>
+      <td>Maximum message lines in a <code>ConversationItem</code> while driving.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>CarAppLibrary__conversation_item_max_message_lines_kill_switch</code></td>
+      <td><code>—</code></td>
+      <td><code>true</code></td>
+      <td>New 17.9 gate around the dynamic line-limit behavior. Kill-switch polarity: <strong>unknown</strong> — the retained evidence confirms the gate and the dynamic line-limit path, but does not safely establish both TRUE/FALSE branches.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured.
 
 ## Other Cradle / CAL capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| CAL templates in Compose | BOOLEAN — `CarAppLibrary__all_templates_in_compose_enabled` | `false` | `false` | Master gate for migrating CAL templates to Compose, with alternate sub-gates. |
-| CAL tab layout orientation | LONG — `CarAppLibrary__tab_layout_orientation` | `0` | `0` | `0` = `FORCE_HORIZONTAL`; `1` = `FORCE_VERTICAL`; `2` = `AUTO`; any other value falls back to `AUTO`. The default `0` therefore explicitly forces horizontal layout. |
-| CAL Map Presentation Service architecture | BOOLEAN — `CarAppLibrary__use_map_presentation_service_kill_switch` | `true` | `true` | Selects between the inline architecture and the alternate Map Presentation Service path. Kill-switch polarity: **TRUE** selects the alternate Map Presentation Service path; **FALSE** uses the inline architecture. |
-| ProjectedApps vendor extension | BOOLEAN — `ProjectedAppsFeature__enabled` | `false` | `false` | Enables the `projectedapps` vendor extension on compatible HUs. |
-| Cradle day/night propagation | BOOLEAN — `CradleFeature__day_night_enabled` | `false` | `false` | Propagates vehicle day/night state to Cradle apps; API 37+ in the traced path. |
-| CAL dashboard progress actions | BOOLEAN — `CarAppLibrary__enable_progress_buttons_on_dashboard_mode` | `false` | `false` | Renders dashboard actions with real progress/duration. |
-| CAL tall/narrow navigation templates | BOOLEAN — `CarAppLibrary__allow_tall_narrow_for_nav_apps` | `false` | `false` | Expands `NavigationTemplate` eligibility/layout for tall/narrow geometry. |
-| CAL SectionedItemTemplate search header | BOOLEAN — `CarAppLibrary__search_with_sectioned_item_template_kill_switch` | `true` | `true` | When released, allows a full `SearchHeader` in fullscreen `SectionedItemTemplate`. Kill-switch polarity: **TRUE** keeps the restricted/kill-switch path; **FALSE** releases the full `SearchHeader` in fullscreen `SectionedItemTemplate`. |
-| CAL SectionedItemTemplate sticky actions | BOOLEAN — `CarAppLibrary__sectioned_item_template_sticky_actions_enabled` | `—` | `false` | Enables persistent/sticky actions in `SectionedItemTemplate`; API 9+ in the traced path. |
-| CAL Speedbump Compose renderer | BOOLEAN — `CarAppLibrary__speedbump_compose_enabled_kill_switch` | `true` | `true` | Controls the dedicated Compose renderer for speedbump UI. Kill-switch polarity: **TRUE** disables/kills the dedicated Compose speedbump renderer; **FALSE** allows that Compose renderer path. |
-| CAL primary action on Coolwalk | BOOLEAN — `Watevra__primary_actions_on_coolwalk` | `false` | `false` | Promotes the `NavigationTemplate` primary action next to the travel estimate. |
-| Watevra host CAL API level | LONG — `Watevra__host_car_app_library_latest_api_level` | `9` | `9` | Sets the maximum CAL API level advertised by the host. Raising it does not implement missing host APIs. |
-| CAL icon color analysis/tint strategy | BOOLEAN — `CarAppLibrary__icon_color_analyzer_enabled` | `false` | `false` | Classifies icons as single-color/multi-color for tint strategy. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>CAL templates in Compose</td>
+      <td>BOOLEAN — <code>CarAppLibrary__all_templates_in_compose_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Master gate for migrating CAL templates to Compose, with alternate sub-gates.</td>
+    </tr>
+    <tr>
+      <td>CAL tab layout orientation</td>
+      <td>LONG — <code>CarAppLibrary__tab_layout_orientation</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td><code>0</code> = <code>FORCE_HORIZONTAL</code>; <code>1</code> = <code>FORCE_VERTICAL</code>; <code>2</code> = <code>AUTO</code>; any other value falls back to <code>AUTO</code>. The default <code>0</code> therefore explicitly forces horizontal layout.</td>
+    </tr>
+    <tr>
+      <td>CAL Map Presentation Service architecture</td>
+      <td>BOOLEAN — <code>CarAppLibrary__use_map_presentation_service_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Selects between the inline architecture and the alternate Map Presentation Service path. Kill-switch polarity: <strong>TRUE</strong> selects the alternate Map Presentation Service path; <strong>FALSE</strong> uses the inline architecture.</td>
+    </tr>
+    <tr>
+      <td>ProjectedApps vendor extension</td>
+      <td>BOOLEAN — <code>ProjectedAppsFeature__enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables the <code>projectedapps</code> vendor extension on compatible HUs.</td>
+    </tr>
+    <tr>
+      <td>Cradle day/night propagation</td>
+      <td>BOOLEAN — <code>CradleFeature__day_night_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Propagates vehicle day/night state to Cradle apps; API 37+ in the traced path.</td>
+    </tr>
+    <tr>
+      <td>CAL dashboard progress actions</td>
+      <td>BOOLEAN — <code>CarAppLibrary__enable_progress_buttons_on_dashboard_mode</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Renders dashboard actions with real progress/duration.</td>
+    </tr>
+    <tr>
+      <td>CAL tall/narrow navigation templates</td>
+      <td>BOOLEAN — <code>CarAppLibrary__allow_tall_narrow_for_nav_apps</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Expands <code>NavigationTemplate</code> eligibility/layout for tall/narrow geometry.</td>
+    </tr>
+    <tr>
+      <td>CAL SectionedItemTemplate search header</td>
+      <td>BOOLEAN — <code>CarAppLibrary__search_with_sectioned_item_template_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>When released, allows a full <code>SearchHeader</code> in fullscreen <code>SectionedItemTemplate</code>. Kill-switch polarity: <strong>TRUE</strong> keeps the restricted/kill-switch path; <strong>FALSE</strong> releases the full <code>SearchHeader</code> in fullscreen <code>SectionedItemTemplate</code>.</td>
+    </tr>
+    <tr>
+      <td>CAL SectionedItemTemplate sticky actions</td>
+      <td>BOOLEAN — <code>CarAppLibrary__sectioned_item_template_sticky_actions_enabled</code></td>
+      <td><code>—</code></td>
+      <td><code>false</code></td>
+      <td>Enables persistent/sticky actions in <code>SectionedItemTemplate</code>; API 9+ in the traced path.</td>
+    </tr>
+    <tr>
+      <td>CAL Speedbump Compose renderer</td>
+      <td>BOOLEAN — <code>CarAppLibrary__speedbump_compose_enabled_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Controls the dedicated Compose renderer for speedbump UI. Kill-switch polarity: <strong>TRUE</strong> disables/kills the dedicated Compose speedbump renderer; <strong>FALSE</strong> allows that Compose renderer path.</td>
+    </tr>
+    <tr>
+      <td>CAL primary action on Coolwalk</td>
+      <td>BOOLEAN — <code>Watevra__primary_actions_on_coolwalk</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Promotes the <code>NavigationTemplate</code> primary action next to the travel estimate.</td>
+    </tr>
+    <tr>
+      <td>Watevra host CAL API level</td>
+      <td>LONG — <code>Watevra__host_car_app_library_latest_api_level</code></td>
+      <td colspan="2" align="center"><code>9</code></td>
+      <td>Sets the maximum CAL API level advertised by the host. Raising it does not implement missing host APIs.</td>
+    </tr>
+    <tr>
+      <td>CAL icon color analysis/tint strategy</td>
+      <td>BOOLEAN — <code>CarAppLibrary__icon_color_analyzer_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Classifies icons as single-color/multi-color for tint strategy.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -436,10 +741,33 @@ Combines the feature gate with the effective preference serialized into `VoiceSe
 
 Controls Gemini personalization with chats and Connected Apps.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `key_settings_gemini_personalization` | `∅` | `false` | Effective Gemini personalization preference. |
-| BOOLEAN | `Assistant__enable_gemini_personalization` | `false` | `—` | Historical separate gate, absorbed into the normal settings path in 17.9. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>key_settings_gemini_personalization</code></td>
+      <td><code>∅</code></td>
+      <td><code>false</code></td>
+      <td>Effective Gemini personalization preference.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Assistant__enable_gemini_personalization</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Historical separate gate, absorbed into the normal settings path in 17.9.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured; the dedicated gate disappears while the settings-based path remains.
 
@@ -469,18 +797,80 @@ The traced protocol identifies the service as `CarAssistantService` and requests
 
 Controls text variants, artwork, repetition limits, and free-form tooltip copy for Assistant education surfaces.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| STRING | `UserEducation__assistant_tooltip_launcher_open_iteration_string` | `free text; default not recorded` | `free text; default not recorded` | Free-form displayed tooltip text. |
-| LONG | `UserEducation__assistant_tooltip_first_run_copy` | `0` | `15` | First-run copy selector. Known range: `0`–`17`; invalid values fall back to the base copy. |
-| LONG | `UserEducation__assistant_tooltip_nth_run_copy` | `0` | `0` | Subsequent-run copy selector. |
-| LONG | `UserEducation__assistant_tooltip_nth_run_button_copy` | `0` | `0` | Button-oriented nth-run copy selector. |
-| LONG | `UserEducation__assistant_tooltip_start_of_navigation_text_copy` | `0` | `0` | Start-of-navigation education copy selector. |
-| LONG | `UserEducation__assistant_tooltip_first_run_image` | `0` | `0` | First-run artwork selector (`0`–`6` known). |
-| LONG | `UserEducation__assistant_tooltip_nth_run_image` | `0` | `0` | Nth-run artwork selector. |
-| LONG | `UserEducation__assistant_tooltip_nth_run_button_image` | `0` | `0` | Button-oriented nth-run artwork selector. |
-| LONG | `UserEducation__assistant_tooltip_nth_run_count` | `3` | `3` | Eligibility/display-count limit. |
-| LONG | `UserEducation__assistant_tooltip_nth_run_button_count` | `3` | `3` | Eligibility/display-count limit for the button variant. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>STRING</td>
+      <td><code>UserEducation__assistant_tooltip_launcher_open_iteration_string</code></td>
+      <td colspan="2" align="center"><code>free text; default not recorded</code></td>
+      <td>Free-form displayed tooltip text.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_first_run_copy</code></td>
+      <td><code>0</code></td>
+      <td><code>15</code></td>
+      <td>First-run copy selector. Known range: <code>0</code>–<code>17</code>; invalid values fall back to the base copy.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_copy</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Subsequent-run copy selector.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_button_copy</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Button-oriented nth-run copy selector.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_start_of_navigation_text_copy</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Start-of-navigation education copy selector.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_first_run_image</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>First-run artwork selector (<code>0</code>–<code>6</code> known).</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_image</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Nth-run artwork selector.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_button_image</code></td>
+      <td colspan="2" align="center"><code>0</code></td>
+      <td>Button-oriented nth-run artwork selector.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_count</code></td>
+      <td colspan="2" align="center"><code>3</code></td>
+      <td>Eligibility/display-count limit.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>UserEducation__assistant_tooltip_nth_run_button_count</code></td>
+      <td colspan="2" align="center"><code>3</code></td>
+      <td>Eligibility/display-count limit for the button variant.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** maturation: `assistant_tooltip_first_run_copy` changes from `0` to `15`; the rest of the documented set remains stable.
 
@@ -656,40 +1046,168 @@ Messaging discovery/readout, Smart Actions, templated dialers, call architecture
 
 ## Messaging geographic text gate — ★★★★★
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `Messaging__is_messaging_text_allowed` | `—` | `true` | New 17.9 geographic gate for messaging text, including country denylist and fail-conservative behavior. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Messaging__is_messaging_text_allowed</code></td>
+      <td><code>—</code></td>
+      <td><code>true</code></td>
+      <td>New 17.9 geographic gate for messaging text, including country denylist and fail-conservative behavior.</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Messaging Smart Actions / Smart Replies — ★★★★
 
 Controls platform Smart Replies/Actions, Navigate-action expansion, confidence filtering, and displayed text length.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `Messaging__platform_smart_replies_kill_switch` | `false` | `true` | Integrates Smart Replies/Actions from Notification Ranking. Kill-switch polarity: **TRUE** initializes/uses the platform Smart Replies/Actions path; **FALSE** does not use that path. |
-| BOOLEAN | `Messaging__smart_action_navigate_enabled_for_all_nav_apps` | `false` | `false` | Expands the Navigate Smart Action to more navigation apps. |
-| DOUBLE | `Messaging__minimum_smart_action_confidence_score` | `0.1` | `0.1` | Minimum confidence score for a Smart Action to survive filtering. |
-| LONG | `Messaging__maximum_smart_action_display_text_length` | `10` | `10` | Maximum display-text length used by message-row Smart Actions. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Messaging__platform_smart_replies_kill_switch</code></td>
+      <td><code>false</code></td>
+      <td><code>true</code></td>
+      <td>Integrates Smart Replies/Actions from Notification Ranking. Kill-switch polarity: <strong>TRUE</strong> initializes/uses the platform Smart Replies/Actions path; <strong>FALSE</strong> does not use that path.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Messaging__smart_action_navigate_enabled_for_all_nav_apps</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Expands the Navigate Smart Action to more navigation apps.</td>
+    </tr>
+    <tr>
+      <td>DOUBLE</td>
+      <td><code>Messaging__minimum_smart_action_confidence_score</code></td>
+      <td colspan="2" align="center"><code>0.1</code></td>
+      <td>Minimum confidence score for a Smart Action to survive filtering.</td>
+    </tr>
+    <tr>
+      <td>LONG</td>
+      <td><code>Messaging__maximum_smart_action_display_text_length</code></td>
+      <td colspan="2" align="center"><code>10</code></td>
+      <td>Maximum display-text length used by message-row Smart Actions.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** maturation: `Messaging__platform_smart_replies_kill_switch` changes its compiled default from `false` in 17.8 to `true` in 17.9. This is a genuine build-default promotion, independent of any user override.
 
 ## Other messaging & call capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| Messaging autoplay/readout | BOOLEAN — `Messaging__autoplay_messages_kill_switch` | `false` | `false` | Master enable for message autoplay/readout, still subject to other gates. Kill-switch polarity: **TRUE** enables message autoplay/readout; **FALSE** keeps it disabled through this gate. |
-| Messaging app discovery | BOOLEAN — `Messaging__app_identification_intent_service_enabled` | `false` | `false` | Discovers Messaging apps through `HANDLE_CAR_MESSAGING`. |
-| Messaging ConversationItem mute action | BOOLEAN — `Messaging__cal_mute_button_enabled` | `false` | `false` | Adds Mute/Unmute actions to `ConversationItem`. |
-| Legacy `Notification.CarExtender` messaging parser | BOOLEAN — `Messaging__carextender_enabled` | `true` | `true` | Keeps the legacy `Notification.CarExtender` parser path. |
-| Messaging image-description readout | BOOLEAN — `Messaging__image_description_readout_enabled` | `false` | `false` | Allows Assistant to receive an image for description/readout. |
-| Messaging launcher deduplication | BOOLEAN — `Messaging__launcher_priority_messaging_suppression_kill_switch` | `true` | `true` | Suppresses duplicate Messaging launcher presence when the same package has richer CAL/Media integration. Kill-switch polarity: **TRUE** suppresses the duplicate Messaging launcher entry when richer CAL/Media integration is present; **FALSE** does not apply that suppression. |
-| Unified SMS `MessagingInfo` | BOOLEAN — `UnifiedSmsMessagingInfo__enabled` | `true` | `true` | Unifies SMS in `MessagingInfo`, including `RemoteInput` replies. |
-| Call HUN third action | BOOLEAN — `Dialer__enable_third_action_on_call_huns` | `false` | `false` | Allows a third action on call HUNs. |
-| Unified calling Car Apps routing | BOOLEAN — `Dialer__unified_iccaras_enabled` | `false` | `false` | Enables session-aware/unified routing for calling Car Apps. |
-| VoIP call ↔ templated-app association | BOOLEAN — `Voip__voip_call_notification_template_app_kill_switch` | `—` | `true` | Associates a VoIP call notification with a templated/Messaging Car App. Kill-switch polarity: **TRUE** enables/attempts templated/Messaging Car App association for the VoIP call; **FALSE** skips that provider/path. |
-| Work-profile calling apps | BOOLEAN — `WorkAppsFeature__calling_apps_enabled` | `false` | `false` | Includes calling apps from the work profile. |
-| Legacy Messaging FAB accent color | BOOLEAN — `Messaging__use_app_accent_color_as_fab_background` | `false` | `—` | Used the app accent color for the FAB in the legacy Messaging UI. |
-| Contacts standard template/provider | BOOLEAN — `PhoneFeature__use_standard_template_for_contacts` | `false` | `—` | Selected the standard template/provider path for Contacts. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Messaging autoplay/readout</td>
+      <td>BOOLEAN — <code>Messaging__autoplay_messages_kill_switch</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Master enable for message autoplay/readout, still subject to other gates. Kill-switch polarity: <strong>TRUE</strong> enables message autoplay/readout; <strong>FALSE</strong> keeps it disabled through this gate.</td>
+    </tr>
+    <tr>
+      <td>Messaging app discovery</td>
+      <td>BOOLEAN — <code>Messaging__app_identification_intent_service_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Discovers Messaging apps through <code>HANDLE_CAR_MESSAGING</code>.</td>
+    </tr>
+    <tr>
+      <td>Messaging ConversationItem mute action</td>
+      <td>BOOLEAN — <code>Messaging__cal_mute_button_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Adds Mute/Unmute actions to <code>ConversationItem</code>.</td>
+    </tr>
+    <tr>
+      <td>Legacy <code>Notification.CarExtender</code> messaging parser</td>
+      <td>BOOLEAN — <code>Messaging__carextender_enabled</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Keeps the legacy <code>Notification.CarExtender</code> parser path.</td>
+    </tr>
+    <tr>
+      <td>Messaging image-description readout</td>
+      <td>BOOLEAN — <code>Messaging__image_description_readout_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Allows Assistant to receive an image for description/readout.</td>
+    </tr>
+    <tr>
+      <td>Messaging launcher deduplication</td>
+      <td>BOOLEAN — <code>Messaging__launcher_priority_messaging_suppression_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Suppresses duplicate Messaging launcher presence when the same package has richer CAL/Media integration. Kill-switch polarity: <strong>TRUE</strong> suppresses the duplicate Messaging launcher entry when richer CAL/Media integration is present; <strong>FALSE</strong> does not apply that suppression.</td>
+    </tr>
+    <tr>
+      <td>Unified SMS <code>MessagingInfo</code></td>
+      <td>BOOLEAN — <code>UnifiedSmsMessagingInfo__enabled</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Unifies SMS in <code>MessagingInfo</code>, including <code>RemoteInput</code> replies.</td>
+    </tr>
+    <tr>
+      <td>Call HUN third action</td>
+      <td>BOOLEAN — <code>Dialer__enable_third_action_on_call_huns</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Allows a third action on call HUNs.</td>
+    </tr>
+    <tr>
+      <td>Unified calling Car Apps routing</td>
+      <td>BOOLEAN — <code>Dialer__unified_iccaras_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables session-aware/unified routing for calling Car Apps.</td>
+    </tr>
+    <tr>
+      <td>VoIP call ↔ templated-app association</td>
+      <td>BOOLEAN — <code>Voip__voip_call_notification_template_app_kill_switch</code></td>
+      <td><code>—</code></td>
+      <td><code>true</code></td>
+      <td>Associates a VoIP call notification with a templated/Messaging Car App. Kill-switch polarity: <strong>TRUE</strong> enables/attempts templated/Messaging Car App association for the VoIP call; <strong>FALSE</strong> skips that provider/path.</td>
+    </tr>
+    <tr>
+      <td>Work-profile calling apps</td>
+      <td>BOOLEAN — <code>WorkAppsFeature__calling_apps_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Includes calling apps from the work profile.</td>
+    </tr>
+    <tr>
+      <td>Legacy Messaging FAB accent color</td>
+      <td>BOOLEAN — <code>Messaging__use_app_accent_color_as_fab_background</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Used the app accent color for the FAB in the legacy Messaging UI.</td>
+    </tr>
+    <tr>
+      <td>Contacts standard template/provider</td>
+      <td>BOOLEAN — <code>PhoneFeature__use_standard_template_for_contacts</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Selected the standard template/provider path for Contacts.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -723,9 +1241,26 @@ Controls migration from the global `GH.SixTap` moderator to the `GH.SpeedBump` p
 
 ## CAL moderation-exemption policy — ★★★★★
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `CarAppLibrary__moderation_exempt_kill_switch` | `true` | `—` | Historical gate selecting a broader set of moderation-exempt templates. Kill-switch polarity: **TRUE** selected the broader moderation-exempt template set; **FALSE** used the narrower Navigation-only exemption behavior. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>CarAppLibrary__moderation_exempt_kill_switch</code></td>
+      <td><code>true</code></td>
+      <td><code>—</code></td>
+      <td>Historical gate selecting a broader set of moderation-exempt templates. Kill-switch polarity: <strong>TRUE</strong> selected the broader moderation-exempt template set; <strong>FALSE</strong> used the narrower Navigation-only exemption behavior.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured rather than removed: the broad exemption policy is applied directly in 17.9, so the configurable gate disappears.
 
@@ -790,11 +1325,38 @@ Exposes the codec-specific baselines, floor, gradients, exponent, and 60 FPS mul
 
 Controls codec-level validation, codec-reported maximum dimensions, and a protocol-5+ multi-codec rule.
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `VideoEncoderParams__use_spec_codec_level_limits` | `—` | `false` | New in 17.9: validates resolution/FPS against required AVC/HEVC levels. |
-| BOOLEAN | `VideoEncoderParams__enforce_supported_codec_dimensions` | `false` | `false` | Restricts modes to the maximum dimensions reported by the codec. |
-| BOOLEAN | `VideoEncoderParams__extend_avc_support` | `false` | `false` | In protocol 5+, rejects a display advertising multiple codec types in the traced branch. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>VideoEncoderParams__use_spec_codec_level_limits</code></td>
+      <td><code>—</code></td>
+      <td><code>false</code></td>
+      <td>New in 17.9: validates resolution/FPS against required AVC/HEVC levels.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>VideoEncoderParams__enforce_supported_codec_dimensions</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Restricts modes to the maximum dimensions reported by the codec.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>VideoEncoderParams__extend_avc_support</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>In protocol 5+, rejects a display advertising multiple codec types in the traced branch.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured by adding `use_spec_codec_level_limits`.
 
@@ -865,11 +1427,38 @@ Controls HIGH/MEDIUM FPS limits, thermal eligibility, display/activity-count cri
 
 ## Other projection / rendering capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| Projection frame-timing tolerance | DOUBLE — `ProjectionWindowManager__expected_frame_time_deviation` | `0.5` | `0.2` | Tightens the allowed deviation around expected frame timing from 0.5 to 0.2 in 17.9. |
-| Projection pending-frame queue | LONG — `ProjectionWindowManager__max_pending_frames_to_send` | `3` | `3` | Limits how many projection frames may remain pending for transmission. |
-| Projection content-window startup animation scheduling | BOOLEAN — `ProjectionWindowManager__content_window_startup_animation_kill_switch` | `true` | `true` | Preserves specialized scheduling/batching for content-window startup animations. Kill-switch polarity: **unknown** — the retained catalog confirms its relationship to specialized startup-animation scheduling/batching, but the available retained evidence is not consistent enough to state both TRUE/FALSE branches safely. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Projection frame-timing tolerance</td>
+      <td>DOUBLE — <code>ProjectionWindowManager__expected_frame_time_deviation</code></td>
+      <td><code>0.5</code></td>
+      <td><code>0.2</code></td>
+      <td>Tightens the allowed deviation around expected frame timing from 0.5 to 0.2 in 17.9.</td>
+    </tr>
+    <tr>
+      <td>Projection pending-frame queue</td>
+      <td>LONG — <code>ProjectionWindowManager__max_pending_frames_to_send</code></td>
+      <td colspan="2" align="center"><code>3</code></td>
+      <td>Limits how many projection frames may remain pending for transmission.</td>
+    </tr>
+    <tr>
+      <td>Projection content-window startup animation scheduling</td>
+      <td>BOOLEAN — <code>ProjectionWindowManager__content_window_startup_animation_kill_switch</code></td>
+      <td colspan="2" align="center"><code>true</code></td>
+      <td>Preserves specialized scheduling/batching for content-window startup animations. Kill-switch polarity: <strong>unknown</strong> — the retained catalog confirms its relationship to specialized startup-animation scheduling/batching, but the available retained evidence is not consistent enough to state both TRUE/FALSE branches safely.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
@@ -911,10 +1500,32 @@ Onboarding/FRX control, setup bypasses, country eligibility, Bluetooth pairing b
 
 ## Preflight country eligibility — ★★★★
 
-| Type | Parameter | 17.8 | 17.9 | Role |
-|---|---|---|---|---|
-| BOOLEAN | `Preflight__is_device_country_blocked` | `false` | `false` | Forces the country-blocked gate; can lead to teardown except for the vehicle allowlist path. |
-| BOOLEAN | `Preflight__enable_gps_country_check` | `false` | `—` | Historical 17.8 key; despite its name, `true` bypassed the physical/GPS fallback in the traced logic. |
+<table>
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>Role</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Preflight__is_device_country_blocked</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Forces the country-blocked gate; can lead to teardown except for the vehicle allowlist path.</td>
+    </tr>
+    <tr>
+      <td>BOOLEAN</td>
+      <td><code>Preflight__enable_gps_country_check</code></td>
+      <td><code>false</code></td>
+      <td><code>—</code></td>
+      <td>Historical 17.8 key; despite its name, <code>true</code> bypassed the physical/GPS fallback in the traced logic.</td>
+    </tr>
+  </tbody>
+</table>
 
 **17.8 → 17.9:** restructured; the explicit GPS key disappears while the main country gate remains.
 
@@ -942,16 +1553,68 @@ Onboarding/FRX control, setup bypasses, country eligibility, Bluetooth pairing b
 
 ## Other setup / Bluetooth / USB capabilities
 
-| Capability | Parameter | 17.8 | 17.9 | What it changes |
-| --- | --- | --- | --- | --- |
-| Preflight phone denylist state | BOOLEAN — `Preflight__is_phone_denylisted` | `false` | `false` | Forces the phone-denylisted state in pre-setup/wireless logic. |
-| FRX Maps requirement bypass | BOOLEAN — `LegacyCarSetupFlags__frx_maps_bypass_enabled` | `false` | `false` | Allows configured navigation apps to bypass the Maps requirement in FRX. |
-| Deferred non-essential startup during preflight | BOOLEAN — `GearheadCarService__delay_non_essential_startup_during_preflight` | `false` | `false` | Defers non-essential services until preflight is finished. |
-| Bluetooth CarInfo metadata | BOOLEAN — `BluetoothPairing__add_car_info_to_bluetooth_metadata` | `—` | `false` | Writes manufacturer/model/year/HU data into Bluetooth-device RDI metadata. |
-| CarBluetoothService master kill switch | BOOLEAN — `BluetoothPairing__car_bluetooth_service_disable` | `false` | `false` | Disables `CarBluetoothService`. |
-| A2DP during projection | BOOLEAN — `BluetoothPairing__disable_a2dp` | `false` | `false` | Disables the car A2DP route during projection. |
-| Flaky USB detection | BOOLEAN — `UsbBabysitterFeature__enable_flakey_usb_detector` | `false` | `false` | Enables detection of unstable USB connections. |
-| Projection-end A2DP recovery | BOOLEAN — `UsbBabysitter__enable_a2dp_at_projection_end` | `false` | `false` | Attempts to restore HU A2DP when projection ends. |
+<table>
+  <thead>
+    <tr>
+      <th>Capability</th>
+      <th>Parameter</th>
+      <th>17.8</th>
+      <th>17.9</th>
+      <th>What it changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Preflight phone denylist state</td>
+      <td>BOOLEAN — <code>Preflight__is_phone_denylisted</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Forces the phone-denylisted state in pre-setup/wireless logic.</td>
+    </tr>
+    <tr>
+      <td>FRX Maps requirement bypass</td>
+      <td>BOOLEAN — <code>LegacyCarSetupFlags__frx_maps_bypass_enabled</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Allows configured navigation apps to bypass the Maps requirement in FRX.</td>
+    </tr>
+    <tr>
+      <td>Deferred non-essential startup during preflight</td>
+      <td>BOOLEAN — <code>GearheadCarService__delay_non_essential_startup_during_preflight</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Defers non-essential services until preflight is finished.</td>
+    </tr>
+    <tr>
+      <td>Bluetooth CarInfo metadata</td>
+      <td>BOOLEAN — <code>BluetoothPairing__add_car_info_to_bluetooth_metadata</code></td>
+      <td><code>—</code></td>
+      <td><code>false</code></td>
+      <td>Writes manufacturer/model/year/HU data into Bluetooth-device RDI metadata.</td>
+    </tr>
+    <tr>
+      <td>CarBluetoothService master kill switch</td>
+      <td>BOOLEAN — <code>BluetoothPairing__car_bluetooth_service_disable</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Disables <code>CarBluetoothService</code>.</td>
+    </tr>
+    <tr>
+      <td>A2DP during projection</td>
+      <td>BOOLEAN — <code>BluetoothPairing__disable_a2dp</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Disables the car A2DP route during projection.</td>
+    </tr>
+    <tr>
+      <td>Flaky USB detection</td>
+      <td>BOOLEAN — <code>UsbBabysitterFeature__enable_flakey_usb_detector</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Enables detection of unstable USB connections.</td>
+    </tr>
+    <tr>
+      <td>Projection-end A2DP recovery</td>
+      <td>BOOLEAN — <code>UsbBabysitter__enable_a2dp_at_projection_end</code></td>
+      <td colspan="2" align="center"><code>false</code></td>
+      <td>Attempts to restore HU A2DP when projection ends.</td>
+    </tr>
+  </tbody>
+</table>
 
 ---
 
