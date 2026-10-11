@@ -80,7 +80,7 @@ jobs:
           --tests io.github.aaexperiments.discovery.FullDeepResolveDistributionTest
 
   signed-release:
-    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta1'
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta2'
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: ubuntu-latest
     permissions:
@@ -110,16 +110,16 @@ jobs:
           app/build/outputs/apk/release/app-release.apk
       - name: Name artifact and publish checksum
         run: |
-          cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta1.apk
-          sha256sum AAExperiments-1.0.0-beta1.apk > AAExperiments-1.0.0-beta1.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta2.apk
+          sha256sum AAExperiments-1.0.0-beta2.apk > AAExperiments-1.0.0-beta2.apk.sha256
       - name: Publish tagged release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${GITHUB_REF_NAME}"
-          AAExperiments-1.0.0-beta1.apk
-          AAExperiments-1.0.0-beta1.apk.sha256
+          AAExperiments-1.0.0-beta2.apk
+          AAExperiments-1.0.0-beta2.apk.sha256
           LICENSE
           THIRD_PARTY_NOTICES.md
           --title "AA Experiments ${GITHUB_REF_NAME}"
-          --notes-file docs/RELEASE_NOTES_1.0.0-beta1.md
+          --notes-file docs/RELEASE_NOTES_1.0.0-beta2.md
