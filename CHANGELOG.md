@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0-beta2 — pending device validation
+
+### Fixed
+- First APK import no longer reports a SQLite query error while pruning old catalogs.
+
+### Changed
+- Version metadata and in-app version labels now identify the beta2 catalog candidate.
+
 ## 1.0.0-beta1 — pending publication
 
 ### Added

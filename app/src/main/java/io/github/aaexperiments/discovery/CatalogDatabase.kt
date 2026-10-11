@@ -171,7 +171,9 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
             }
             writableDatabase.setTransactionSuccessful()
         } finally { writableDatabase.endTransaction() }
-        writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+        // wal_checkpoint returns a result row (busy, log, checkpointed), so Android rejects
+        // it through execSQL(). Consume that row through rawQuery instead.
+        writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyArray()).use { it.moveToFirst() }
         writableDatabase.execSQL("VACUUM")
     }
 
