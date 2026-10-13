@@ -1,6 +1,25 @@
 # Changelog
 
-## 1.0.0-beta2 — pending device validation
+## 1.0.0-beta3 — release candidate (validation pending)
+
+### Added
+- Inspect, filter and safely discard suspended overrides while preserving their stored values and recoverable names.
+- Historical Android Auto 18.0 coverage in the feature catalog, including startup optimizations.
+
+### Changed
+- Aligned code namespace and internal package names with the unchanged application ID.
+- Clearer saved-value feedback for scalar Apply actions and Lab Green CUSTOM indicators.
+- Stable resolver dialog height with underscore-aware wrapping.
+- Documentation of update-resilient flag discovery.
+
+### Not included
+- Force-reapply of incompatible overrides is postponed until after beta3.
+
+### Known limitations
+- Previously stored overrides may lack a recoverable name if all historical mappings have been pruned.
+- Complete CI and physical-device validation is required before publishing.
+
+## 1.0.0-beta2 — published 2026-10-12
 
 ### Fixed
 - First APK import no longer reports a SQLite query error while pruning old catalogs.
