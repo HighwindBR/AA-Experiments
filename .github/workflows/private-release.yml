@@ -68,16 +68,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
       - name: 256 MiB installed-scan gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.InstalledHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.InstalledHeapRegressionTest
       - name: 256 MiB compatibility gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.InstalledCompatibilityHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.InstalledCompatibilityHeapRegressionTest
       - name: 256 MiB directed-resolve gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.DeepResolveHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.DeepResolveHeapRegressionTest
       - name: Frozen 17.8 full-corpus release gate
         run: >-
           gradle --no-daemon --max-workers=1 -Daa.test.heap=256m -Daa.full.deep=true
           :app:testDebugUnitTest
-          --tests io.github.aaexperiments.discovery.FullDeepResolveDistributionTest
+          --tests io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest
 
   signed-release:
     if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta2'

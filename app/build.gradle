@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace 'io.github.aaexperiments'
+    namespace 'io.github.highwindbr.aaxp'
     compileSdk 36
 
     defaultConfig {
