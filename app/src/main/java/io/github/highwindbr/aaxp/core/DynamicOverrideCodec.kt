@@ -7,7 +7,13 @@ data class TypedOverride(val type: DiscoveredType, val encodedValue: String)
 
 object DynamicOverrideCodec {
     const val PREFIX = "override.v2."
+    const val NAME_PREFIX = "override.name."
     fun preferenceKey(identifier: String): String = PREFIX + sha256(identifier).take(40)
+    fun namePreferenceKey(identifier: String): String = NAME_PREFIX + sha256(identifier).take(40)
+    fun nameKeyForPreference(preferenceKey: String): String? =
+        preferenceKey.takeIf { it.startsWith(PREFIX) && it.length == PREFIX.length + 40 }?.let {
+            NAME_PREFIX + it.removePrefix(PREFIX)
+        }
 
     fun validate(type: DiscoveredType, input: String): TypedOverride = when (type) {
         DiscoveredType.BOOLEAN -> require(input == "true" || input == "false") { "Expected true or false" }.let { TypedOverride(type, input) }

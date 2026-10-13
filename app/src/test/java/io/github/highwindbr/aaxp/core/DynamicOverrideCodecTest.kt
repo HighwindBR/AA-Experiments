@@ -16,6 +16,13 @@ class DynamicOverrideCodecTest {
         assertNull(DynamicOverrideCodec.deserialize(null))
         assertEquals("", DynamicOverrideCodec.deserialize("STRING:")!!.encodedValue)
     }
+    @Test fun nameMetadataUsesSameOverrideDigest() {
+        val key = DynamicOverrideCodec.preferenceKey("SystemUi__dual_sim_status_bar_enabled")
+        val nameKey = DynamicOverrideCodec.namePreferenceKey("SystemUi__dual_sim_status_bar_enabled")
+        assertEquals(DynamicOverrideCodec.NAME_PREFIX + key.removePrefix(DynamicOverrideCodec.PREFIX), nameKey)
+        assertEquals(nameKey, DynamicOverrideCodec.nameKeyForPreference(key))
+        assertNull(DynamicOverrideCodec.nameKeyForPreference("other.preference"))
+    }
     @Test fun invalidTypedValuesAreRejected() {
         assertNull(DynamicOverrideCodec.deserialize("BOOLEAN:yes"))
         assertNull(DynamicOverrideCodec.deserialize("INT:1.5"))

@@ -391,6 +391,27 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         }
     }
 
+    /** Historical names survive current-build resolver changes while the predecessor catalogs remain. */
+    fun historicalOverrideNames(preferenceKeys: Set<String>): Map<String, Pair<String, Long>> {
+        if (preferenceKeys.isEmpty()) return emptyMap()
+        val found = linkedMapOf<String, Pair<String, Long>>()
+        preferenceKeys.chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT i.preference_key,i.key,b.version_code FROM identifiers i " +
+                    "JOIN builds b ON b.base_sha=i.base_sha WHERE i.preference_key IN ($marks) " +
+                    "ORDER BY b.generated_at DESC",
+                chunk.toTypedArray()
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    val key = cursor.getString(0)
+                    if (key !in found) found[key] = cursor.getString(1) to cursor.getLong(2)
+                }
+            }
+        }
+        return found
+    }
+
     private fun row(c: android.database.Cursor, details: Boolean) = DiscoveredIdentifier(
         c.getString(1), IdentifierNamespace.valueOf(c.getString(2)), DiscoveredType.valueOf(c.getString(3)), c.getStringOrNull(4),
         List(c.getInt(7)) { IdentifierOccurrence(emptyMethod(), it) }, if (details) getters(c.getLong(0)) else emptyList(), ResolutionConfidence.valueOf(c.getString(5)), c.getStringOrNull(6), c.getInt(14) != 0, decodeMap(c.getString(13)),

@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -107,6 +108,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class ThemeMode { SYSTEM, LIGHT, DARK }
 private enum class AccentPalette { LAB_GREEN, MATERIAL_YOU }
+private enum class ExperimentFilter { ALL, MODIFIED, SUSPENDED, REMOVED, CHANGED }
 private val AaGreen = Color(0xFF006D3F)
 private val AaGreenDark = Color(0xFF72D99A)
 private val ForceFalse = Color(0xFF415F91)
@@ -151,7 +153,8 @@ private val AaDarkScheme = darkColorScheme(
     var settingsPageName by rememberSaveable { mutableStateOf(SettingsPage.ROOT.name) }
     val settingsPage = runCatching { SettingsPage.valueOf(settingsPageName) }.getOrDefault(SettingsPage.ROOT)
     var experimentQuery by rememberSaveable { mutableStateOf("") }
-    var experimentModifiedOnly by rememberSaveable { mutableStateOf(false) }
+    var experimentFilterName by rememberSaveable { mutableStateOf(ExperimentFilter.ALL.name) }
+    val experimentFilter = runCatching { ExperimentFilter.valueOf(experimentFilterName) }.getOrDefault(ExperimentFilter.ALL)
     var experimentReviewedOnly by rememberSaveable { mutableStateOf(false) }
     var experimentTypeName by rememberSaveable { mutableStateOf<String?>(null) }
     val experimentListState = rememberLazyListState()
@@ -185,13 +188,14 @@ private val AaDarkScheme = darkColorScheme(
         bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) -> NavigationBarItem(tab == index, { tab = index }, { Icon(icon, label) }, label = { Text(label) }) } } }
     ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) { when (tab) {
         0 -> StatusScreen(state, model)
-        1 -> AdvancedScreen(state, model, experimentQuery, { experimentQuery = it }, experimentModifiedOnly, { experimentModifiedOnly = it }, experimentReviewedOnly, { experimentReviewedOnly = it }, experimentTypeName, { experimentTypeName = it }, experimentListState) { experimentKey = it.key }
+        1 -> AdvancedScreen(state, model, experimentQuery, { experimentQuery = it }, experimentFilter, { experimentFilterName = it.name }, experimentReviewedOnly, { experimentReviewedOnly = it }, experimentTypeName, { experimentTypeName = it }, experimentListState) { experimentKey = it.key }
         else -> SettingsScreen(state, model, theme, onTheme, accent, onAccent, settingsPage) { settingsPageName = it.name }
     } } }
     state.scanProgress?.let { progress -> ScanProgressDialog(progress, if (state.deepResolveRunning) ({ model.deepResolveInconclusive() }) else null) }
 }
 
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel) {
+    var auditOpen by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size, state.profilePublished)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -213,9 +217,10 @@ private val AaDarkScheme = darkColorScheme(
         Text("Identifiers: ${state.aa.editableCount} editable · ${state.dynamicOverrides.size} modified", style = MaterialTheme.typography.bodySmall)
         state.changes?.let { change -> Text("Since previous scan: ${change.added} added · ${change.removed} removed · ${change.changed} changed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     } } }
-    item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(if (state.profilePublished) "Dynamic profile published" else "Profile not published"); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if(state.suspendedOverrides.isNotEmpty()) Text("${state.suspendedOverrides.size} incompatible override(s) preserved but suspended.", color=MaterialTheme.colorScheme.error, style=MaterialTheme.typography.bodySmall) } } }
+    item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(if (state.profilePublished) "Dynamic profile published" else "Profile not published"); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if (state.suspendedOverrides.isNotEmpty()) TextButton({ auditOpen = true }) { Icon(Icons.Default.Security, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.suspendedOverrides.size} suspended overrides · View details", color = MaterialTheme.colorScheme.error) } } } }
     item { OutlinedButton({ importer.launch(arrayOf("application/vnd.android.package-archive", "application/zip", "application/octet-stream")) }, Modifier.fillMaxWidth()) { Text("Import APK, APKM or APKS") } }
     }
+    if (auditOpen) SuspendedAuditListDialog(state.suspendedOverrides, { auditOpen = false }, model::discardSuspendedOverride)
 }
 
 @Composable private fun ScanProgressDialog(progress: AnalysisProgress, onCancel: (() -> Unit)? = null) {
@@ -278,8 +283,8 @@ private val AaDarkScheme = darkColorScheme(
     model: ManagerViewModel,
     query: String,
     onQuery: (String) -> Unit,
-    modifiedOnly: Boolean,
-    onModifiedOnly: (Boolean) -> Unit,
+    filter: ExperimentFilter,
+    onFilter: (ExperimentFilter) -> Unit,
     reviewedOnly: Boolean,
     onReviewedOnly: (Boolean) -> Unit,
     typeName: String?,
@@ -288,39 +293,189 @@ private val AaDarkScheme = darkColorScheme(
     onOpen: (DiscoveredIdentifier) -> Unit
 ) {
     var filtersOpen by remember { mutableStateOf(false) }
+    var selectedSuspended by remember { mutableStateOf<SuspendedOverride?>(null) }
     val type = typeName?.let { runCatching { DiscoveredType.valueOf(it) }.getOrNull() }
     val availableTypes = remember(state.discovered) { state.discovered.map { it.inferredType }.toSet() }
     val hasReviewed = remember(state.discovered) { state.discovered.any { it.semanticsReviewed } }
     LaunchedEffect(type, availableTypes) { if (type != null && type !in availableTypes) onTypeName(null) }
     LaunchedEffect(reviewedOnly, hasReviewed) { if (reviewedOnly && !hasReviewed) onReviewedOnly(false) }
-    val filtered = state.discovered.filter { identifier ->
-        (!modifiedOnly || identifier.key in state.dynamicOverrides) && (!reviewedOnly || identifier.semanticsReviewed) && (type == null || identifier.inferredType == type) &&
-            (query.isBlank() || listOf(identifier.key, identifier.namespace.name, identifier.kind.name, identifier.inferredType.name,
-                identifier.confidence.name, identifier.resolution.name, identifier.runtimeConsumerStatus.name,
-                identifier.editabilityReason?.name.orEmpty(), identifier.reason.orEmpty(), identifier.metadata["reviewedSemantics"].orEmpty()).any { it.contains(query, true) })
+    val showActive = filter == ExperimentFilter.ALL || filter == ExperimentFilter.MODIFIED
+    val filtered = if (!showActive) emptyList() else state.discovered.filter { identifier ->
+        (filter != ExperimentFilter.MODIFIED || identifier.key in state.dynamicOverrides) &&
+            (!reviewedOnly || identifier.semanticsReviewed) &&
+            (type == null || identifier.inferredType == type) &&
+            (query.isBlank() || listOf(identifier.key, identifier.namespace.name, identifier.kind.name,
+                identifier.inferredType.name, identifier.confidence.name, identifier.resolution.name,
+                identifier.runtimeConsumerStatus.name, identifier.editabilityReason?.name.orEmpty(),
+                identifier.reason.orEmpty(), identifier.metadata["reviewedSemantics"].orEmpty()
+            ).any { it.contains(query, true) })
+    }
+    val suspended = when (filter) {
+        ExperimentFilter.MODIFIED -> emptyList()
+        ExperimentFilter.REMOVED -> state.suspendedOverrides.filter { it.reason == SuspendedOverrideReason.SUSPENDED_MAPPING_MISSING }
+        ExperimentFilter.CHANGED -> state.suspendedOverrides.filter {
+            it.reason == SuspendedOverrideReason.SUSPENDED_TYPE_CHANGED ||
+                it.reason == SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS
+        }
+        else -> state.suspendedOverrides
+    }.filter {
+        query.isBlank() || it.identifierKey?.contains(query, true) == true || it.preferenceKey.contains(query, true)
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        OutlinedTextField(query, onQuery, placeholder = { Text("Search experiments") }, leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { IconButton({ filtersOpen = true }) { Icon(Icons.Default.FilterList, "Filters") } }, singleLine = true, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 54.dp))
-        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Experiments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Text("${filtered.size} of ${state.aa.editableCount}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.startsWith("Import failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
-        Text(when (state.saveState) { SaveState.SAVING -> "Saving…"; SaveState.SAVED -> "Saved"; SaveState.FAILED -> "Save failed"; else -> "" }, style = MaterialTheme.typography.labelSmall)
+        OutlinedTextField(query, onQuery, placeholder = { Text("Search experiments") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            trailingIcon = { IconButton({ filtersOpen = true }) { Icon(Icons.Default.FilterList, "Filters") } },
+            singleLine = true, shape = MaterialTheme.shapes.extraLarge,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 54.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ExperimentFilter.entries.forEach { option ->
+                FilterChip(selected = filter == option, onClick = { onFilter(option) }, label = {
+                    Text(option.name.lowercase().replaceFirstChar { it.uppercase() })
+                })
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Experiments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("${filtered.size + suspended.size} shown · ${state.dynamicOverrides.size} active · ${state.suspendedOverrides.size} suspended",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (filter == ExperimentFilter.REMOVED) Text("Not found in this build; source-level removal is not proven.",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        state.message?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall,
+                color = if (it.startsWith("Import failed") || it.startsWith("Discard failed")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+        }
+        Text(when (state.saveState) {
+            SaveState.SAVING -> "Saving…"
+            SaveState.SAVED -> "Saved"
+            SaveState.FAILED -> "Save failed"
+            else -> ""
+        }, style = MaterialTheme.typography.labelSmall)
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-            items(filtered, key = { it.key }) { identifier -> CompactExperimentCard(identifier, state.dynamicOverrides[identifier.key]) { onOpen(identifier) } }
+            items(suspended, key = { "suspended:" + it.preferenceKey }) { entry ->
+                SuspendedExperimentCard(entry) { selectedSuspended = entry }
+            }
+            items(filtered, key = { it.key }) { identifier ->
+                CompactExperimentCard(identifier, state.dynamicOverrides[identifier.key]) { onOpen(identifier) }
+            }
         }
     }
-    if (filtersOpen) ModalBottomSheet(onDismissRequest = { filtersOpen = false }) { Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Filter experiments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("Value type", style = MaterialTheme.typography.labelLarge)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            val choices = listOf<DiscoveredType?>(null) + listOf(DiscoveredType.BOOLEAN, DiscoveredType.INT, DiscoveredType.LONG, DiscoveredType.FLOAT, DiscoveredType.DOUBLE, DiscoveredType.STRING).filter { it in availableTypes }
-            choices.forEach { choice -> FilterChip(selected = type == choice, onClick = { onTypeName(choice?.name) }, label = { Text(choice?.let { friendly(it.name) } ?: "All") }) }
+    if (filtersOpen) ModalBottomSheet(onDismissRequest = { filtersOpen = false }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Filter experiments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Value type", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val choices = listOf<DiscoveredType?>(null) + listOf(DiscoveredType.BOOLEAN, DiscoveredType.INT, DiscoveredType.LONG,
+                    DiscoveredType.FLOAT, DiscoveredType.DOUBLE, DiscoveredType.STRING).filter { it in availableTypes }
+                choices.forEach { choice ->
+                    FilterChip(selected = type == choice, onClick = { onTypeName(choice?.name) },
+                        label = { Text(choice?.let { friendly(it.name) } ?: "All") })
+                }
+            }
+            if (hasReviewed) FilterToggle("Reviewed semantics", "Consumer meaning was manually audited", reviewedOnly, onReviewedOnly)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton({ onFilter(ExperimentFilter.ALL); onReviewedOnly(false); onTypeName(null) }) { Text("Reset") }
+                Button({ filtersOpen = false }) { Text("Done") }
+            }
+            Spacer(Modifier.height(12.dp))
         }
-        FilterToggle("Modified", "Has a saved override", modifiedOnly, onModifiedOnly)
-        if (hasReviewed) FilterToggle("Reviewed semantics", "Consumer meaning was manually audited", reviewedOnly, onReviewedOnly)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ onModifiedOnly(false); onReviewedOnly(false); onTypeName(null) }) { Text("Reset") }; Button({ filtersOpen=false }) { Text("Done") } }
-        Spacer(Modifier.height(12.dp))
-    } }
-    if (state.detailsLoading) AlertDialog({}, confirmButton = {}, title = { Text("Loading evidence…") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) })
+    }
+    selectedSuspended?.let { entry ->
+        SuspendedOverrideDetailsDialog(entry, { selectedSuspended = null }, model::discardSuspendedOverride)
+    }
+    if (state.detailsLoading) AlertDialog({}, confirmButton = {}, title = { Text("Loading evidence…") },
+        text = { LinearProgressIndicator(Modifier.fillMaxWidth()) })
+}
+
+private fun suspendedReasonLabel(reason: SuspendedOverrideReason): String = when (reason) {
+    SuspendedOverrideReason.SUSPENDED_TYPE_CHANGED -> "Type changed"
+    SuspendedOverrideReason.SUSPENDED_MAPPING_MISSING -> "Not found in this build"
+    SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS -> "Resolver mapping unavailable or ambiguous"
+    SuspendedOverrideReason.SUSPENDED_INVALID_VALUE -> "Stored value invalid"
+}
+
+private fun suspendedName(entry: SuspendedOverride): String =
+    entry.identifierKey ?: "Unknown name · fingerprint ${entry.preferenceKey.takeLast(12)}"
+
+@Composable private fun SuspendedExperimentCard(entry: SuspendedOverride, onOpen: () -> Unit) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.error)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(technicalDisplay(suspendedName(entry)), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.semantics { contentDescription = suspendedName(entry) })
+                Text("SUSPENDED · ${suspendedReasonLabel(entry.reason)}",
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+            Icon(Icons.Default.ChevronRight, "View suspended override")
+        }
+    }
+}
+
+@Composable private fun SuspendedAuditListDialog(
+    entries: List<SuspendedOverride>,
+    onDismiss: () -> Unit,
+    onDiscard: (String) -> Unit
+) {
+    var selected by remember { mutableStateOf<SuspendedOverride?>(null) }
+    if (selected != null) {
+        SuspendedOverrideDetailsDialog(checkNotNull(selected), { selected = null }, onDiscard)
+    } else {
+        AlertDialog(onDismissRequest = onDismiss, title = { Text("Suspended overrides (${entries.size})") },
+            text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                Text("Preserved but excluded from the published runtime profile.",
+                    style = MaterialTheme.typography.bodySmall)
+                entries.forEach { entry ->
+                    TextButton({ selected = entry }, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth()) {
+                            Text(technicalDisplay(suspendedName(entry)), maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Text(suspendedReasonLabel(entry.reason), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            } }, confirmButton = { TextButton(onDismiss) { Text("Close") } })
+    }
+}
+
+@Composable private fun SuspendedOverrideDetailsDialog(
+    entry: SuspendedOverride,
+    onDismiss: () -> Unit,
+    onDiscard: (String) -> Unit
+) {
+    var confirmDiscard by remember(entry.preferenceKey) { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Suspended override") },
+        text = {
+            Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(technicalDisplay(suspendedName(entry)), fontWeight = FontWeight.SemiBold)
+                Text("Reason: ${suspendedReasonLabel(entry.reason)}")
+                Text("Saved type: ${entry.storedType ?: "unknown"}")
+                Text("Saved value: ${entry.storedValue ?: "unreadable"}", maxLines = 4, overflow = TextOverflow.Ellipsis)
+                Text("Current type: ${entry.currentType ?: "not resolved"}")
+                entry.lastSeenVersionCode?.let { Text("Last mapped versionCode: $it") }
+                Text("The value remains stored but is not included in the active runtime profile.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton({ confirmDiscard = true }) { Text("Discard override", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onDismiss) { Text("Keep suspended") } })
+    if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
+        title = { Text("Discard saved override?") },
+        text = { Text("This permanently deletes the stored value. Keeping it suspended is safer if a future Android Auto update restores compatibility.") },
+        confirmButton = { TextButton({
+            confirmDiscard = false
+            onDiscard(entry.preferenceKey)
+            onDismiss()
+        }) { Text("Discard", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ confirmDiscard = false }) { Text("Cancel") } })
 }
 
 @Composable private fun FilterToggle(title: String, subtitle: String, checked: Boolean, onChecked: (Boolean) -> Unit) { Row(Modifier.fillMaxWidth().clickable { onChecked(!checked) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Medium); Text(subtitle, style = MaterialTheme.typography.bodySmall) }; Switch(checked, onChecked) } }

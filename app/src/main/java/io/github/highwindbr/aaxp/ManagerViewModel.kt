@@ -287,11 +287,29 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             require(identifier.editable) { identifier.reason ?: "Identifier is read-only" }
             val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service is not connected" }
             val editor = prefs.edit(); val key = DynamicOverrideCodec.preferenceKey(identifier.key)
-            if (rawInput == null) editor.remove(key) else editor.putString(key, DynamicOverrideCodec.serialize(DynamicOverrideCodec.validate(identifier.inferredType, rawInput)))
+            if (rawInput == null) {
+                editor.remove(key)
+                editor.remove(DynamicOverrideCodec.namePreferenceKey(identifier.key))
+            } else {
+                editor.putString(key, DynamicOverrideCodec.serialize(DynamicOverrideCodec.validate(identifier.inferredType, rawInput)))
+                editor.putString(DynamicOverrideCodec.namePreferenceKey(identifier.key), identifier.key)
+            }
             require(editor.commit()) { "Framework rejected the preference update" }
         } }
         if (result.isFailure) mutable.value = mutable.value.copy(saveState = SaveState.FAILED, message = "Override rejected: ${result.exceptionOrNull()?.message}")
         else { mutable.value = mutable.value.copy(saveState = SaveState.SAVED); refreshOverridesAndProfile() }
+    }
+
+    fun discardSuspendedOverride(preferenceKey: String) = viewModelScope.launch {
+        if (!mutable.value.aa.runtimeTarget || !preferenceKey.startsWith(DynamicOverrideCodec.PREFIX)) return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service is not connected" }
+            val editor = prefs.edit().remove(preferenceKey)
+            DynamicOverrideCodec.nameKeyForPreference(preferenceKey)?.let(editor::remove)
+            require(editor.commit()) { "Framework rejected override removal" }
+        } }
+        if (result.isSuccess) refreshOverridesAndProfile()
+        else mutable.value = mutable.value.copy(message = "Discard failed: ${result.exceptionOrNull()?.message}")
     }
 
     fun restoreAllDynamic() = viewModelScope.launch {
@@ -299,7 +317,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = null)
         val ok = withContext(Dispatchers.IO) {
             val prefs = ServiceBridge.dynamicPreferencesOrNull() ?: return@withContext false
-            val editor = prefs.edit(); prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) }.forEach(editor::remove); editor.commit()
+            val editor = prefs.edit(); prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) || it.startsWith(DynamicOverrideCodec.NAME_PREFIX) }.forEach(editor::remove); editor.commit()
         }
         mutable.value = mutable.value.copy(saveState = if (ok) SaveState.SAVED else SaveState.FAILED)
         refreshOverridesAndProfile()
@@ -309,6 +327,16 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         put("schemaVersion", 3); put("package", InstalledAaScanner.AA_PACKAGE)
         put("versionCode", mutable.value.aa.versionCode ?: JSONObject.NULL); put("buildFingerprintSha256", mutable.value.aa.buildFingerprintSha256 ?: JSONObject.NULL)
         put("overrides", JSONObject().apply { mutable.value.dynamicOverrides.forEach { (key, value) -> put(key, DynamicOverrideCodec.serialize(value)) } })
+        put("suspended", JSONObject().apply {
+            mutable.value.suspendedOverrides.forEach { entry ->
+                entry.serializedValue?.let { serialized ->
+                    put(entry.preferenceKey, JSONObject().apply {
+                        put("raw", serialized)
+                        put("identifier", entry.identifierKey ?: JSONObject.NULL)
+                    })
+                }
+            }
+        })
     }.toString(2)
 
     fun importDynamicJson(text: String) = viewModelScope.launch {
@@ -324,7 +352,25 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val byKey = database.identifiersByKeys(checkNotNull(mutable.value.aa.buildFingerprintSha256), keys)
             val accepted = mutableMapOf<String, TypedOverride>(); val rejected = mutableSetOf<String>()
             keys.forEach { key -> val identifier=byKey[key]; val value=DynamicOverrideCodec.deserialize(values.getString(key)); if (identifier!=null && value!=null && value.type==identifier.inferredType) accepted[key]=value else rejected+=key }
-            val editor=prefs.edit(); accepted.forEach { (key,value) -> editor.putString(DynamicOverrideCodec.preferenceKey(key),DynamicOverrideCodec.serialize(value)) }; require(editor.commit())
+            val editor=prefs.edit()
+            accepted.forEach { (key,value) ->
+                editor.putString(DynamicOverrideCodec.preferenceKey(key),DynamicOverrideCodec.serialize(value))
+                editor.putString(DynamicOverrideCodec.namePreferenceKey(key),key)
+            }
+            val suspendedImport = root.optJSONObject("suspended")
+            suspendedImport?.keys()?.forEach { preferenceKey ->
+                if (!preferenceKey.startsWith(DynamicOverrideCodec.PREFIX)) return@forEach
+                val record = suspendedImport.optJSONObject(preferenceKey) ?: return@forEach
+                val raw = record.optString("raw")
+                if (DynamicOverrideCodec.deserialize(raw) == null) return@forEach
+                // Never take over a currently valid mapping restored above.
+                if (accepted.keys.any { DynamicOverrideCodec.preferenceKey(it) == preferenceKey }) return@forEach
+                editor.putString(preferenceKey, raw)
+                val identifierName = record.optString("identifier").takeIf { it.isNotBlank() && it != "null" }
+                if (identifierName != null && DynamicOverrideCodec.preferenceKey(identifierName) == preferenceKey)
+                    editor.putString(DynamicOverrideCodec.namePreferenceKey(identifierName), identifierName)
+            }
+            require(editor.commit())
             accepted.size to rejected.size
         } }
         result.onSuccess { (accepted,rejected) -> mutable.value=mutable.value.copy(saveState=SaveState.SAVED,message="Imported $accepted override(s); rejected $rejected."); refreshOverridesAndProfile() }
@@ -335,20 +381,40 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val aa = mutable.value.aa
         if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return
         val result = withContext(Dispatchers.IO) { runCatching {
-            val snapshot = ServiceBridge.preferenceSnapshot()
+            val prefs = ServiceBridge.dynamicPreferencesOrNull()
+            val allPrefs = prefs?.all.orEmpty()
+            val snapshot = allPrefs.mapNotNull { (key, value) ->
+                if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
+            }.toMap()
+            val names = database.historicalOverrideNames(snapshot.keys)
             val resolved = database.identifiersByPreferenceKeys(aa.buildFingerprintSha256, snapshot.keys).toMap()
+            val nameEditor = prefs?.edit()
+            var recoveredNames = 0
             val active = mutableMapOf<String, TypedOverride>(); val suspended = mutableListOf<SuspendedOverride>(); val mappings = mutableListOf<DynamicProfile.Mapping>()
             snapshot.forEach { (preferenceKey, raw) ->
                 val identifier = resolved[preferenceKey]
                 val value = DynamicOverrideCodec.deserialize(raw)
                 val reason = suspendedOverrideReason(identifier, value)
-                if (reason != null) suspended += SuspendedOverride(preferenceKey, identifier?.key, value?.type?.name, identifier?.inferredType?.name, reason)
+                val nameKey = DynamicOverrideCodec.nameKeyForPreference(preferenceKey)
+                val storedName = nameKey?.let { allPrefs[it] as? String }
+                    ?.takeIf { DynamicOverrideCodec.preferenceKey(it) == preferenceKey }
+                val history = names[preferenceKey]
+                val identifierName = identifier?.key ?: storedName ?: history?.first
+                if (storedName == null && identifierName != null && nameKey != null) {
+                    nameEditor?.putString(nameKey, identifierName)
+                    recoveredNames++
+                }
+                if (reason != null) suspended += SuspendedOverride(
+                    preferenceKey, identifierName, value?.type?.name, identifier?.inferredType?.name,
+                    reason, value?.encodedValue, raw, history?.second
+                )
                 else {
                     val safeIdentifier = checkNotNull(identifier); val safeValue = checkNotNull(value); val method = safeIdentifier.getterCandidates.single()
                     active[safeIdentifier.key] = safeValue
                     mappings += DynamicProfile.Mapping(safeIdentifier.key, preferenceKey, method.className.removePrefix("L").removeSuffix(";").replace('/','.'), method.methodName, method.descriptor, safeIdentifier.inferredType.name)
                 }
             }
+            if (recoveredNames > 0) nameEditor?.commit()
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256, aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull())
         } }

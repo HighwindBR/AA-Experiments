@@ -30,6 +30,9 @@ data class SuspendedOverride(
     val storedType: String? = null,
     val currentType: String? = null,
     val reason: SuspendedOverrideReason,
+    val storedValue: String? = null,
+    val serializedValue: String? = null,
+    val lastSeenVersionCode: Long? = null,
 )
 
 enum class SaveState { IDLE, SAVING, SAVED, FAILED }
