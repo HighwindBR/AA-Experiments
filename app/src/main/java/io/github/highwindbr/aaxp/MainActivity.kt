@@ -234,13 +234,22 @@ private val AaDarkScheme = darkColorScheme(
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("Analyzing Android Auto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
                 progress.fraction?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
                     ?: LinearProgressIndicator(Modifier.fillMaxWidth())
-                progress.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (progress.current != null && progress.total != null) Text("${progress.current} of ${progress.total}", style = MaterialTheme.typography.labelMedium)
+                // Reserve exactly three text lines: short and long identifiers cannot resize this dialog.
+                Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.TopStart) {
+                    Text(technicalDisplay(progress.detail.orEmpty()), maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
+                    if (progress.current != null && progress.total != null)
+                        Text("${progress.current} of ${progress.total}", style = MaterialTheme.typography.labelMedium)
+                }
                 Text("Keep AA Experiments open while the catalog is being prepared.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                onCancel?.let { TextButton(it, Modifier.align(Alignment.End)) { Text("Cancel after current") } }
+                Box(Modifier.fillMaxWidth().height(42.dp), contentAlignment = Alignment.CenterEnd) {
+                    onCancel?.let { TextButton(it) { Text("Cancel after current") } }
+                }
             }
         }
     }
