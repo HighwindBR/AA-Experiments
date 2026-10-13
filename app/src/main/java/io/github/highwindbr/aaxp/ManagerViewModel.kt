@@ -44,6 +44,7 @@ data class ManagerUiState(
     val deepResolveRunning: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
+    val saveTargetKey: String? = null,
     val message: String? = null
 )
 
@@ -280,7 +281,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setDynamicOverride(identifier: DiscoveredIdentifier, rawInput: String?) = viewModelScope.launch {
-        mutable.value = mutable.value.copy(saveState = SaveState.SAVING, message = null)
+        mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key, message = null)
         val result = withContext(Dispatchers.IO) { runCatching {
             require(mutable.value.aa.runtimeTarget) { "Imported archives are read-only; refresh the installed Android Auto before editing." }
             require(identifier.editable) { identifier.reason ?: "Identifier is read-only" }
@@ -295,7 +296,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     fun restoreAllDynamic() = viewModelScope.launch {
         if (!mutable.value.aa.runtimeTarget) return@launch
-        mutable.value = mutable.value.copy(saveState = SaveState.SAVING)
+        mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = null)
         val ok = withContext(Dispatchers.IO) {
             val prefs = ServiceBridge.dynamicPreferencesOrNull() ?: return@withContext false
             val editor = prefs.edit(); prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) }.forEach(editor::remove); editor.commit()

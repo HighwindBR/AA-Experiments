@@ -48,12 +48,15 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -163,6 +166,7 @@ private val AaDarkScheme = darkColorScheme(
     experiment?.let { identifier ->
         BackHandler { model.clearDetails(); experimentKey = null }
         ExperimentDetailScreen(identifier, state.selectedDetails, state.dynamicOverrides[identifier.key], state.framework.connected && state.aa.runtimeTarget,
+            state.saveState, state.saveTargetKey, state.message,
             { value -> model.setDynamicOverride(identifier, value) }, { model.loadDetails(identifier.key) }, { model.clearDetails(); experimentKey = null })
         return
     }
@@ -377,17 +381,32 @@ private val AaDarkScheme = darkColorScheme(
 }
 
 @Composable private fun CompactExperimentCard(identifier: DiscoveredIdentifier, override: TypedOverride?, onOpen: () -> Unit) {
-    val stateLabel = when { override == null -> "DEFAULT"; identifier.inferredType == DiscoveredType.BOOLEAN -> override.encodedValue.uppercase(); else -> "CUSTOM" }
-    val stateColor = when (override?.encodedValue) { "true" -> AaGreen; "false" -> ForceFalse; else -> MaterialTheme.colorScheme.surfaceVariant }
+    val isCustom = override != null && identifier.inferredType != DiscoveredType.BOOLEAN
+    val stateLabel = when {
+        override == null -> "DEFAULT"
+        identifier.inferredType == DiscoveredType.BOOLEAN -> override.encodedValue.uppercase()
+        else -> "CUSTOM"
+    }
+    val stateColor = when {
+        isCustom -> AaGreen
+        override?.encodedValue == "true" -> AaGreen
+        override?.encodedValue == "false" -> ForceFalse
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
     val stateContent = if (override == null) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(technicalDisplay(identifier.key), modifier = Modifier.semantics { contentDescription = identifier.key }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = if (override != null) FontWeight.SemiBold else FontWeight.Medium, fontFamily = FontFamily.Monospace)
-            Text(friendly(identifier.inferredType.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (override != null) "Modified" else "", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                Surface(modifier = Modifier.width(92.dp), color = stateColor, contentColor = stateContent, shape = MaterialTheme.shapes.medium) { Text(stateLabel, Modifier.fillMaxWidth().padding(vertical = 4.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold) }
-                Icon(Icons.Default.ChevronRight, "Open experiment", Modifier.size(22.dp))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            if (isCustom) Box(Modifier.width(4.dp).fillMaxHeight().background(AaGreen))
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(technicalDisplay(identifier.key), modifier = Modifier.semantics { contentDescription = identifier.key }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = if (override != null) FontWeight.SemiBold else FontWeight.Medium, fontFamily = FontFamily.Monospace)
+                Text(friendly(identifier.inferredType.name), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (override != null) "Modified" else "", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    Surface(modifier = Modifier.width(92.dp), color = stateColor, contentColor = stateContent, shape = MaterialTheme.shapes.medium) {
+                        Text(stateLabel, Modifier.fillMaxWidth().padding(vertical = 4.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    }
+                    Icon(Icons.Default.ChevronRight, "Open experiment", Modifier.size(22.dp))
+                }
             }
         }
     }
@@ -405,8 +424,24 @@ private fun technicalDisplay(value: String): String = buildString(value.length +
 private fun friendly(value: String) = value.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("[+-]?0+(?:\\.0+)?"))
 
-@Composable private fun ExperimentDetailScreen(identifier: DiscoveredIdentifier, loaded: DiscoveredIdentifier?, override: TypedOverride?, connected: Boolean, onChange: (String?) -> Unit, onLoadEvidence: () -> Unit, onBack: () -> Unit) {
+@Composable private fun ExperimentDetailScreen(identifier: DiscoveredIdentifier, loaded: DiscoveredIdentifier?, override: TypedOverride?, connected: Boolean, saveState: SaveState, saveTargetKey: String?, saveMessage: String?, onChange: (String?) -> Unit, onLoadEvidence: () -> Unit, onBack: () -> Unit) {
     var input by remember(identifier.key, override) { mutableStateOf(override?.encodedValue.orEmpty()) }
+    var saveConfirmed by remember(identifier.key) { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val savingCurrent = saveTargetKey == identifier.key && saveState == SaveState.SAVING
+    val failedCurrent = saveTargetKey == identifier.key && saveState == SaveState.FAILED
+    LaunchedEffect(identifier.key, saveTargetKey, saveState) {
+        if (saveTargetKey == identifier.key && saveState == SaveState.SAVED) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            saveConfirmed = true
+            delay(1700)
+            saveConfirmed = false
+        } else if (saveTargetKey == identifier.key && saveState == SaveState.SAVING) {
+            saveConfirmed = false
+        }
+    }
     var evidenceExpanded by remember(identifier.key) { mutableStateOf(false) }
     var rawExpanded by remember(identifier.key) { mutableStateOf(false) }
     var advancedExpanded by remember(identifier.key) { mutableStateOf(false) }
@@ -426,7 +461,9 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 Text("Values", fontWeight = FontWeight.Bold)
                 ValueRow("Default value", identifier.compiledDefault ?: "Not inferred")
                 ValueRow("Runtime observed", "See LSPosed events")
-                ValueRow("Effective value", override?.encodedValue ?: identifier.compiledDefault ?: "Default", override != null)
+                AnimatedContent(targetState = override?.encodedValue ?: identifier.compiledDefault ?: "Default", label = "effective-value") { value ->
+                    ValueRow("Effective value", value, override != null)
+                }
                 ValueRow("Occurrences", identifier.occurrences.size.toString())
                 ValueRow("Runtime consumer", friendly(identifier.runtimeConsumerStatus.name))
             } } }
@@ -441,7 +478,13 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                     Text(when(override?.encodedValue) { "true" -> "Force true: always return true for this experiment."; "false" -> "Force false: always return false for this experiment."; else -> "Default: use the value selected by Android Auto." }, style = MaterialTheme.typography.bodySmall)
                 } else {
                     OutlinedTextField(input, { input = it }, label = { Text("${friendly(identifier.inferredType.name)} value") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button({ onChange(input) }, enabled = connected && (identifier.inferredType == DiscoveredType.STRING || input.isNotBlank())) { Text("Apply") }; OutlinedButton({ onChange(null) }, enabled = connected && override != null) { Text("Default") } }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button({ onChange(input) }, enabled = connected && !savingCurrent && (identifier.inferredType == DiscoveredType.STRING || input.isNotBlank())) {
+                            Text(when { savingCurrent -> "Saving…"; saveConfirmed -> "✓ Saved"; else -> "Apply" })
+                        }
+                        OutlinedButton({ onChange(null) }, enabled = connected && !savingCurrent && override != null) { Text("Default") }
+                    }
+                    if (failedCurrent) Text(saveMessage ?: "Unable to save override.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             } } }
             item { DetailDisclosure(Icons.Default.Search, "Evidence", "${details.occurrences.size} occurrence(s) · ${details.consumers.size} consumer path(s)", evidenceExpanded, {
