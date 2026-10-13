@@ -56,13 +56,13 @@ The upstream application currently uses:
 
 ```text
 applicationId: io.github.highwindbr.aaxp
-code namespace: io.github.aaexperiments
+code namespace: io.github.highwindbr.aaxp
 LSPosed target scope: com.google.android.projection.gearhead
 ```
 
-These are different concepts. The `applicationId` is the installed Android package identity; the
-code namespace contains the implementation classes; and the LSPosed scope identifies Android Auto
-as the package the module targets.
+The `applicationId` is the installed Android package identity. The code namespace and implementation
+packages are intentionally aligned with that identity, while the LSPosed scope separately identifies
+Android Auto as the package the module targets. The instrumented-test namespace is generated separately.
 
 A fork built with the same `applicationId` but a different signing key cannot be installed as an
 update over an upstream APK signed with the upstream key. A fork that needs to coexist as a
