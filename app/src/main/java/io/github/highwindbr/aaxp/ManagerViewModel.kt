@@ -3,6 +3,7 @@ package io.github.highwindbr.aaxp
 import android.app.Application
 import android.net.Uri
 import android.content.Intent
+import android.content.Context
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.lifecycle.AndroidViewModel
@@ -39,6 +40,8 @@ data class ManagerUiState(
     val suspendedOverrides: List<SuspendedOverride> = emptyList(),
     val profilePublished: Boolean = false,
     val changes: CatalogChangeSummary? = null,
+    val catalogDeltas: List<EditableCatalogDelta> = emptyList(),
+    val hiddenSuspendedKeys: Set<String> = emptySet(),
     val resolverRun: ResolverRunSummary? = null,
     val deepResolvePending: Int = 0,
     val deepResolveRunning: Boolean = false,
@@ -57,6 +60,7 @@ private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
     private val database = CatalogDatabase(application)
+    private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
 
@@ -82,10 +86,19 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             if (mutable.value.scanProgress != null) reportScanProgress(AnalysisProgress(AnalysisStage.LOADING_EXPERIMENTS, detail = "Loading editable experiments"))
             val page = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let { database.editablePage(it, Int.MAX_VALUE, 0) }.orEmpty() }
-            val changes = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let { current -> database.previousSummary(current)?.let { database.editableChanges(current, it.baseSha256) } } }
+            val previous = withContext(Dispatchers.IO) {
+                aa.buildFingerprintSha256?.let { database.previousSummary(it) }
+            }
+            val deltas = withContext(Dispatchers.IO) {
+                previous?.let { compareEditableCatalogs(database.editablePage(it.baseSha256, Int.MAX_VALUE, 0), page) }.orEmpty()
+            }
+            val changes = previous?.let { deltaSummary(deltas) }
             val resolverRun = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let(database::resolverRunSummary) }
             val deepPending = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let(database::actionableDeepResolveCount) ?: 0 }
-            mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page, loadedEditableCount = page.size, changes = changes, resolverRun = resolverRun, deepResolvePending = deepPending, message = null)
+            val hidden = hiddenKeysForBuild(aa.buildFingerprintSha256)
+            mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page,
+                loadedEditableCount = page.size, changes = changes, catalogDeltas = deltas,
+                hiddenSuspendedKeys = hidden, resolverRun = resolverRun, deepResolvePending = deepPending, message = null)
             refreshOverridesAndProfile()
         } finally {
             keepAnalysisAlive(false)
@@ -187,9 +200,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             result.onSuccess { aa ->
             reportScanProgress(AnalysisProgress(AnalysisStage.LOADING_EXPERIMENTS, detail = "Loading editable experiments"))
             val page = withContext(Dispatchers.IO) { database.editablePage(checkNotNull(aa.buildFingerprintSha256), Int.MAX_VALUE, 0) }
+            val previous = withContext(Dispatchers.IO) { database.previousSummary(checkNotNull(aa.buildFingerprintSha256)) }
+            val deltas = withContext(Dispatchers.IO) {
+                previous?.let { compareEditableCatalogs(database.editablePage(it.baseSha256, Int.MAX_VALUE, 0), page) }.orEmpty()
+            }
             val resolverRun = withContext(Dispatchers.IO) { database.resolverRunSummary(checkNotNull(aa.buildFingerprintSha256)) }
             mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page, loadedEditableCount = page.size,
-                dynamicOverrides = emptyMap(), profilePublished = false, changes = null, resolverRun = resolverRun,
+                dynamicOverrides = emptyMap(), suspendedOverrides = emptyList(), hiddenSuspendedKeys = emptySet(),
+                profilePublished = false, changes = previous?.let { deltaSummary(deltas) }, catalogDeltas = deltas, resolverRun = resolverRun,
                 message = "Imported ${aa.identifierCount} identifiers for offline review; the installed-AA runtime profile was not replaced.")
             }.onFailure { error -> mutable.value = mutable.value.copy(loading = false, scanProgress = null, message = "Import failed: ${error.message}") }
         } finally {
@@ -298,6 +316,33 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         } }
         if (result.isFailure) mutable.value = mutable.value.copy(saveState = SaveState.FAILED, message = "Override rejected: ${result.exceptionOrNull()?.message}")
         else { mutable.value = mutable.value.copy(saveState = SaveState.SAVED); refreshOverridesAndProfile() }
+    }
+
+    private fun deltaSummary(items: List<EditableCatalogDelta>) = CatalogChangeSummary(
+        items.count { it.kind == EditableDeltaKind.ADDED },
+        items.count { it.kind == EditableDeltaKind.REMOVED },
+        items.count { it.kind == EditableDeltaKind.CHANGED }
+    )
+
+    private fun hiddenKeysForBuild(fingerprint: String?): Set<String> {
+        if (fingerprint == null) return emptySet()
+        if (hiddenPreferences.getString("fingerprint", null) != fingerprint) {
+            hiddenPreferences.edit().putString("fingerprint", fingerprint).remove("keys").apply()
+            return emptySet()
+        }
+        return hiddenPreferences.getStringSet("keys", emptySet())?.toSet().orEmpty()
+    }
+
+    /** Affects only the All tab for this precise Android Auto build fingerprint. */
+    fun hideSuspendedFromAll(preferenceKey: String) {
+        val current = mutable.value
+        val fingerprint = current.aa.buildFingerprintSha256 ?: return
+        if (current.suspendedOverrides.none { it.preferenceKey == preferenceKey }) return
+        val previous = hiddenKeysForBuild(fingerprint)
+        val next = previous + preferenceKey
+        hiddenPreferences.edit().putString("fingerprint", fingerprint)
+            .putStringSet("keys", next).apply()
+        mutable.value = current.copy(hiddenSuspendedKeys = next)
     }
 
     fun discardSuspendedOverride(preferenceKey: String) = viewModelScope.launch {

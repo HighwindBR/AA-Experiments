@@ -2,6 +2,11 @@
 
 ## 1.0.0-beta3 — release candidate (validation pending)
 
+### Fixed after on-device beta3 testing
+- Added, Removed, and Changed now list individual differences between successive editable catalogs, with previous/current metadata; they no longer describe suspended-override reasons.
+- Experiment category filters live alongside Value type in the Filters sheet and categories with no entries are hidden.
+- Suspended overrides can be retained while hidden from All for the current Android Auto build, automatically appearing again if suspended on a later build.
+
 ### Added
 - Inspect, filter and safely discard suspended overrides while preserving their stored values and recoverable names.
 - Historical Android Auto 18.0 coverage in the feature catalog, including startup optimizations.

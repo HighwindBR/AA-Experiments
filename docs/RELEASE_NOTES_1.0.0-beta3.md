@@ -4,6 +4,9 @@ This beta improves custom-value feedback, fixed-height resolver progress, and su
 
 ## Changes
 
+- Category filters were returned to the Filters sheet and disappear when no entries exist.
+- Added/Removed/Changed open actual editable-catalog build comparisons with previous/current details.
+- Suspended overrides can be hidden from All until the Android Auto build changes, without deleting or activating them; they remain accessible through Suspended and the audit.
 - Code packages and namespace now match io.github.highwindbr.aaxp.
 - Feature Catalog updated to cover Android Auto 17.8, 17.9 and 18.0 daily.
 - LONG, STRING and DOUBLE Apply feedback clears focus and briefly confirms a successful save, while errors retain the editable field.
