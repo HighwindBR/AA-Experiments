@@ -2,6 +2,7 @@ package io.github.highwindbr.aaxp.runtime;
 
 import android.content.SharedPreferences;
 import android.os.ParcelFileDescriptor;
+import io.github.highwindbr.aaxp.core.ExperimentalBooleanPolicy;
 import android.util.Log;
 
 import org.json.JSONArray;
@@ -67,8 +68,12 @@ public final class AndroidAutoModule extends XposedModule {
             for (int i = 0; i < mappings.length(); i++) install(param.getClassLoader(), mappings.getJSONObject(i));
             JSONArray probes = profile.optJSONArray("probes");
             if (probes != null) for (int i = 0; i < probes.length(); i++) installProbe(param.getClassLoader(), probes.getJSONObject(i));
+            JSONArray experimental = profile.optJSONArray("experimental");
+            if (experimental != null) for (int i = 0; i < experimental.length(); i++)
+                installExperimental(param.getClassLoader(), experimental.getJSONObject(i), identity.getFingerprintSha256());
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
+                    "experimental", String.valueOf(experimental == null ? 0 : experimental.length()),
                     "build", identity.getFingerprintSha256().substring(0, 16));
         } catch (Throwable t) {
             event(Log.ERROR, "PROFILE_FAILED", null, "error", t.getClass().getSimpleName());
@@ -121,6 +126,59 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable error) {
             event(Log.ERROR, "HOOK_FAILED", key, "reason", error.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Failed to install mapping " + key, error);
+        }
+    }
+
+    /**
+     * Explicit one-key experimental BOOLEAN override. The remote snapshot is checked on
+     * each invocation so restoring/pausing fails open even in a running Android Auto process.
+     * It never accepts a raw protobuf or unverified getter type.
+     */
+    private void installExperimental(ClassLoader loader, JSONObject mapping, String buildFingerprint) {
+        String key = mapping.optString("key", "<unknown>");
+        if (!ExperimentalBooleanPolicy.KEY.equals(key)) {
+            event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "not_allowlisted");
+            return;
+        }
+        try {
+            String className = mapping.getString("className");
+            String methodName = mapping.getString("methodName");
+            String descriptor = mapping.getString("descriptor");
+            if (!"()Z".equals(descriptor)) {
+                event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "invalid_abi"); return;
+            }
+            Class<?> cls = Class.forName(className, false, loader);
+            Method method = cls.getDeclaredMethod(methodName);
+            if (method.getParameterCount() != 0 || !"()Z".equals(descriptor(method))) {
+                event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "changed_signature"); return;
+            }
+            hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                String raw = overrideSnapshot.get(ExperimentalBooleanPolicy.RECORD_KEY);
+                if (raw == null) return chain.proceed();
+                try {
+                    JSONObject record = new JSONObject(raw);
+                    if (record.optInt("schema") != 1 || !record.optBoolean("active", false)
+                            || !key.equals(record.optString("key"))
+                            || !buildFingerprint.equals(record.optString("build"))
+                            || !className.equals(record.optString("targetClass"))
+                            || !methodName.equals(record.optString("targetMethod"))
+                            || !descriptor.equals(record.optString("descriptor"))) {
+                        return chain.proceed();
+                    }
+                    boolean value = record.getBoolean("value");
+                    logReturnOnce(key, "OVERRIDE_RETURNED", "EXPERIMENTAL_BOOLEAN:" + value, value);
+                    return value;
+                } catch (Throwable malformed) {
+                    event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "invalid_snapshot");
+                    return chain.proceed();
+                }
+            });
+            event(Log.INFO, "EXPERIMENT_HOOK_INSTALLED", key, "target", className + "." + methodName + descriptor);
+        } catch (ClassNotFoundException | NoSuchMethodException | LinkageError failure) {
+            event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", failure.getClass().getSimpleName());
+        } catch (Throwable failure) {
+            event(Log.ERROR, "EXPERIMENT_HOOK_FAILED", key, "reason", failure.getClass().getSimpleName());
+            log(Log.ERROR, TAG, "Experimental getter hook failed", failure);
         }
     }
 

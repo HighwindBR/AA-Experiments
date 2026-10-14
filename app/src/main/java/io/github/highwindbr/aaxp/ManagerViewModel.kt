@@ -40,6 +40,8 @@ data class ManagerUiState(
     val suspendedOverrides: List<SuspendedOverride> = emptyList(),
     val profilePublished: Boolean = false,
     val probeTargetKey: String? = null,
+    val experimentalSnapshot: ExperimentalBooleanSnapshot? = null,
+    val experimentalProfileReady: Boolean = false,
     val changes: CatalogChangeSummary? = null,
     val catalogDeltas: List<EditableCatalogDelta> = emptyList(),
     val hiddenSuspendedKeys: Set<String> = emptySet(),
@@ -56,7 +58,7 @@ enum class ExportScope { EDITABLE, MODIFIED, ALL_DISCOVERIES }
 enum class ExportFormat { JSON, CSV }
 data class ExportPayload(val fileName: String, val mimeType: String, val content: String)
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -305,6 +307,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val result = withContext(Dispatchers.IO) { runCatching {
             require(mutable.value.aa.runtimeTarget) { "Imported archives are read-only; refresh the installed Android Auto before editing." }
             require(identifier.editable) { identifier.reason ?: "Identifier is read-only" }
+            require(!(identifier.key == ExperimentalBooleanPolicy.KEY &&
+                mutable.value.experimentalSnapshot?.buildFingerprint == mutable.value.aa.buildFingerprintSha256)) {
+                "Restore the experimental baseline before editing this flag normally."
+            }
             val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service is not connected" }
             val editor = prefs.edit(); val key = DynamicOverrideCodec.preferenceKey(identifier.key)
             if (rawInput == null) {
@@ -364,6 +370,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 val current = checkNotNull(database.details(fingerprint, identifier.key)) { "Flag is not in the installed catalog" }
                 require(GetterProbePolicy.issue(current) == null) { GetterProbePolicy.issue(current) ?: "Not eligible" }
                 require(current.key == identifier.key)
+                require(current.key != ExperimentalBooleanPolicy.KEY ||
+                    ExperimentalBooleanSnapshot.decode(ServiceBridge.dynamicPreferencesOrNull()?.getString(
+                        ExperimentalBooleanPolicy.RECORD_KEY, null)) == null) {
+                    "Restore the experimental baseline before arming this getter for read-only probing."
+                }
                 require(probePreferences.edit().putString("build", fingerprint)
                     .putString("key", current.key).commit()) { "Failed to save probe choice" }
             } else {
@@ -379,6 +390,99 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 if (enabled) "Read-only probe armed. Restart Android Auto to install the hook; observe AAX_EVENT in logcat."
                 else "Probe disabled in the profile. Restart Android Auto to remove its installed hook.")
         }
+    }
+
+    /** Only one BOOLEAN experiment is permitted in this beta4 preflight. */
+    fun setExperimentalBoolean(identifier: DiscoveredIdentifier, value: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val build = aa.buildFingerprintSha256
+        if (!aa.runtimeTarget || build == null || !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "Experimental overrides require the installed Android Auto and LSPosed service.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key, message = null)
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val current = checkNotNull(database.details(build, identifier.key)) { "Flag not found for installed Android Auto" }
+            require(ExperimentalBooleanPolicy.issue(current) == null) {
+                ExperimentalBooleanPolicy.issue(current) ?: "Getter not eligible"
+            }
+            require(probeKeyForBuild(build) != current.key) {
+                "Disarm the read-only getter probe and restart Android Auto before editing."
+            }
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service disconnected" }
+            val all = prefs.all
+            val recordRaw = all[ExperimentalBooleanPolicy.RECORD_KEY] as? String
+            val previous = ExperimentalBooleanSnapshot.decode(recordRaw)
+            require(recordRaw == null || previous != null) { "Existing experimental snapshot is unreadable; refusing to overwrite its baseline." }
+            require(previous == null || ExperimentalBooleanPolicy.matches(current, previous, build)) {
+                "Previous experimental snapshot belongs to another build or getter; cannot reapply automatically."
+            }
+            val regular = DynamicOverrideCodec.preferenceKey(current.key)
+            val name = DynamicOverrideCodec.namePreferenceKey(current.key)
+            val previousNormalRaw = all[regular] as? String
+            require(previous != null || previousNormalRaw == null ||
+                DynamicOverrideCodec.deserialize(previousNormalRaw)?.type == DiscoveredType.BOOLEAN) {
+                "Existing normal override is malformed; refusing to replace its saved value."
+            }
+            val updated = if (previous != null) previous.copy(value = value, active = true) else
+                ExperimentalBooleanPolicy.snapshot(
+                    current, build, value, previousNormalRaw, all[name] as? String,
+                    System.currentTimeMillis()
+                )
+            require(prefs.edit().putString(ExperimentalBooleanPolicy.RECORD_KEY, updated.encode())
+                .remove(regular).remove(name).commit()) { "Failed to atomically save baseline and experiment." }
+        } }
+        if (result.isFailure) {
+            mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+                message = "Experimental override rejected: ${result.exceptionOrNull()?.message}")
+        } else {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(saveState = SaveState.SAVED,
+                message = if (mutable.value.experimentalProfileReady)
+                    "Experimental value saved and profile published. Restart Android Auto to install the new hook; check OVERRIDE_RETURNED."
+                else "Experimental value preserved, but the hook profile is not ready. Do not expect the override to apply.")
+        }
+    }
+
+    fun pauseExperimentalBoolean() = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val record = checkNotNull(ExperimentalBooleanSnapshot.decode(
+                prefs.getString(ExperimentalBooleanPolicy.RECORD_KEY, null))) { "No experimental snapshot" }
+            require(record.buildFingerprint == build) { "The experiment belongs to another build." }
+            require(prefs.edit().putString(ExperimentalBooleanPolicy.RECORD_KEY,
+                record.copy(active = false).encode()).commit()) { "Unable to pause experiment" }
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                "Experimental override paused. Restart Android Auto to guarantee the previous hook no longer applies.")
+        } else mutable.value = mutable.value.copy(message = "Pause failed: ${result.exceptionOrNull()?.message}")
+    }
+
+    fun restoreExperimentalBaseline() = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val record = checkNotNull(ExperimentalBooleanSnapshot.decode(
+                prefs.getString(ExperimentalBooleanPolicy.RECORD_KEY, null))) { "No valid baseline to restore" }
+            require(record.buildFingerprint == build) { "Cannot restore a baseline onto a different Android Auto build." }
+            val regular = DynamicOverrideCodec.preferenceKey(ExperimentalBooleanPolicy.KEY)
+            val name = DynamicOverrideCodec.namePreferenceKey(ExperimentalBooleanPolicy.KEY)
+            val editor = prefs.edit().remove(ExperimentalBooleanPolicy.RECORD_KEY)
+            if (record.previousOverride == null) editor.remove(regular)
+            else editor.putString(regular, record.previousOverride)
+            if (record.previousName == null) editor.remove(name)
+            else editor.putString(name, record.previousName)
+            require(editor.commit()) { "Atomic baseline restoration failed" }
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                "Original override state restored (including its absence). Restart Android Auto to restore the normal hook layout.")
+        } else mutable.value = mutable.value.copy(message =
+            "Baseline restoration rejected: ${result.exceptionOrNull()?.message}")
     }
 
     fun discardSuspendedOverride(preferenceKey: String) = viewModelScope.launch {
@@ -398,7 +502,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = null)
         val ok = withContext(Dispatchers.IO) {
             val prefs = ServiceBridge.dynamicPreferencesOrNull() ?: return@withContext false
-            val editor = prefs.edit(); prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) || it.startsWith(DynamicOverrideCodec.NAME_PREFIX) }.forEach(editor::remove); editor.commit()
+            val editor = prefs.edit().remove(ExperimentalBooleanPolicy.RECORD_KEY)
+            prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) ||
+                it.startsWith(DynamicOverrideCodec.NAME_PREFIX) }.forEach(editor::remove)
+            editor.commit()
         }
         mutable.value = mutable.value.copy(saveState = if (ok) SaveState.SAVED else SaveState.FAILED)
         refreshOverridesAndProfile()
@@ -425,6 +532,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING)
         val result = withContext(Dispatchers.IO) { runCatching {
             val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service is not connected" }
+            require(prefs.getString(ExperimentalBooleanPolicy.RECORD_KEY, null) == null) {
+                "Restore the experimental baseline before importing standard overrides."
+            }
             val root = JSONObject(text); val schema = root.getInt("schemaVersion"); require(schema in 2..3) { "Unsupported schema" }
             val sameBuild = if (schema >= 3) root.optString("buildFingerprintSha256").equals(mutable.value.aa.buildFingerprintSha256, true)
                 else root.optString("baseSha256").equals(mutable.value.aa.baseSha256, true)
@@ -471,6 +581,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val resolved = database.identifiersByPreferenceKeys(aa.buildFingerprintSha256, snapshot.keys).toMap()
             val nameEditor = prefs?.edit()
             var recoveredNames = 0
+            val experimental = ExperimentalBooleanSnapshot.decode(
+                allPrefs[ExperimentalBooleanPolicy.RECORD_KEY] as? String)
+            val activeExperiment = experimental?.takeIf { it.active && it.buildFingerprint == aa.buildFingerprintSha256 }
+            val experimentId = activeExperiment?.let { database.details(aa.buildFingerprintSha256, ExperimentalBooleanPolicy.KEY) }
+            val approvedExperiment = experimentId?.takeIf { id ->
+                ExperimentalBooleanPolicy.matches(id, checkNotNull(activeExperiment), aa.buildFingerprintSha256)
+            }
             val active = mutableMapOf<String, TypedOverride>(); val suspended = mutableListOf<SuspendedOverride>(); val mappings = mutableListOf<DynamicProfile.Mapping>()
             snapshot.forEach { (preferenceKey, raw) ->
                 val identifier = resolved[preferenceKey]
@@ -505,11 +622,25 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 val conflict = mappings.any { it.className == className && it.methodName == method.methodName && it.descriptor == method.descriptor }
                 if (conflict) emptyList() else listOf(DynamicProfile.Probe(id.key, className, method.methodName, method.descriptor))
             }.orEmpty()
+            val experimentalMappings = approvedExperiment?.let { id ->
+                val getter = id.getterCandidates.single()
+                val className = getter.className.removePrefix("L").removeSuffix(";").replace('/', '.')
+                val conflict = mappings.any { it.className == className && it.methodName == getter.methodName && it.descriptor == getter.descriptor } ||
+                    probes.any { it.className == className && it.methodName == getter.methodName && it.descriptor == getter.descriptor }
+                if (conflict) emptyList() else listOf(DynamicProfile.ExperimentalMapping(
+                    id.key, className, getter.methodName, getter.descriptor
+                ))
+            }.orEmpty()
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
-                aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes)
-            OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull())
+                aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes, experimentalMappings)
+            OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
+                experimental, published.isSuccess && experimentalMappings.isNotEmpty())
         } }
-        result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,suspendedOverrides=outcome.suspended,probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),profilePublished=outcome.published,message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
+        result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,
+            suspendedOverrides=outcome.suspended, probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),
+            experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
+            profilePublished=outcome.published,
+            message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }
     }
 

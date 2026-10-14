@@ -197,7 +197,7 @@ private val AaDarkScheme = darkColorScheme(
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel, onViewDelta: (ExperimentFilter) -> Unit) {
     var auditOpen by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
-    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size, state.profilePublished)
+    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item { ScreenTitle("Status", "Environment, resolver and runtime readiness") }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -218,6 +218,17 @@ private val AaDarkScheme = darkColorScheme(
         state.probeTargetKey?.let { key ->
             Text("Read-only getter probe armed: ${technicalDisplay(key)} (restart AA to install)",
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        }
+        state.experimentalSnapshot?.let { record ->
+            val matchesBuild = record.buildFingerprint == state.aa.buildFingerprintSha256
+            Text(when {
+                !matchesBuild -> "Experimental BOOLEAN override suspended: previous Android Auto build."
+                !record.active -> "Experimental BOOLEAN override paused (baseline retained)."
+                state.experimentalProfileReady -> "Experimental BOOLEAN override published; restart Android Auto to apply."
+                else -> "Experimental BOOLEAN override saved but its hook is not published."
+            }, style = MaterialTheme.typography.labelSmall,
+                color = if (matchesBuild && record.active && state.experimentalProfileReady)
+                    MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         }
         state.changes?.let { change ->
             Text("Editable flags since the previous catalog:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -680,7 +691,9 @@ private fun suspendedName(entry: SuspendedOverride): String =
     if (state.detailsLoading) AlertDialog({}, confirmButton = {}, title = { Text("Loading evidence…") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) })
     state.selectedDetails?.let {
         IdentifierDetailsDialog(it, model::clearDetails, state.probeTargetKey,
-            state.aa.runtimeTarget && state.framework.connected, model::setReadOnlyProbe)
+            state.aa.runtimeTarget && state.framework.connected, model::setReadOnlyProbe,
+            state.experimentalSnapshot, state.experimentalProfileReady, state.aa.buildFingerprintSha256,
+            state.message, model::setExperimentalBoolean, model::pauseExperimentalBoolean, model::restoreExperimentalBaseline)
     }
     if (exportOpen) ExportDialog({ exportOpen = false }, model::requestCatalogExport)
     if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -897,8 +910,17 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     onDismiss: () -> Unit,
     armedProbeKey: String?,
     canProbeInstalledBuild: Boolean,
-    onProbe: (DiscoveredIdentifier, Boolean) -> Unit
+    onProbe: (DiscoveredIdentifier, Boolean) -> Unit,
+    experiment: ExperimentalBooleanSnapshot?,
+    experimentalProfileReady: Boolean,
+    installedBuildFingerprint: String?,
+    feedback: String?,
+    onExperimentalSet: (DiscoveredIdentifier, Boolean) -> Unit,
+    onExperimentalPause: () -> Unit,
+    onExperimentalRestore: () -> Unit
 ) {
+    var experimentalConfirmation by remember(identifier.key) { mutableStateOf<Boolean?>(null) }
+    var restoreExperimentConfirmation by remember(identifier.key) { mutableStateOf(false) }
     var probeConfirmation by remember(identifier.key) { mutableStateOf(false) }
     val probeIssue = if (identifier.key in GetterProbePolicy.supportedKeys)
         GetterProbePolicy.issue(identifier) else "Not a probe candidate."
@@ -970,6 +992,77 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                             }
                         }
                     }
+                    if (identifier.key == ExperimentalBooleanPolicy.KEY) item {
+                        val blocker = ExperimentalBooleanPolicy.issue(identifier)
+                        val sameBuild = experiment?.buildFingerprint == installedBuildFingerprint
+                        val canWrite = canProbeInstalledBuild && blocker == null &&
+                            (experiment == null || sameBuild) && armedProbeKey != identifier.key
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                Text("Experimental BOOLEAN override · beta4 preflight",
+                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text("Only this known getter is eligible. The new value may have no visible effect or cause Android Auto to malfunction.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                ValueRow("Compiled default", identifier.compiledDefault ?: "Unknown")
+                                ValueRow("Detected type", identifier.inferredType.name)
+                                ValueRow("Runtime consumer", identifier.runtimeConsumerStatus.name)
+                                ValueRow("Confidence", identifier.confidence.name)
+                                ValueRow("Resolution", identifier.resolution.name)
+                                if (experiment != null) {
+                                    ValueRow("Experimental value", experiment.value.toString(), experiment.active && sameBuild)
+                                    ValueRow("Before first edit",
+                                        experiment.previousOverride ?: "No override (not a forced default)")
+                                    Text(if (!sameBuild)
+                                        "SUSPENDED: Android Auto changed builds. Nothing is reapplied automatically."
+                                    else if (experiment.active)
+                                        if (experimentalProfileReady) "PROFILE PUBLISHED · restart AA; check OVERRIDE_RETURNED."
+                                        else "SAVED · hook not yet published."
+                                    else "PAUSED · saved baseline retained.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (sameBuild && experiment.active && experimentalProfileReady)
+                                            MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                                } else {
+                                    Text("No experimental snapshot exists. First edit saves your original override state.",
+                                        style = MaterialTheme.typography.bodySmall)
+                                }
+                                feedback?.takeIf { it.contains("Experimental", true) ||
+                                    it.contains("baseline", true) }?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall,
+                                        color = if (it.contains("rejected", true) || it.contains("failed", true))
+                                            MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                                }
+                                if (blocker != null) Text("Not eligible: $blocker",
+                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                if (armedProbeKey == identifier.key) Text(
+                                    "Disarm the read-only probe and restart Android Auto before using this override.",
+                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                if (experiment != null && !sameBuild) Text(
+                                    "The saved experiment is preserved for its original build; no automatic reactivation is allowed.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button({ experimentalConfirmation = true }, Modifier.weight(1f), enabled = canWrite) {
+                                        Text("Set TRUE")
+                                    }
+                                    Button({ experimentalConfirmation = false }, Modifier.weight(1f), enabled = canWrite) {
+                                        Text("Set FALSE")
+                                    }
+                                }
+                                if (experiment != null && sameBuild) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onExperimentalPause, Modifier.weight(1f), enabled = experiment.active) {
+                                            Text("Pause")
+                                        }
+                                        OutlinedButton({ restoreExperimentConfirmation = true }, Modifier.weight(1f)) {
+                                            Text("Restore baseline")
+                                        }
+                                    }
+                                }
+                                Text("After any edit, restart the Android Auto process while disconnected and parked. Do not infer effectiveness from a saved value alone.",
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                     identifier.metadata["reviewedSemantics"]?.let { summary -> item {
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("Reviewed semantics", fontWeight = FontWeight.Bold); Text(summary)
@@ -1019,6 +1112,34 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             }
         }
     }
+    experimentalConfirmation?.let { newValue ->
+        AlertDialog(onDismissRequest = { experimentalConfirmation = null },
+            title = { Text("Confirm experimental return value") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(technicalDisplay(identifier.key), fontFamily = FontFamily.Monospace)
+                    Text("BOOLEAN · getter ${identifier.getterCandidates.singleOrNull()?.methodName}()Z")
+                    Text("Compiled default: ${identifier.compiledDefault ?: "Unknown"}")
+                    Text("Original override before experimentation: ${experiment?.previousOverride ?: "Absent, or not yet recorded"}")
+                    Text("New experimental value: $newValue")
+                    Text("The meaning of this kill switch is unverified. It can disable Android Auto features or require stopping its process. This change is for the current Android Auto build only.")
+                }
+            },
+            confirmButton = { TextButton({
+                experimentalConfirmation = null
+                onExperimentalSet(identifier, newValue)
+            }) { Text("Confirm $newValue") } },
+            dismissButton = { TextButton({ experimentalConfirmation = null }) { Text("Cancel") } })
+    }
+    if (restoreExperimentConfirmation) AlertDialog(
+        onDismissRequest = { restoreExperimentConfirmation = false },
+        title = { Text("Restore original override state?") },
+        text = { Text("The original saved override will be restored byte-for-byte, or removed if no override existed. Restart Android Auto afterward.") },
+        confirmButton = { TextButton({
+            restoreExperimentConfirmation = false
+            onExperimentalRestore()
+        }) { Text("Restore baseline") } },
+        dismissButton = { TextButton({ restoreExperimentConfirmation = false }) { Text("Cancel") } })
     if (probeConfirmation) AlertDialog(onDismissRequest = { probeConfirmation = false },
         title = { Text("Arm read-only getter probe?") },
         text = { Text("Only the selected getter will be traced for this exact Android Auto build. No value will be changed. A new Android Auto process is required. Confirm only while parked and not projecting.") },
@@ -1052,7 +1173,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta2 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight1 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
     if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This removes every dynamic override and returns Android Auto to system defaults.")})
@@ -1060,7 +1181,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
-@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta2", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
+@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight1", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
 private class TouchMenuPositionProvider(
     private val pressOffset: IntOffset,
@@ -1158,7 +1279,7 @@ private class TouchMenuPositionProvider(
 @Composable private fun DiagnosticsScreen(state: ManagerUiState, onBack: () -> Unit, onCatalog: () -> Unit, onDeepResolve: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
-    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size, state.profilePublished)
+    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { SubpageHeader("Diagnostics", "Installation, resolver and runtime", onBack) }

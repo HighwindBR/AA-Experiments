@@ -25,7 +25,14 @@ object DynamicProfile {
         val descriptor: String
     )
 
-    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList()): String {
+    data class ExperimentalMapping(
+        val key: String,
+        val className: String,
+        val methodName: String,
+        val descriptor: String
+    )
+
+    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList(), experimental: List<ExperimentalMapping> = emptyList()): String {
         val mappings = JSONArray()
         values.forEach { value -> mappings.put(JSONObject().apply {
             put("key", value.key); put("preferenceKey", value.preferenceKey); put("className", value.className)
@@ -36,10 +43,16 @@ object DynamicProfile {
             put("key", probe.key); put("className", probe.className)
             put("methodName", probe.methodName); put("descriptor", probe.descriptor)
         }) }
+        val experimentalRecords = JSONArray()
+        experimental.forEach { item -> experimentalRecords.put(JSONObject().apply {
+            put("key", item.key); put("className", item.className)
+            put("methodName", item.methodName); put("descriptor", item.descriptor)
+        }) }
         return JSONObject().apply {
             put("schemaVersion", 3); put("buildFingerprintSha256", buildFingerprintSha256); put("baseSha256", baseSha256)
             put("packageVersionCode", packageVersionCode); put("packageArtifactSha256", JSONObject(packageArtifactSha256))
-            put("dexSha256", JSONObject(dexSha256)); put("mappings", mappings); put("probes", probeRecords)
+            put("dexSha256", JSONObject(dexSha256)); put("mappings", mappings)
+            put("probes", probeRecords); put("experimental", experimentalRecords)
         }.toString()
     }
 

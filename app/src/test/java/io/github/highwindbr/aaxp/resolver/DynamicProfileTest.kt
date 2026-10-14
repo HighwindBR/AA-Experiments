@@ -36,6 +36,22 @@ class DynamicProfileTest {
         assertEquals(false, saved.has("preferenceKey"))
     }
 
+    @Test fun experimentalBooleanMappingsCannotAccidentallyBecomeNormalMappings() {
+        val advanced = DynamicProfile.ExperimentalMapping(
+            "PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch",
+            "adic", "d", "()Z"
+        )
+        val profile = JSONObject(DynamicProfile.create("build", "base", 42,
+            emptyMap(), emptyMap(), emptyList(), emptyList(), listOf(advanced)))
+        assertEquals(0, profile.getJSONArray("mappings").length())
+        assertEquals(0, profile.getJSONArray("probes").length())
+        assertEquals(1, profile.getJSONArray("experimental").length())
+        val mapped = profile.getJSONArray("experimental").getJSONObject(0)
+        assertEquals("()Z", mapped.getString("descriptor"))
+        assertEquals(false, mapped.has("preferenceKey"))
+        assertEquals(3, profile.getInt("schemaVersion"))
+    }
+
     @Test fun emitsCompactDatabaseBackedMappings() {
         val mapping = DynamicProfile.Mapping("flag", "override.v2.hash", "a.b", "c", "()Z", "BOOLEAN")
         val root = JSONObject(DynamicProfile.create("build", "base", 42, mapOf("base" to "base"), mapOf("classes.dex" to "dex"), listOf(mapping)))
