@@ -39,9 +39,9 @@ object ServiceBridge : XposedServiceHelper.OnServiceListener {
         if (key.startsWith(io.github.highwindbr.aaxp.core.DynamicOverrideCodec.PREFIX) && value is String) key to value else null
     }.toMap()
 
-    fun publishProfile(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, mappings: List<DynamicProfile.Mapping>): Result<Int> = runCatching {
+    fun publishProfile(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, mappings: List<DynamicProfile.Mapping>, probes: List<DynamicProfile.Probe> = emptyList()): Result<Int> = runCatching {
         val bound = checkNotNull(service) { "Xposed service is not connected" }
-        val bytes = DynamicProfile.create(buildFingerprintSha256, baseSha256, packageVersionCode, packageArtifactSha256, dexSha256, mappings).toByteArray(Charsets.UTF_8)
+        val bytes = DynamicProfile.create(buildFingerprintSha256, baseSha256, packageVersionCode, packageArtifactSha256, dexSha256, mappings, probes).toByteArray(Charsets.UTF_8)
         bound.openRemoteFile(DynamicProfile.FILE_NAME).use { descriptor ->
             ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
                 output.channel.truncate(0)

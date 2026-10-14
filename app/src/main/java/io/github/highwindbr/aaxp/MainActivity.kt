@@ -215,6 +215,10 @@ private val AaDarkScheme = darkColorScheme(
         CompactStatusRow(Icons.Default.Search, "Inventory", if (state.aa.runtimeTarget) "Installed Android Auto" else "Imported archive")
         RuntimeBanner(runtime)
         Text("Identifiers: ${state.aa.editableCount} editable · ${state.dynamicOverrides.size} modified", style = MaterialTheme.typography.bodySmall)
+        state.probeTargetKey?.let { key ->
+            Text("Read-only getter probe armed: ${technicalDisplay(key)} (restart AA to install)",
+                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        }
         state.changes?.let { change ->
             Text("Editable flags since the previous catalog:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -674,7 +678,10 @@ private fun suspendedName(entry: SuspendedOverride): String =
         }
     }
     if (state.detailsLoading) AlertDialog({}, confirmButton = {}, title = { Text("Loading evidence…") }, text = { LinearProgressIndicator(Modifier.fillMaxWidth()) })
-    state.selectedDetails?.let { IdentifierDetailsDialog(it, model::clearDetails) }
+    state.selectedDetails?.let {
+        IdentifierDetailsDialog(it, model::clearDetails, state.probeTargetKey,
+            state.aa.runtimeTarget && state.framework.connected, model::setReadOnlyProbe)
+    }
     if (exportOpen) ExportDialog({ exportOpen = false }, model::requestCatalogExport)
     if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Catalog filters", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
@@ -885,7 +892,17 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
 
 @Composable private fun ValueRow(label: String, value: String, accent: Boolean = false) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall); Text(value, Modifier.weight(1f), color = if (accent) AaGreen else MaterialTheme.colorScheme.onSurface, fontWeight = if (accent) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
 
-@Composable private fun IdentifierDetailsDialog(identifier: DiscoveredIdentifier, onDismiss: () -> Unit) {
+@Composable private fun IdentifierDetailsDialog(
+    identifier: DiscoveredIdentifier,
+    onDismiss: () -> Unit,
+    armedProbeKey: String?,
+    canProbeInstalledBuild: Boolean,
+    onProbe: (DiscoveredIdentifier, Boolean) -> Unit
+) {
+    var probeConfirmation by remember(identifier.key) { mutableStateOf(false) }
+    val probeIssue = if (identifier.key in GetterProbePolicy.supportedKeys)
+        GetterProbePolicy.issue(identifier) else "Not a probe candidate."
+    val isArmed = armedProbeKey == identifier.key
     val clipboard = LocalClipboardManager.current
     val export = remember(identifier) { buildString {
         appendLine(identifier.key)
@@ -924,6 +941,35 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                 Spacer(Modifier.height(8.dp))
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item { StatusCard("Runtime consumer", "${identifier.runtimeConsumerStatus} · ${identifier.consumers.size} retained path(s)") }
+                    if (identifier.key in GetterProbePolicy.supportedKeys) item {
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Read-only getter probe", fontWeight = FontWeight.SemiBold)
+                                Text("Calls the original getter without replacing its return value. Logs installation and first invocation after Android Auto restarts.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (isArmed) Text("ARMED FOR THIS BUILD · restart Android Auto to install",
+                                    color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                                else if (probeIssue != null) Text(probeIssue,
+                                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                                if (armedProbeKey != null && !isArmed) Text(
+                                    "Another getter is armed: ${technicalDisplay(armedProbeKey)}",
+                                    style = MaterialTheme.typography.labelSmall)
+                                OutlinedButton(
+                                    onClick = {
+                                        if (isArmed) onProbe(identifier, false)
+                                        else probeConfirmation = true
+                                    },
+                                    enabled = canProbeInstalledBuild && (isArmed || probeIssue == null),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (isArmed) "Disarm probe" else "Arm read-only probe")
+                                }
+                                Text("Disarming removes it from the next runtime profile. An already-installed hook remains until Android Auto restarts.",
+                                    style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                     identifier.metadata["reviewedSemantics"]?.let { summary -> item {
                         Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("Reviewed semantics", fontWeight = FontWeight.Bold); Text(summary)
@@ -973,6 +1019,16 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             }
         }
     }
+    if (probeConfirmation) AlertDialog(onDismissRequest = { probeConfirmation = false },
+        title = { Text("Arm read-only getter probe?") },
+        text = { Text("Only the selected getter will be traced for this exact Android Auto build. No value will be changed. A new Android Auto process is required. Confirm only while parked and not projecting.") },
+        confirmButton = {
+            TextButton({
+                probeConfirmation = false
+                onProbe(identifier, true)
+            }) { Text("Arm probe") }
+        },
+        dismissButton = { TextButton({ probeConfirmation = false }) { Text("Cancel") } })
 }
 
 @Composable private fun SettingsScreen(state: ManagerUiState, model: ManagerViewModel, theme: ThemeMode, onTheme: (ThemeMode) -> Unit, accent: AccentPalette, onAccent: (AccentPalette) -> Unit, page: SettingsPage, onPage: (SettingsPage) -> Unit) {

@@ -30,6 +30,7 @@ public final class AndroidAutoModule extends XposedModule {
     private static final String EVENT_PREFIX = "AAX_EVENT ";
     private final OverrideSnapshot overrideSnapshot = new OverrideSnapshot();
     private final Map<String, String> lastReturnEvent = new ConcurrentHashMap<>();
+    private final Map<String, Boolean> probedCalls = new ConcurrentHashMap<>();
     private SharedPreferences remotePreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
             (preferences, key) -> refreshSnapshot(preferences);
@@ -64,7 +65,11 @@ public final class AndroidAutoModule extends XposedModule {
             }
             JSONArray mappings = profile.getJSONArray("mappings");
             for (int i = 0; i < mappings.length(); i++) install(param.getClassLoader(), mappings.getJSONObject(i));
-            event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()), "build", identity.getFingerprintSha256().substring(0, 16));
+            JSONArray probes = profile.optJSONArray("probes");
+            if (probes != null) for (int i = 0; i < probes.length(); i++) installProbe(param.getClassLoader(), probes.getJSONObject(i));
+            event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
+                    "probes", String.valueOf(probes == null ? 0 : probes.length()),
+                    "build", identity.getFingerprintSha256().substring(0, 16));
         } catch (Throwable t) {
             event(Log.ERROR, "PROFILE_FAILED", null, "error", t.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Dynamic profile failed; no further hooks installed", t);
@@ -116,6 +121,48 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable error) {
             event(Log.ERROR, "HOOK_FAILED", key, "reason", error.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Failed to install mapping " + key, error);
+        }
+    }
+
+    private void installProbe(ClassLoader loader, JSONObject mapping) {
+        String key = mapping.optString("key", "<unknown>");
+        // The read-only diagnostic feature is intentionally narrower than a future
+        // Advanced Overrides mode. The runtime independently enforces the cohort.
+        if (!("PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch".equals(key)
+                || "CarAppLibrary__recreate_map_view_context_on_config_change_kill_switch".equals(key)
+                || "WirelessLatencyMonitor__warning_threshold_ms".equals(key))) {
+            event(Log.WARN, "PROBE_REJECTED", key, "reason", "not_allowlisted");
+            return;
+        }
+        String expectedDescriptor = key.equals("WirelessLatencyMonitor__warning_threshold_ms") ? "()J" : "()Z";
+        try {
+            String className = mapping.getString("className");
+            String methodName = mapping.getString("methodName");
+            String descriptor = mapping.getString("descriptor");
+            if (!expectedDescriptor.equals(descriptor)) {
+                event(Log.WARN, "PROBE_REJECTED", key, "reason", "type_mismatch");
+                return;
+            }
+            Class<?> cls = Class.forName(className, false, loader);
+            Method method = cls.getDeclaredMethod(methodName);
+            if (method.getParameterCount() != 0 || !descriptor.equals(descriptor(method))) {
+                event(Log.WARN, "PROBE_REJECTED", key, "reason", "changed_signature");
+                return;
+            }
+            hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                if (probedCalls.putIfAbsent(key, Boolean.TRUE) == null) {
+                    // Log before proceeding: this proves the original getter was reached,
+                    // without logging its value or ever changing its return.
+                    event(Log.INFO, "PROBE_INVOKED", key);
+                }
+                return chain.proceed();
+            });
+            event(Log.INFO, "PROBE_HOOK_INSTALLED", key, "target", className + "." + methodName + descriptor);
+        } catch (ClassNotFoundException | NoSuchMethodException | LinkageError failure) {
+            event(Log.WARN, "PROBE_REJECTED", key, "reason", failure.getClass().getSimpleName());
+        } catch (Throwable failure) {
+            event(Log.ERROR, "PROBE_FAILED", key, "reason", failure.getClass().getSimpleName());
+            log(Log.ERROR, TAG, "Read-only probe failed for " + key, failure);
         }
     }
 

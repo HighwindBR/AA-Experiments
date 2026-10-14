@@ -22,6 +22,20 @@ class DynamicProfileTest {
         assertEquals("two", one.getJSONObject(0).getString("key"))
     }
 
+    @Test fun readOnlyProbesAreSeparateFromOverrideMappings() {
+        val probe = DynamicProfile.Probe("PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch",
+            "a.b", "c", "()Z")
+        val root = JSONObject(DynamicProfile.create("build", "base", 42, emptyMap(), emptyMap(),
+            emptyList(), listOf(probe)))
+        assertEquals(3, root.getInt("schemaVersion"))
+        assertEquals(0, root.getJSONArray("mappings").length())
+        val saved = root.getJSONArray("probes").getJSONObject(0)
+        assertEquals(probe.key, saved.getString("key"))
+        assertEquals("a.b", saved.getString("className"))
+        assertEquals("()Z", saved.getString("descriptor"))
+        assertEquals(false, saved.has("preferenceKey"))
+    }
+
     @Test fun emitsCompactDatabaseBackedMappings() {
         val mapping = DynamicProfile.Mapping("flag", "override.v2.hash", "a.b", "c", "()Z", "BOOLEAN")
         val root = JSONObject(DynamicProfile.create("build", "base", 42, mapOf("base" to "base"), mapOf("classes.dex" to "dex"), listOf(mapping)))

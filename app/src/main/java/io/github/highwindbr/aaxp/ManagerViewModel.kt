@@ -39,6 +39,7 @@ data class ManagerUiState(
     val dynamicOverrides: Map<String, TypedOverride> = emptyMap(),
     val suspendedOverrides: List<SuspendedOverride> = emptyList(),
     val profilePublished: Boolean = false,
+    val probeTargetKey: String? = null,
     val changes: CatalogChangeSummary? = null,
     val catalogDeltas: List<EditableCatalogDelta> = emptyList(),
     val hiddenSuspendedKeys: Set<String> = emptySet(),
@@ -61,6 +62,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val mutable = MutableStateFlow(ManagerUiState())
     private val database = CatalogDatabase(application)
     private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
+    private val probePreferences = application.getSharedPreferences("read_only_getter_probe", Context.MODE_PRIVATE)
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
 
@@ -345,6 +347,40 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = current.copy(hiddenSuspendedKeys = next)
     }
 
+    private fun probeKeyForBuild(buildFingerprint: String): String? =
+        probePreferences.getString("build", null)?.takeIf { it == buildFingerprint }
+            ?.let { probePreferences.getString("key", null) }
+
+    /** Only arms a read-only method-call trace for the exact installed build. */
+    fun setReadOnlyProbe(identifier: DiscoveredIdentifier, enabled: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val fingerprint = aa.buildFingerprintSha256 ?: return@launch
+        if (!aa.runtimeTarget || !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "Read-only probes need the installed Android Auto and LSPosed service.")
+            return@launch
+        }
+        val result = withContext(Dispatchers.IO) { runCatching {
+            if (enabled) {
+                val current = checkNotNull(database.details(fingerprint, identifier.key)) { "Flag is not in the installed catalog" }
+                require(GetterProbePolicy.issue(current) == null) { GetterProbePolicy.issue(current) ?: "Not eligible" }
+                require(current.key == identifier.key)
+                require(probePreferences.edit().putString("build", fingerprint)
+                    .putString("key", current.key).commit()) { "Failed to save probe choice" }
+            } else {
+                require(probeKeyForBuild(fingerprint) == identifier.key) { "Probe already changed" }
+                require(probePreferences.edit().clear().commit()) { "Failed to disable probe" }
+            }
+        } }
+        if (result.isFailure) {
+            mutable.value = mutable.value.copy(message = "Getter probe rejected: ${result.exceptionOrNull()?.message}")
+        } else {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                if (enabled) "Read-only probe armed. Restart Android Auto to install the hook; observe AAX_EVENT in logcat."
+                else "Probe disabled in the profile. Restart Android Auto to remove its installed hook.")
+        }
+    }
+
     fun discardSuspendedOverride(preferenceKey: String) = viewModelScope.launch {
         if (!mutable.value.aa.runtimeTarget || !preferenceKey.startsWith(DynamicOverrideCodec.PREFIX)) return@launch
         val result = withContext(Dispatchers.IO) { runCatching {
@@ -460,10 +496,20 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             if (recoveredNames > 0) nameEditor?.commit()
-            val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256, aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings)
+            val probeKey = probeKeyForBuild(aa.buildFingerprintSha256)
+            val probeIdentifier = probeKey?.let { database.details(aa.buildFingerprintSha256, it) }
+            val selected = probeIdentifier?.takeIf { GetterProbePolicy.issue(it) == null }
+            val probes = selected?.let { id ->
+                val method = id.getterCandidates.single()
+                val className = method.className.removePrefix("L").removeSuffix(";").replace('/', '.')
+                val conflict = mappings.any { it.className == className && it.methodName == method.methodName && it.descriptor == method.descriptor }
+                if (conflict) emptyList() else listOf(DynamicProfile.Probe(id.key, className, method.methodName, method.descriptor))
+            }.orEmpty()
+            val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
+                aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull())
         } }
-        result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,suspendedOverrides=outcome.suspended,profilePublished=outcome.published,message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
+        result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,suspendedOverrides=outcome.suspended,probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),profilePublished=outcome.published,message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }
     }
 
