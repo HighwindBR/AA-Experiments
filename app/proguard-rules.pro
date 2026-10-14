@@ -1,2 +1,2 @@
--keep class io.github.aaexperiments.xposed.** { *; }
--keep public class io.github.aaexperiments.runtime.AndroidAutoModule { *; }
+-keep class io.github.highwindbr.aaxp.xposed.** { *; }
+-keep public class io.github.highwindbr.aaxp.runtime.AndroidAutoModule { *; }

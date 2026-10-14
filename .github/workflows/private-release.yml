@@ -47,7 +47,8 @@ jobs:
   private-release-gates:
     if: >-
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.run_private_gates)
+      (github.event_name == 'workflow_dispatch' && inputs.run_private_gates &&
+       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/1.0.0-beta3'))
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     steps:
       - uses: actions/checkout@v4
@@ -68,19 +69,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
       - name: 256 MiB installed-scan gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.InstalledHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.InstalledHeapRegressionTest
       - name: 256 MiB compatibility gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.InstalledCompatibilityHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.InstalledCompatibilityHeapRegressionTest
       - name: 256 MiB directed-resolve gate
-        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.aaexperiments.discovery.DeepResolveHeapRegressionTest
+        run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.DeepResolveHeapRegressionTest
       - name: Frozen 17.8 full-corpus release gate
         run: >-
           gradle --no-daemon --max-workers=1 -Daa.test.heap=256m -Daa.full.deep=true
           :app:testDebugUnitTest
-          --tests io.github.aaexperiments.discovery.FullDeepResolveDistributionTest
+          --tests io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest
 
   signed-release:
-    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta2'
+    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta3'
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: ubuntu-latest
     permissions:
@@ -110,16 +111,16 @@ jobs:
           app/build/outputs/apk/release/app-release.apk
       - name: Name artifact and publish checksum
         run: |
-          cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta2.apk
-          sha256sum AAExperiments-1.0.0-beta2.apk > AAExperiments-1.0.0-beta2.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta3.apk
+          sha256sum AAExperiments-1.0.0-beta3.apk > AAExperiments-1.0.0-beta3.apk.sha256
       - name: Publish tagged release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${GITHUB_REF_NAME}"
-          AAExperiments-1.0.0-beta2.apk
-          AAExperiments-1.0.0-beta2.apk.sha256
+          AAExperiments-1.0.0-beta3.apk
+          AAExperiments-1.0.0-beta3.apk.sha256
           LICENSE
           THIRD_PARTY_NOTICES.md
           --title "AA Experiments ${GITHUB_REF_NAME}"
-          --notes-file docs/RELEASE_NOTES_1.0.0-beta2.md
+          --notes-file docs/RELEASE_NOTES_1.0.0-beta3.md

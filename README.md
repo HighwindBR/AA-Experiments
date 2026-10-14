@@ -9,6 +9,13 @@ Nothing is overridden by default. Ambiguous, sensitive, unsupported and schema-u
 remain searchable but read-only. An editable experiment is technically hookable; it is not a
 promise that every value is safe or that a server/head unit will enable the feature.
 
+AA Experiments was designed to be resilient to Android Auto updates. Originally developed against
+Android Auto 17.8, testing of the completed module later showed that its discovery mechanism can
+identify flags in Android Auto versions dating back to 2.0 (2016). This is encouraging evidence
+that the module may keep discovering flags in future releases, potentially remaining useful for
+years without developer updates. Discovery alone does not guarantee that every flag can be safely
+resolved or overridden as Android Auto internals evolve.
+
 ## Requirements
 
 - Android 8.1 or newer
