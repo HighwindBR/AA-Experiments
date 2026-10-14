@@ -2,12 +2,6 @@ name: Build debug APK
 
 on:
   workflow_dispatch:
-    inputs:
-      signed_preflight:
-        description: Build an update signed with the existing release key (beta4 probe branch only)
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -17,7 +11,7 @@ env:
 
 jobs:
   debug-apk:
-    if: ${{ !inputs.signed_preflight }}
+    if: github.ref != 'refs/heads/feature/beta4-getter-probe-preflight'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +33,7 @@ jobs:
           retention-days: 1
 
   signed-probe-preflight:
-    if: ${{ inputs.signed_preflight && github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' }}
+    if: github.ref == 'refs/heads/feature/beta4-getter-probe-preflight'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
