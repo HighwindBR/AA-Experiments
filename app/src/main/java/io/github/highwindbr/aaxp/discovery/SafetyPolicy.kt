@@ -13,7 +13,13 @@ object SafetyPolicy {
 
     fun blockedReason(key: String): String? {
         val normalized = key.lowercase()
-        val match = blockedTokens.firstOrNull { it in normalized } ?: return null
+        // SSL/TLS are short acronyms: substring searches accidentally match unrelated
+        // compound identifiers such as WireleSSLatencyMonitor.
+        val words = key.split(Regex("(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|[^A-Za-z0-9]+"))
+            .filter { it.isNotBlank() }.map { it.lowercase() }
+        val match = blockedTokens.firstOrNull {
+            if (it == "ssl" || it == "tls") it in words else it in normalized
+        } ?: return null
         return "Read-only safety policy: identifier matched sensitive token '$match'. It remains catalogued for research."
     }
 }
