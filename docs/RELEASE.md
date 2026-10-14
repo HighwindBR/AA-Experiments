@@ -30,6 +30,8 @@ Public releases use the repository's configured GitHub signing secret; loss or r
 key breaks normal upgrade continuity and must be disclosed.
 
 
-Release artifacts also include the project `LICENSE` and `THIRD_PARTY_NOTICES.md`. The same
-third-party notices and GPL license text are packaged in the APK assets so recipients of the binary
-have the applicable legal notices alongside the application.
+GitHub Releases attach only the signed APK and its SHA-256 checksum. The project
+[`LICENSE`](../LICENSE) and [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) remain
+available in the source repository and are not uploaded as duplicate release assets.
+Both the GPL license text and third-party notices are also bundled inside the APK
+(`assets/LICENSE.txt` and `assets/THIRD_PARTY_NOTICES.txt`).
