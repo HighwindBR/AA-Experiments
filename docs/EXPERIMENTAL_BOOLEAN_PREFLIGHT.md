@@ -18,8 +18,8 @@ polarity has not been established.
 On the `feature/beta4-getter-probe-preflight` branch, trigger the manual
 **Build debug APK** workflow. That branch builds an **APK signed using the
 existing release keystore**, available as a temporary artifact rather than a
-tagged release. It uses `versionCode 144`, `versionName
-1.0.0-beta4-preflight1` and the existing application ID, permitting
+tagged release. It uses `versionCode 145`, `versionName
+1.0.0-beta4-preflight2` and the existing application ID, permitting
 an update over beta3 without removing app data. The ordinary debug-signed APK
 is not a compatible update.
 
