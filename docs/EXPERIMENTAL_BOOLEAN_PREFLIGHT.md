@@ -18,8 +18,8 @@ polarity has not been established.
 On the `feature/beta4-getter-probe-preflight` branch, trigger the manual
 **Build debug APK** workflow. That branch builds an **APK signed using the
 existing release keystore**, available as a temporary artifact rather than a
-tagged release. It uses `versionCode 145`, `versionName
-1.0.0-beta4-preflight2` and the existing application ID, permitting
+tagged release. It uses `versionCode 146`, `versionName
+1.0.0-beta4-preflight3` and the existing application ID, permitting
 an update over beta3 without removing app data. The ordinary debug-signed APK
 is not a compatible update.
 
@@ -36,16 +36,36 @@ is not a compatible update.
    override (including when it was *absent*). A subsequent experimental edit
    keeps the original baseline unchanged.
 5. Disconnect projection and fully restart the Android Auto process.
-6. Confirm `EXPERIMENT_HOOK_INSTALLED` and `OVERRIDE_RETURNED` with the
-   selected value (or an error event) in the LSPosed/Termux log:
-   
-   ```sh
-   su -c 'logcat -d -v time -s AAExperiments:V' |
-     grep -E 'EXPERIMENT_|OVERRIDE_RETURNED|PROFILE_'
-   ```
+6. In **LSPosed → Logs → Module logs**, search for the exact flag or
+   `EXPERIMENT_`. The LSPosed API 101/102 module log is **not guaranteed**
+   to be mirrored into Android's ordinary `logcat`; a blank Termux grep
+   does not demonstrate failure. Save/export the LSPosed logs after testing.
+7. Look for these `AAX_EVENT` messages from the **same process/PID**:
+   - `PROFILE_ACCEPTED` with `"experimental":"1"` — profile loaded;
+   - `EXPERIMENT_HOOK_INSTALLED` — getter hook registered;
+   - `EXPERIMENT_SNAPSHOT_LOADED` with `"status":"VALID"` — experiment
+     snapshot was accessible and compatible at installation or invocation;
+   - `EXPERIMENT_GETTER_INVOKED` — the hooked getter was called;
+   - `EXPERIMENT_OVERRIDE_RETURNED` with `"source":"EXPERIMENTAL"`
+     and `"value":"false"` (or `"true"`) — the experimental hook
+     returned the selected value;
+   - `EXPERIMENT_FALLBACK` with a `reason` — the original getter was
+     executed instead, e.g. `ABSENT`, `DISABLED`, `BUILD_MISMATCH`,
+     or `INVALID_VALUE`.
 
-The return event proves the value was returned by the installed hook, **not**
-that Android Auto visually changed. Test the UI separately, while parked.
+Each event/state is emitted at most once per process; changing the BOOLEAN
+value produces a distinct return event. The logs contain only event names,
+reason codes and the experimental BOOLEAN, never the raw preference snapshot.
+`EXPERIMENT_SNAPSHOT_LOADED` is status telemetry, not an assertion that a
+hooked getter executed.
+
+Existing `HOOK_INSTALLED`, `ORIGINAL_RETURNED` and
+`OVERRIDE_RETURNED` are emitted by the **normal** override path and must
+not be confused with the new `EXPERIMENT_*` events. A past process may
+still log its old normal hook until it is fully restarted.
+
+A return event proves the hook returned the value, **not** that Android Auto
+visually changed. Test appearance separately, while parked.
 
 ## Recover
 

@@ -32,6 +32,7 @@ public final class AndroidAutoModule extends XposedModule {
     private final OverrideSnapshot overrideSnapshot = new OverrideSnapshot();
     private final Map<String, String> lastReturnEvent = new ConcurrentHashMap<>();
     private final Map<String, Boolean> probedCalls = new ConcurrentHashMap<>();
+    private final ExperimentalEventLimiter experimentalEvents = new ExperimentalEventLimiter();
     private SharedPreferences remotePreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
             (preferences, key) -> refreshSnapshot(preferences);
@@ -152,33 +153,46 @@ public final class AndroidAutoModule extends XposedModule {
             if (method.getParameterCount() != 0 || !"()Z".equals(descriptor(method))) {
                 event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "changed_signature"); return;
             }
+            // Installation proves method resolution, not invocation. Report snapshot
+            // availability independently before the first getter call.
             hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
-                String raw = overrideSnapshot.get(ExperimentalBooleanPolicy.RECORD_KEY);
-                if (raw == null) return chain.proceed();
-                try {
-                    JSONObject record = new JSONObject(raw);
-                    if (record.optInt("schema") != 1 || !record.optBoolean("active", false)
-                            || !key.equals(record.optString("key"))
-                            || !buildFingerprint.equals(record.optString("build"))
-                            || !className.equals(record.optString("targetClass"))
-                            || !methodName.equals(record.optString("targetMethod"))
-                            || !descriptor.equals(record.optString("descriptor"))) {
-                        return chain.proceed();
-                    }
-                    boolean value = record.getBoolean("value");
-                    logReturnOnce(key, "OVERRIDE_RETURNED", "EXPERIMENTAL_BOOLEAN:" + value, value);
-                    return value;
-                } catch (Throwable malformed) {
-                    event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", "invalid_snapshot");
+                eventOnce(Log.INFO, "EXPERIMENT_GETTER_INVOKED", key, "first");
+                ExperimentalBooleanDecision.Result decision = inspectExperimentalSnapshot(
+                        key, buildFingerprint, className, methodName, descriptor);
+                if (!decision.shouldOverride()) {
+                    eventOnce(Log.WARN, "EXPERIMENT_FALLBACK", key,
+                            decision.status.name(), "reason", decision.status.name());
                     return chain.proceed();
                 }
+                String value = String.valueOf(decision.value);
+                eventOnce(Log.INFO, "EXPERIMENT_OVERRIDE_RETURNED", key, value,
+                        "source", "EXPERIMENTAL", "value", value);
+                return decision.value;
             });
+            inspectExperimentalSnapshot(key, buildFingerprint, className, methodName, descriptor);
             event(Log.INFO, "EXPERIMENT_HOOK_INSTALLED", key, "target", className + "." + methodName + descriptor);
         } catch (ClassNotFoundException | NoSuchMethodException | LinkageError failure) {
             event(Log.WARN, "EXPERIMENT_REJECTED", key, "reason", failure.getClass().getSimpleName());
         } catch (Throwable failure) {
             event(Log.ERROR, "EXPERIMENT_HOOK_FAILED", key, "reason", failure.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Experimental getter hook failed", failure);
+        }
+    }
+
+    private ExperimentalBooleanDecision.Result inspectExperimentalSnapshot(
+            String key, String build, String cls, String method, String descriptor) {
+        ExperimentalBooleanDecision.Result decision = ExperimentalBooleanDecision.evaluate(
+                overrideSnapshot.get(ExperimentalBooleanPolicy.RECORD_KEY), key, build,
+                cls, method, descriptor);
+        // No snapshot JSON, user data, or app state is ever written to the logs.
+        eventOnce(Log.INFO, "EXPERIMENT_SNAPSHOT_LOADED", key,
+                decision.status.name(), "status", decision.status.name());
+        return decision;
+    }
+
+    private void eventOnce(int priority, String eventName, String key, String state, String... fields) {
+        if (experimentalEvents.first(eventName, key, state)) {
+            event(priority, eventName, key, fields);
         }
     }
 
