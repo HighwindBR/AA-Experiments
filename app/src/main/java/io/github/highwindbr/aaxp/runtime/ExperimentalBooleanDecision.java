@@ -41,7 +41,16 @@ public final class ExperimentalBooleanDecision {
             if (record.optInt("schema", -1) != 1) return reject(Status.UNSUPPORTED_SCHEMA);
             if (!expectedKey.equals(record.optString("key", ""))) return reject(Status.KEY_MISMATCH);
             if (!expectedBuild.equals(record.optString("build", ""))) return reject(Status.BUILD_MISMATCH);
-            if (!expectedClass.equals(record.optString("targetClass", ""))) return reject(Status.CLASS_MISMATCH);
+            // The analyzer persists DEX class names (e.g. "Ladic;" or
+            // "Lcom/example/Flag;"). The runtime receives the equivalent
+            // Java binary name ("adic" or "com.example.Flag"). Accept only
+            // these two exact representations of the same resolved class.
+            // Do not weaken the getter, method, build or ABI comparisons.
+            String savedClass = record.optString("targetClass", "");
+            String expectedDexClass = "L" + expectedClass.replace('.', '/') + ";";
+            if (!expectedClass.equals(savedClass) && !expectedDexClass.equals(savedClass)) {
+                return reject(Status.CLASS_MISMATCH);
+            }
             if (!expectedMethod.equals(record.optString("targetMethod", ""))) return reject(Status.METHOD_MISMATCH);
             if (!expectedDescriptor.equals(record.optString("descriptor", ""))) return reject(Status.DESCRIPTOR_MISMATCH);
             Object active = record.opt("active");

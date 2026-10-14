@@ -18,10 +18,27 @@ polarity has not been established.
 On the `feature/beta4-getter-probe-preflight` branch, trigger the manual
 **Build debug APK** workflow. That branch builds an **APK signed using the
 existing release keystore**, available as a temporary artifact rather than a
-tagged release. It uses `versionCode 146`, `versionName
-1.0.0-beta4-preflight3` and the existing application ID, permitting
+tagged release. It uses `versionCode 147`, `versionName
+1.0.0-beta4-preflight4` and the existing application ID, permitting
 an update over beta3 without removing app data. The ordinary debug-signed APK
 is not a compatible update.
+
+## Preflight4: fixed DEX/Java class-name mismatch
+
+The preflight3 LSPosed archive on Android Auto 18.0 showed a real call to
+`adic.d()Z`, but the experimental override fell back with `CLASS_MISMATCH`.
+The existing saved snapshot has a DEX class descriptor (`Ladic;`) whereas
+the installed hook receives a Java binary name (`adic`). These identify
+the same class; preflight4 now accepts the exact DEX or Java spelling
+while retaining all other identity checks. **The saved experimental
+snapshot and original baseline remain untouched**; no reset, overwrite,
+or new confirmation is needed solely to migrate the class representation.
+
+After updating to preflight4, disconnect projection, restart the Android
+Auto process, and check LSPosed module logs for
+`EXPERIMENT_SNAPSHOT_LOADED` with `VALID`, followed by
+`EXPERIMENT_GETTER_INVOKED` and `EXPERIMENT_OVERRIDE_RETURNED`.
+If the last event is absent, export the logs for another diagnosis.
 
 ## Activate
 

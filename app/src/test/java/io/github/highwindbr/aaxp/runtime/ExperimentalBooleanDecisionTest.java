@@ -40,6 +40,44 @@ public class ExperimentalBooleanDecisionTest {
         assertFalse(f.value);
     }
 
+    @Test public void dexAndJavaClassRepresentationsMatchExactly() throws Exception {
+        for (boolean value : new boolean[] { true, false }) {
+            // Actual AA 18.0 snapshot stores "Ladic;" while runtime uses "adic".
+            ExperimentalBooleanDecision.Result oldSnapshot =
+                    read(valid(value).put("targetClass", "Ladic;").toString());
+            assertEquals(ExperimentalBooleanDecision.Status.VALID, oldSnapshot.status);
+            assertTrue(oldSnapshot.shouldOverride());
+            assertEquals(value, oldSnapshot.value);
+
+            // Existing Java-form snapshots must remain valid.
+            assertTrue(read(valid(value).toString()).shouldOverride());
+        }
+        JSONObject qualified = valid(false).put("targetClass", "Lcom/example/Flag;");
+        ExperimentalBooleanDecision.Result qualifiedResult =
+                ExperimentalBooleanDecision.evaluate(qualified.toString(), KEY, BUILD,
+                        "com.example.Flag", METHOD, DESC);
+        assertEquals(ExperimentalBooleanDecision.Status.VALID, qualifiedResult.status);
+        assertFalse(qualifiedResult.value);
+    }
+
+    @Test public void malformedOrDifferentClassNamesStillFailClosed() throws Exception {
+        for (String different : new String[] {
+                "Lother;", "Ladic", "Ladic;;", "ladic;", "Lother/adic;",
+                "com.example.adic", "Lcom/example/adic;"
+        }) {
+            rejects(valid(false).put("targetClass", different),
+                    ExperimentalBooleanDecision.Status.CLASS_MISMATCH);
+        }
+        assertEquals(ExperimentalBooleanDecision.Status.BUILD_MISMATCH,
+                ExperimentalBooleanDecision.evaluate(valid(false).put("targetClass", "Ladic;")
+                        .put("build", "other").toString(), KEY, BUILD,
+                        CLASS, METHOD, DESC).status);
+        assertEquals(ExperimentalBooleanDecision.Status.METHOD_MISMATCH,
+                ExperimentalBooleanDecision.evaluate(valid(false).put("targetClass", "Ladic;")
+                        .put("targetMethod", "another").toString(), KEY, BUILD,
+                        CLASS, METHOD, DESC).status);
+    }
+
     @Test public void unavailableAndMalformedSnapshotsFallBack() throws Exception {
         assertEquals(ExperimentalBooleanDecision.Status.ABSENT, read(null).status);
         assertEquals(ExperimentalBooleanDecision.Status.MALFORMED_JSON, read("{oops").status);
