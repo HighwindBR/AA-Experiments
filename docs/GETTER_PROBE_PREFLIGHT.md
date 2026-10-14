@@ -20,9 +20,14 @@ are not changed by arming a probe.
 
 ## How to test
 
-1. Install the preflight APK as a normal update **only if it is signed with the
-   same signing key as the installed AA Experiments**. CI-generated debug APKs
-   may have a different key. Do not uninstall the existing app just for this test.
+1. Create a signed test update without publishing any release. Open
+   **Actions → Build debug APK → Run workflow** on branch
+   `feature/beta4-getter-probe-preflight`, mark **signed_preflight=true**, and
+   download the `AA-Experiments-beta4-probe-signed-...` artifact. The APK is
+   inside the ZIP and is retained for one day. This uses the existing release
+   signing secrets. The package version is `1.0.0-beta4-preflight1`
+   (`versionCode 144`) so it can update beta3 without uninstalling.
+   **Do not install the ordinary debug-signed APK over beta3.**
 2. Keep Android Auto disconnected from the car while setting up the probe.
 3. Open **Settings → Diagnostics → Full catalog**. Search for one of the keys
    above. Open **View evidence → Read-only getter probe → Arm read-only probe**,
