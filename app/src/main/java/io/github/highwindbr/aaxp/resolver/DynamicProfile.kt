@@ -32,7 +32,16 @@ object DynamicProfile {
         val descriptor: String
     )
 
-    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList(), experimental: List<ExperimentalMapping> = emptyList()): String {
+    data class AdvancedMapping(
+        val key: String,
+        val className: String,
+        val methodName: String,
+        val descriptor: String,
+        val type: String,
+        val preferenceKey: String
+    )
+
+    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList(), experimental: List<ExperimentalMapping> = emptyList(), advanced: List<AdvancedMapping> = emptyList()): String {
         val mappings = JSONArray()
         values.forEach { value -> mappings.put(JSONObject().apply {
             put("key", value.key); put("preferenceKey", value.preferenceKey); put("className", value.className)
@@ -48,11 +57,18 @@ object DynamicProfile {
             put("key", item.key); put("className", item.className)
             put("methodName", item.methodName); put("descriptor", item.descriptor)
         }) }
+        val advancedRecords = JSONArray()
+        advanced.forEach { item -> advancedRecords.put(JSONObject().apply {
+            put("key", item.key); put("className", item.className)
+            put("methodName", item.methodName); put("descriptor", item.descriptor)
+            put("type", item.type); put("preferenceKey", item.preferenceKey)
+        }) }
         return JSONObject().apply {
             put("schemaVersion", 3); put("buildFingerprintSha256", buildFingerprintSha256); put("baseSha256", baseSha256)
             put("packageVersionCode", packageVersionCode); put("packageArtifactSha256", JSONObject(packageArtifactSha256))
             put("dexSha256", JSONObject(dexSha256)); put("mappings", mappings)
             put("probes", probeRecords); put("experimental", experimentalRecords)
+            put("advanced", advancedRecords)
         }.toString()
     }
 

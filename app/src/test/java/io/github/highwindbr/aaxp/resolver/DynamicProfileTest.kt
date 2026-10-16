@@ -52,6 +52,21 @@ class DynamicProfileTest {
         assertEquals(3, profile.getInt("schemaVersion"))
     }
 
+    @Test fun advancedMappingsHaveSeparateStorageAndTypedRuntimeMetadata() {
+        val entries = listOf(
+            DynamicProfile.AdvancedMapping("Example__long", "x.A", "a", "()J", "LONG", "advanced.v1.1"),
+            DynamicProfile.AdvancedMapping("Example__string", "x.B", "b", "()Ljava/lang/String;", "STRING", "advanced.v1.2")
+        )
+        val root = JSONObject(DynamicProfile.create("build", "base", 1, emptyMap(), emptyMap(),
+            emptyList(), emptyList(), emptyList(), entries))
+        assertEquals(3, root.getInt("schemaVersion"))
+        assertEquals(0, root.getJSONArray("mappings").length())
+        assertEquals(0, root.getJSONArray("experimental").length())
+        assertEquals(2, root.getJSONArray("advanced").length())
+        assertEquals("advanced.v1.1", root.getJSONArray("advanced").getJSONObject(0).getString("preferenceKey"))
+        assertEquals("LONG", root.getJSONArray("advanced").getJSONObject(0).getString("type"))
+    }
+
     @Test fun emitsCompactDatabaseBackedMappings() {
         val mapping = DynamicProfile.Mapping("flag", "override.v2.hash", "a.b", "c", "()Z", "BOOLEAN")
         val root = JSONObject(DynamicProfile.create("build", "base", 42, mapOf("base" to "base"), mapOf("classes.dex" to "dex"), listOf(mapping)))

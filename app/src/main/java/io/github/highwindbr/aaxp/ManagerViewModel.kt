@@ -581,6 +581,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val resolved = database.identifiersByPreferenceKeys(aa.buildFingerprintSha256, snapshot.keys).toMap()
             val nameEditor = prefs?.edit()
             var recoveredNames = 0
+            val advancedRecords = allPrefs.mapNotNull { (key, raw) ->
+                if (!key.startsWith(AdvancedOverridePolicy.PREFIX)) null
+                else AdvancedOverrideRecord.decode(raw as? String)?.takeIf {
+                    AdvancedOverridePolicy.preferenceKey(it.key) == key
+                }
+            }
             val experimental = ExperimentalBooleanSnapshot.decode(
                 allPrefs[ExperimentalBooleanPolicy.RECORD_KEY] as? String)
             val activeExperiment = experimental?.takeIf { it.active && it.buildFingerprint == aa.buildFingerprintSha256 }
@@ -631,14 +637,33 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     id.key, className, getter.methodName, getter.descriptor
                 ))
             }.orEmpty()
+            val reserved = (mappings.map { Triple(it.className, it.methodName, it.descriptor) } +
+                probes.map { Triple(it.className, it.methodName, it.descriptor) } +
+                experimentalMappings.map { Triple(it.className, it.methodName, it.descriptor) }).toMutableSet()
+            val advancedMappings = mutableListOf<DynamicProfile.AdvancedMapping>()
+            advancedRecords.filter { it.active && it.buildFingerprint == aa.buildFingerprintSha256 }.forEach { record ->
+                val id = database.details(aa.buildFingerprintSha256, record.key)
+                if (id != null && AdvancedOverridePolicy.matches(id, record, aa.buildFingerprintSha256)) {
+                    val getter = id.getterCandidates.single()
+                    val cls = getter.className.removePrefix("L").removeSuffix(";").replace('/', '.')
+                    val token = Triple(cls, getter.methodName, getter.descriptor)
+                    if (reserved.add(token)) advancedMappings += DynamicProfile.AdvancedMapping(
+                        id.key, cls, getter.methodName, getter.descriptor,
+                        id.inferredType.name, AdvancedOverridePolicy.preferenceKey(id.key)
+                    )
+                }
+            }
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
-                aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes, experimentalMappings)
+                aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes,
+                experimentalMappings, advancedMappings)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
-                experimental, published.isSuccess && experimentalMappings.isNotEmpty())
+                experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
+                advancedRecords, if (published.isSuccess) advancedMappings.size else 0)
         } }
         result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,
             suspendedOverrides=outcome.suspended, probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
+            advancedRecords=outcome.advanced, advancedPublishedCount=outcome.advancedPublishedCount,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }

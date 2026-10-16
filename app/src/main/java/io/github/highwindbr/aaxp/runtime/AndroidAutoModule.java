@@ -72,9 +72,13 @@ public final class AndroidAutoModule extends XposedModule {
             JSONArray experimental = profile.optJSONArray("experimental");
             if (experimental != null) for (int i = 0; i < experimental.length(); i++)
                 installExperimental(param.getClassLoader(), experimental.getJSONObject(i), identity.getFingerprintSha256());
+            JSONArray advanced = profile.optJSONArray("advanced");
+            if (advanced != null) for (int i = 0; i < advanced.length(); i++)
+                installAdvanced(param.getClassLoader(), advanced.getJSONObject(i), identity.getFingerprintSha256());
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
                     "experimental", String.valueOf(experimental == null ? 0 : experimental.length()),
+                    "advanced", String.valueOf(advanced == null ? 0 : advanced.length()),
                     "build", identity.getFingerprintSha256().substring(0, 16));
         } catch (Throwable t) {
             event(Log.ERROR, "PROFILE_FAILED", null, "error", t.getClass().getSimpleName());
@@ -193,6 +197,56 @@ public final class AndroidAutoModule extends XposedModule {
     private void eventOnce(int priority, String eventName, String key, String state, String... fields) {
         if (experimentalEvents.first(eventName, key, state)) {
             event(priority, eventName, key, fields);
+        }
+    }
+
+    /** No arbitrary method or type: every candidate must be present in the validated
+     * build-scoped profile, use a supported ABI, and carry an exact matching remote
+     * record. Every failed decision calls through to the original implementation. */
+    private void installAdvanced(ClassLoader loader, JSONObject mapping, String buildFingerprint) {
+        String key = mapping.optString("key", "<unknown>");
+        try {
+            String prefKey = mapping.getString("preferenceKey");
+            String expectedPrefKey = io.github.highwindbr.aaxp.core.AdvancedOverridePolicy.INSTANCE.preferenceKey(key);
+            if (!expectedPrefKey.equals(prefKey) || !key.contains("__") ||
+                    io.github.highwindbr.aaxp.discovery.SafetyPolicy.INSTANCE.blockedReason(key) != null) {
+                event(Log.WARN, "ADVANCED_REJECTED", key, "reason", "policy_denied");
+                return;
+            }
+            String cls = mapping.getString("className");
+            String methodName = mapping.getString("methodName");
+            String abi = mapping.getString("descriptor");
+            String type = mapping.getString("type");
+            if (!abi.equals(AdvancedRuntimeDecision.expectedDescriptor(type))) {
+                event(Log.WARN, "ADVANCED_REJECTED", key, "reason", "unsupported_abi"); return;
+            }
+            Class<?> owner = Class.forName(cls, false, loader);
+            Method getter = owner.getDeclaredMethod(methodName);
+            if (getter.getParameterCount() != 0 || !abi.equals(descriptor(getter))) {
+                event(Log.WARN, "ADVANCED_REJECTED", key, "reason", "changed_signature"); return;
+            }
+            hook(getter).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                eventOnce(Log.INFO, "ADVANCED_GETTER_INVOKED", key, "first");
+                AdvancedRuntimeDecision.Result value = AdvancedRuntimeDecision.evaluate(
+                        overrideSnapshot.get(prefKey), key, buildFingerprint,
+                        cls, methodName, abi, type);
+                if (!value.shouldOverride()) {
+                    eventOnce(Log.WARN, "ADVANCED_FALLBACK", key, value.status.name(),
+                            "reason", value.status.name());
+                    return chain.proceed();
+                }
+                // One return event per key/value/process. We never log STRING contents.
+                String reportedValue = "STRING".equals(type) ? "<redacted>" : String.valueOf(value.value);
+                eventOnce(Log.INFO, "ADVANCED_OVERRIDE_RETURNED", key, type + ":" + reportedValue,
+                        "type", type, "value", reportedValue);
+                return value.value;
+            });
+            event(Log.INFO, "ADVANCED_HOOK_INSTALLED", key, "target", cls + "." + methodName + abi);
+        } catch (ClassNotFoundException | NoSuchMethodException | LinkageError missing) {
+            event(Log.WARN, "ADVANCED_REJECTED", key, "reason", missing.getClass().getSimpleName());
+        } catch (Throwable failure) {
+            event(Log.ERROR, "ADVANCED_HOOK_FAILED", key, "reason", failure.getClass().getSimpleName());
+            log(Log.ERROR, TAG, "Advanced hook installation failed for " + key, failure);
         }
     }
 
