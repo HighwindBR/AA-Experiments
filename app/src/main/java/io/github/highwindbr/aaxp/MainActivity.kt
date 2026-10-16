@@ -692,12 +692,44 @@ private fun suspendedName(entry: SuspendedOverride): String =
     var runtime by remember { mutableStateOf<RuntimeConsumerStatus?>(null) }; var editable by remember { mutableStateOf(false) }
     var modified by remember { mutableStateOf(false) }; var killSwitch by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }; var filtersOpen by remember { mutableStateOf(false) }
+    var unlockTaps by remember { mutableIntStateOf(0) }
+    var advancedUnlocked by rememberSaveable { mutableStateOf(false) }
+    var advancedEnabled by rememberSaveable { mutableStateOf(false) }
+    var unlockWarning by remember { mutableStateOf(false) }
+    var advancedTarget by remember { mutableStateOf<DiscoveredIdentifier?>(null) }
+    var bulkRestoreWarning by remember { mutableStateOf(false) }
     val activeQuery = CatalogQuery(query, editableOnly = editable, includeUnknown = includeUnknown, kind = kind, type = type, resolution = resolution,
         runtimeStatus = runtime, reviewedOnly = reviewed, killSwitchOnly = killSwitch, overrideKeys = if (modified) state.dynamicOverrides.keys else null)
     LaunchedEffect(state.aa.buildFingerprintSha256, query, includeUnknown, kind, type, resolution, reviewed, runtime, editable, modified, killSwitch, state.dynamicOverrides.keys) {
         delay(300); model.searchCatalog(activeQuery)
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Full Catalog", fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable {
+                    if (!advancedUnlocked) {
+                        unlockTaps++
+                        if (unlockTaps >= 7) { unlockWarning = true; unlockTaps = 0 }
+                    }
+                }.padding(vertical = 6.dp))
+            if (advancedUnlocked) TextButton({ advancedEnabled = !advancedEnabled }) {
+                Text(if (advancedEnabled) "Advanced: ON" else "Advanced: OFF")
+            }
+        }
+        if (advancedEnabled) {
+            Text("UNSAFE ADVANCED OVERRIDES · not automatically reused after an AA build change",
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            val total = state.advancedRecords.size
+            val active = state.advancedRecords.count { it.active &&
+                it.buildFingerprint == state.aa.buildFingerprintSha256 }
+            Text("$active active / $total saved · ${state.advancedPublishedCount} published",
+                style = MaterialTheme.typography.labelSmall)
+            if (total > 0) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton({ model.pauseAllAdvanced() }) { Text("Pause all") }
+                OutlinedButton({ bulkRestoreWarning = true }) { Text("Restore baselines") }
+            }
+        }
         OutlinedTextField(query, { query = it }, label = { Text("Search the complete catalog") }, trailingIcon = { IconButton({ filtersOpen=true }) { Icon(Icons.Default.FilterList, "Filters") } }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { TextButton({ exportOpen = true }) { Text("Export discoveries") } }
         Text("Showing ${state.catalog.size} of ${state.catalogTotal}. Search and filters run against the complete database.", style = MaterialTheme.typography.labelSmall)
@@ -705,6 +737,13 @@ private fun suspendedName(entry: SuspendedOverride): String =
             items(state.catalog, key = { it.key }) { item -> Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
                 Text(item.key, fontWeight = FontWeight.Medium); Text("${item.kind} · ${item.storageType} / ${item.semanticType} · ${item.resolution}${if (item.editable) " · Editable" else ""}", style = MaterialTheme.typography.labelSmall)
                 TextButton({ model.loadDetails(item.key) }) { Text("View evidence") }
+                if (advancedEnabled) {
+                    val record = state.advancedRecords.firstOrNull { it.key == item.key }
+                    Text(if (record != null) "Advanced: ${if (record.active) "stored" else "paused"}"
+                        else if (AdvancedOverridePolicy.issue(item) == null) "Advanced candidate"
+                        else "Read-only in advanced mode",
+                        style = MaterialTheme.typography.labelSmall)
+                }
             } } }
             if (state.catalog.size < state.catalogTotal) item { OutlinedButton({ model.searchCatalog(activeQuery.copy(offset = state.catalog.size), append = true) }, Modifier.fillMaxWidth()) { Text("Load 500 more") } }
         }
@@ -714,8 +753,32 @@ private fun suspendedName(entry: SuspendedOverride): String =
         IdentifierDetailsDialog(it, model::clearDetails, state.probeTargetKey,
             state.aa.runtimeTarget && state.framework.connected, model::setReadOnlyProbe,
             state.experimentalSnapshot, state.experimentalProfileReady, state.aa.buildFingerprintSha256,
-            state.message, model::setExperimentalBoolean, model::pauseExperimentalBoolean, model::restoreExperimentalBaseline)
+            state.message, model::setExperimentalBoolean, model::pauseExperimentalBoolean,
+            model::restoreExperimentalBaseline, advancedEnabled, { id ->
+                model.clearDetails()
+                advancedTarget = id
+            })
     }
+    advancedTarget?.let { id ->
+        AdvancedOverrideEditor(id, state.advancedRecords.firstOrNull { it.key == id.key },
+            state.aa.buildFingerprintSha256, state.advancedPublishedCount, state.message,
+            model::setAdvancedOverride, model::pauseAdvancedOverride, model::resumeAdvancedOverride,
+            model::restoreAdvancedBaseline, { advancedTarget = null })
+    }
+    if (unlockWarning) AlertDialog(onDismissRequest = { unlockWarning = false },
+        title = { Text("Unlock unsafe overrides?") },
+        text = { Text("Wrong values may cause Android Auto crashes, repeated setup, lost projection, or require clearing application data. Safety-sensitive, unsupported and ambiguous entries stay read-only. After updating Android Auto, old experimental values remain suspended.") },
+        confirmButton = { TextButton({
+            unlockWarning = false; advancedUnlocked = true; advancedEnabled = true
+        }) { Text("Understand · unlock") } },
+        dismissButton = { TextButton({ unlockWarning = false }) { Text("Cancel") } })
+    if (bulkRestoreWarning) AlertDialog(onDismissRequest = { bulkRestoreWarning = false },
+        title = { Text("Restore all current-build baselines?") },
+        text = { Text("Restores the exact previous normal override or its absence, while leaving historical records from other Android Auto builds preserved. Restart Android Auto afterward.") },
+        confirmButton = { TextButton({
+            bulkRestoreWarning = false; model.restoreAllAdvanced()
+        }) { Text("Restore") } },
+        dismissButton = { TextButton({ bulkRestoreWarning = false }) { Text("Cancel") } })
     if (exportOpen) ExportDialog({ exportOpen = false }, model::requestCatalogExport)
     if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Catalog filters", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
@@ -938,7 +1001,9 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     feedback: String?,
     onExperimentalSet: (DiscoveredIdentifier, Boolean) -> Unit,
     onExperimentalPause: () -> Unit,
-    onExperimentalRestore: () -> Unit
+    onExperimentalRestore: () -> Unit,
+    advancedEnabled: Boolean,
+    onOpenAdvanced: (DiscoveredIdentifier) -> Unit
 ) {
     var experimentalConfirmation by remember(identifier.key) { mutableStateOf<Boolean?>(null) }
     var restoreExperimentConfirmation by remember(identifier.key) { mutableStateOf(false) }
@@ -984,6 +1049,21 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                 Spacer(Modifier.height(8.dp))
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     item { StatusCard("Runtime consumer", "${identifier.runtimeConsumerStatus} · ${identifier.consumers.size} retained path(s)") }
+                    if (advancedEnabled) item {
+                        val issue = AdvancedOverridePolicy.issue(identifier)
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Advanced Overrides", fontWeight = FontWeight.Bold)
+                                Text(issue?.let { "Read-only: $it" } ?:
+                                    "Typed getter identified; effects and accepted value domain are not guaranteed.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                Button({ onOpenAdvanced(identifier) }, enabled = issue == null) {
+                                    Text("Open advanced editor")
+                                }
+                            }
+                        }
+                    }
                     if (identifier.key in GetterProbePolicy.supportedKeys) item {
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
