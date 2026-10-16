@@ -39,8 +39,10 @@ public class AdvancedRuntimeDecisionTest {
         assertTrue(read(raw,"LONG").shouldOverride());
         assertEquals(AdvancedRuntimeDecision.Status.CLASS_MISMATCH,
             AdvancedRuntimeDecision.evaluate(raw, "Feature__setting","sha","foo.NotBar","a","()J","LONG").status);
-        assertEquals(AdvancedRuntimeDecision.Status.TYPE_MISMATCH,
+        assertEquals(AdvancedRuntimeDecision.Status.DESCRIPTOR_MISMATCH,
             AdvancedRuntimeDecision.evaluate(raw,"Feature__setting","sha","foo.Bar","a","()D","DOUBLE").status);
+        assertEquals(AdvancedRuntimeDecision.Status.TYPE_MISMATCH,
+            AdvancedRuntimeDecision.evaluate(raw,"Feature__setting","sha","foo.Bar","a","()J","DOUBLE").status);
         assertEquals(AdvancedRuntimeDecision.Status.METHOD_MISMATCH,
             AdvancedRuntimeDecision.evaluate(raw,"Feature__setting","sha","foo.Bar","b","()J","LONG").status);
     }
