@@ -42,6 +42,8 @@ data class ManagerUiState(
     val probeTargetKey: String? = null,
     val experimentalSnapshot: ExperimentalBooleanSnapshot? = null,
     val experimentalProfileReady: Boolean = false,
+    val advancedRecords: List<AdvancedOverrideRecord> = emptyList(),
+    val advancedPublishedCount: Int = 0,
     val changes: CatalogChangeSummary? = null,
     val catalogDeltas: List<EditableCatalogDelta> = emptyList(),
     val hiddenSuspendedKeys: Set<String> = emptySet(),
@@ -58,7 +60,7 @@ enum class ExportScope { EDITABLE, MODIFIED, ALL_DISCOVERIES }
 enum class ExportFormat { JSON, CSV }
 data class ExportPayload(val fileName: String, val mimeType: String, val content: String)
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
