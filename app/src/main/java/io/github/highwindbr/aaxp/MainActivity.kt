@@ -197,7 +197,13 @@ private val AaDarkScheme = darkColorScheme(
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel, onViewDelta: (ExperimentFilter) -> Unit) {
     var auditOpen by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
-    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
+    val activeAdvanced = state.advancedRecords.count {
+        it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
+    }
+    val oldExperimental = if (state.experimentalSnapshot?.active == true &&
+        state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0
+    val runtime = runtimeReadiness(state.aa, state.framework,
+        state.dynamicOverrides.size + activeAdvanced + oldExperimental, state.profilePublished)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item { ScreenTitle("Status", "Environment, resolver and runtime readiness") }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -229,6 +235,21 @@ private val AaDarkScheme = darkColorScheme(
             }, style = MaterialTheme.typography.labelSmall,
                 color = if (matchesBuild && record.active && state.experimentalProfileReady)
                     MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+        }
+        if (state.advancedRecords.isNotEmpty()) {
+            val count = state.advancedRecords.count {
+                it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
+            }
+            Text("Advanced Overrides: $count active · ${state.advancedRecords.size} retained · ${state.advancedPublishedCount} published",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (count > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton({ model.pauseAllAdvanced() }, enabled = count > 0) {
+                Icon(Icons.Default.Security, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Emergency: pause all Advanced")
+            }
+            Text("Available even when the hidden editor is locked. Reboot Android Auto to remove installed hooks.",
+                style = MaterialTheme.typography.labelSmall)
         }
         state.changes?.let { change ->
             Text("Editable flags since the previous catalog:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
