@@ -309,6 +309,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val result = withContext(Dispatchers.IO) { runCatching {
             require(mutable.value.aa.runtimeTarget) { "Imported archives are read-only; refresh the installed Android Auto before editing." }
             require(identifier.editable) { identifier.reason ?: "Identifier is read-only" }
+            require(ServiceBridge.dynamicPreferencesOrNull()?.getString(
+                AdvancedOverridePolicy.preferenceKey(identifier.key), null) == null) {
+                "Restore the advanced baseline before editing normally."
+            }
             require(!(identifier.key == ExperimentalBooleanPolicy.KEY &&
                 mutable.value.experimentalSnapshot?.buildFingerprint == mutable.value.aa.buildFingerprintSha256)) {
                 "Restore the experimental baseline before editing this flag normally."
@@ -372,6 +376,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 val current = checkNotNull(database.details(fingerprint, identifier.key)) { "Flag is not in the installed catalog" }
                 require(GetterProbePolicy.issue(current) == null) { GetterProbePolicy.issue(current) ?: "Not eligible" }
                 require(current.key == identifier.key)
+                require(ServiceBridge.dynamicPreferencesOrNull()?.getString(
+                    AdvancedOverridePolicy.preferenceKey(current.key), null) == null) {
+                    "Restore the advanced baseline before probing the getter."
+                }
                 require(current.key != ExperimentalBooleanPolicy.KEY ||
                     ExperimentalBooleanSnapshot.decode(ServiceBridge.dynamicPreferencesOrNull()?.getString(
                         ExperimentalBooleanPolicy.RECORD_KEY, null)) == null) {
@@ -487,6 +495,147 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             "Baseline restoration rejected: ${result.exceptionOrNull()?.message}")
     }
 
+    fun setAdvancedOverride(identifier: DiscoveredIdentifier, raw: String) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val build = aa.buildFingerprintSha256
+        if (!aa.runtimeTarget || build == null || !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "Advanced overrides require the installed AA and LSPosed service.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key)
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val id = checkNotNull(database.details(build, identifier.key))
+            require(AdvancedOverridePolicy.issue(id) == null) { AdvancedOverridePolicy.issue(id) ?: "Not eligible" }
+            require(probeKeyForBuild(build) != id.key) { "Disarm the read-only probe first." }
+            require(id.key != ExperimentalBooleanPolicy.KEY) { "Restore the legacy experimental baseline first." }
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val all = prefs.all
+            val recordKey = AdvancedOverridePolicy.preferenceKey(id.key)
+            val serialized = all[recordKey] as? String
+            val earlier = AdvancedOverrideRecord.decode(serialized)
+            require(serialized == null || earlier != null) { "Unreadable advanced snapshot; refusing to overwrite." }
+            require(earlier == null || AdvancedOverridePolicy.matches(id, earlier, build)) {
+                "Saved experiment belongs to another build or getter; keep it suspended."
+            }
+            val normalKey = DynamicOverrideCodec.preferenceKey(id.key)
+            val nameKey = DynamicOverrideCodec.namePreferenceKey(id.key)
+            val record = if (earlier == null) AdvancedOverridePolicy.newRecord(id, build, raw,
+                all[normalKey] as? String, all[nameKey] as? String, System.currentTimeMillis())
+            else earlier.copy(value = DynamicOverrideCodec.validate(earlier.type, raw).encodedValue, active = true)
+            require(prefs.edit().putString(recordKey, record.encode()).remove(normalKey).remove(nameKey).commit()) {
+                "Unable to atomically preserve the baseline."
+            }
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(saveState = SaveState.SAVED,
+                message = "Advanced value saved. Restart Android Auto and inspect the LSPosed events.")
+        } else mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+            message = "Advanced override rejected: ${result.exceptionOrNull()?.message}")
+    }
+
+    fun pauseAdvancedOverride(key: String) = setAdvancedActivity(key, false)
+    fun resumeAdvancedOverride(key: String) = setAdvancedActivity(key, true)
+
+    private fun setAdvancedActivity(key: String, enabled: Boolean) = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val storageKey = AdvancedOverridePolicy.preferenceKey(key)
+            val record = checkNotNull(AdvancedOverrideRecord.decode(prefs.getString(storageKey, null)))
+            require(record.key == key && record.buildFingerprint == build) { "Record from another AA build." }
+            if (enabled) {
+                val id = checkNotNull(database.details(build, key))
+                require(AdvancedOverridePolicy.matches(id, record, build)) { "Method/type changed; cannot resume." }
+            }
+            require(prefs.edit().putString(storageKey, record.copy(active = enabled).encode()).commit())
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                "Advanced override ${if (enabled) "resumed" else "paused"}; restart AA.")
+        } else mutable.value = mutable.value.copy(message = "Advanced change failed: ${result.exceptionOrNull()?.message}")
+    }
+
+    fun restoreAdvancedBaseline(key: String) = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val storageKey = AdvancedOverridePolicy.preferenceKey(key)
+            val record = checkNotNull(AdvancedOverrideRecord.decode(prefs.getString(storageKey, null))) {
+                "Missing or unreadable baseline"
+            }
+            require(record.key == key && record.buildFingerprint == build) {
+                "Cannot restore previous build's baseline on the current build."
+            }
+            val normalKey = DynamicOverrideCodec.preferenceKey(key)
+            val nameKey = DynamicOverrideCodec.namePreferenceKey(key)
+            val edit = prefs.edit().remove(storageKey)
+            if (record.previousOverride == null) edit.remove(normalKey)
+            else edit.putString(normalKey, record.previousOverride)
+            if (record.previousName == null) edit.remove(nameKey)
+            else edit.putString(nameKey, record.previousName)
+            require(edit.commit())
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message = "Advanced baseline restored, including previous absence. Restart AA.")
+        } else mutable.value = mutable.value.copy(message = "Restore failed: ${result.exceptionOrNull()?.message}")
+    }
+
+    fun pauseAllAdvanced() = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val editor = prefs.edit()
+            prefs.all.forEach { (name, value) ->
+                if (name.startsWith(AdvancedOverridePolicy.PREFIX)) {
+                    val record = checkNotNull(AdvancedOverrideRecord.decode(value as? String))
+                    require(AdvancedOverridePolicy.preferenceKey(record.key) == name) { "Invalid advanced storage key." }
+                    if (record.buildFingerprint == build) editor.putString(name, record.copy(active = false).encode())
+                }
+            }
+            require(editor.commit())
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message = "All current-build Advanced overrides paused; restart AA.")
+        } else mutable.value = mutable.value.copy(message = "Pause all rejected: ${result.exceptionOrNull()?.message}")
+    }
+
+    fun restoreAllAdvanced() = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val records = prefs.all.filterKeys { it.startsWith(AdvancedOverridePolicy.PREFIX) }
+                .map { (key, value) ->
+                    val record = checkNotNull(AdvancedOverrideRecord.decode(value as? String)) {
+                        "Unreadable advanced record; abort restore."
+                    }
+                    require(AdvancedOverridePolicy.preferenceKey(record.key) == key) { "Invalid record key." }
+                    key to record
+                }.filter { it.second.buildFingerprint == build }
+            val editor = prefs.edit()
+            records.forEach { (storageKey, record) ->
+                editor.remove(storageKey)
+                val normalKey = DynamicOverrideCodec.preferenceKey(record.key)
+                val nameKey = DynamicOverrideCodec.namePreferenceKey(record.key)
+                if (record.previousOverride == null) editor.remove(normalKey)
+                else editor.putString(normalKey, record.previousOverride)
+                if (record.previousName == null) editor.remove(nameKey)
+                else editor.putString(nameKey, record.previousName)
+            }
+            require(editor.commit())
+            records.size
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                "${result.getOrNull()} current-build Advanced baselines restored; restart Android Auto.")
+        } else mutable.value = mutable.value.copy(message =
+            "Bulk restore rejected: ${result.exceptionOrNull()?.message}")
+    }
+
     fun discardSuspendedOverride(preferenceKey: String) = viewModelScope.launch {
         if (!mutable.value.aa.runtimeTarget || !preferenceKey.startsWith(DynamicOverrideCodec.PREFIX)) return@launch
         val result = withContext(Dispatchers.IO) { runCatching {
@@ -506,7 +655,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val prefs = ServiceBridge.dynamicPreferencesOrNull() ?: return@withContext false
             val editor = prefs.edit().remove(ExperimentalBooleanPolicy.RECORD_KEY)
             prefs.all.keys.filter { it.startsWith(DynamicOverrideCodec.PREFIX) ||
-                it.startsWith(DynamicOverrideCodec.NAME_PREFIX) }.forEach(editor::remove)
+                it.startsWith(DynamicOverrideCodec.NAME_PREFIX) ||
+                it.startsWith(AdvancedOverridePolicy.PREFIX) }.forEach(editor::remove)
             editor.commit()
         }
         mutable.value = mutable.value.copy(saveState = if (ok) SaveState.SAVED else SaveState.FAILED)
@@ -534,8 +684,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING)
         val result = withContext(Dispatchers.IO) { runCatching {
             val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) { "Xposed service is not connected" }
-            require(prefs.getString(ExperimentalBooleanPolicy.RECORD_KEY, null) == null) {
-                "Restore the experimental baseline before importing standard overrides."
+            require(prefs.getString(ExperimentalBooleanPolicy.RECORD_KEY, null) == null &&
+                prefs.all.keys.none { it.startsWith(AdvancedOverridePolicy.PREFIX) }) {
+                "Restore experimental and advanced baselines before importing standard overrides."
             }
             val root = JSONObject(text); val schema = root.getInt("schemaVersion"); require(schema in 2..3) { "Unsupported schema" }
             val sameBuild = if (schema >= 3) root.optString("buildFingerprintSha256").equals(mutable.value.aa.buildFingerprintSha256, true)
