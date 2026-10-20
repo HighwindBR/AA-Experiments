@@ -27,6 +27,22 @@ class AdvancedOverridePolicyTest {
             "SomeFeature__config", DiscoveredType.BYTES)))
     }
 
+    @Test fun reviewedParkedTimingPassesStructuralEligibilityButSpeedRemainsBlocked() {
+        val parkedTiming = candidate(
+            "VideoTimingControllerFeature__video_timing_controller_min_delay_parked_exp_ms",
+            DiscoveredType.LONG
+        )
+        assertNull(AdvancedOverridePolicy.issue(parkedTiming))
+        assertNotNull(AdvancedOverridePolicy.issue(candidate(
+            "CarSensorParameters__max_parked_speed_gps_sensor", DiscoveredType.DOUBLE)))
+        assertNotNull(AdvancedOverridePolicy.issue(candidate(
+            "VideoTimingControllerFeature__unknown_parked_exp_flag", DiscoveredType.LONG)))
+        assertNotNull(AdvancedOverridePolicy.issue(parkedTiming.copy(
+            getterCandidates = emptyList()
+        )))
+        assertNotNull(AdvancedOverridePolicy.issue(parkedTiming.copy(editable = true)))
+    }
+
     @Test fun roundTripsPreviousAbsenceAndValidatesFingerprintAndType() {
         for ((type, value) in listOf(DiscoveredType.BOOLEAN to "false",
             DiscoveredType.LONG to "9223372036854775807",

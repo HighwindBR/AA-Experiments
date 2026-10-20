@@ -14,6 +14,7 @@ import io.github.highwindbr.aaxp.core.AdvancedOverridePolicy
 import io.github.highwindbr.aaxp.core.AdvancedOverrideRecord
 import io.github.highwindbr.aaxp.discovery.DiscoveredIdentifier
 import io.github.highwindbr.aaxp.discovery.DiscoveredType
+import io.github.highwindbr.aaxp.discovery.SafetyPolicy
 
 /**
  * Independent editor: the normal Experiments screen is never made unsafe.
@@ -33,6 +34,8 @@ fun AdvancedOverrideEditor(
     onClose: () -> Unit
 ) {
     val issue = AdvancedOverridePolicy.issue(identifier)
+    val elevatedRisk = SafetyPolicy.elevatedRiskReason(identifier.key)
+    val requiredConfirmation = if (elevatedRisk != null) "PARKED APPLY" else "APPLY"
     val belongsToBuild = record == null || record.buildFingerprint == build
     var raw by remember(identifier.key, record?.value) {
         mutableStateOf(record?.value ?: identifier.compiledDefault.orEmpty())
@@ -75,6 +78,14 @@ fun AdvancedOverrideEditor(
                             color = MaterialTheme.colorScheme.error)
                     }
                     if (issue != null) Text("READ ONLY — $issue", color = MaterialTheme.colorScheme.error)
+                    if (elevatedRisk != null && issue == null) {
+                        HorizontalDivider()
+                        Text("ELEVATED RISK · PARKED-MODE TIMING",
+                            fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                        Text(elevatedRisk, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
+                        Text("This flag configures a feature in parked mode; it does NOT change or spoof parking detection. Test only with a local head-unit emulator or while parked.")
+                    }
                     if (expected == DiscoveredType.BOOLEAN) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(selected = selected == "false", onClick = { raw = "false" },
@@ -119,7 +130,7 @@ fun AdvancedOverrideEditor(
     if (phase == 1) AlertDialog(
         onDismissRequest = { phase = 0 },
         title = { Text("Experimental value — first confirmation") },
-        text = { Text("Key: ${identifier.key}\nType: ${expected.name}\nCompiled default: ${identifier.compiledDefault ?: "unknown"}\nNew value: ${if (expected == DiscoveredType.STRING) "<string: ${raw.length} chars>" else selected}\nThe accepted domain and runtime behavior are not proven. Wrong values may break Android Auto.") },
+        text = { Text("Key: ${identifier.key}\nType: ${expected.name}\nCompiled default: ${identifier.compiledDefault ?: "unknown"}\nNew value: ${if (expected == DiscoveredType.STRING) "<string: ${raw.length} chars>" else selected}\nThe accepted domain and runtime behavior are not proven. Wrong values may break Android Auto." + (if (elevatedRisk != null) "\n\nELEVATED PARKED-MODE RISK: $elevatedRisk" else "")) },
         confirmButton = { TextButton({ phase = 2; acknowledgement = "" }) { Text("Continue") } },
         dismissButton = { TextButton({ phase = 0 }) { Text("Cancel") } }
     )
@@ -128,16 +139,16 @@ fun AdvancedOverrideEditor(
         title = { Text("Final confirmation") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("This applies only to the identified getter and current AA build. A baseline will be preserved for restoration. Type APPLY to proceed.")
+                Text("This applies only to the identified getter and current AA build. A baseline will be preserved for restoration. Type $requiredConfirmation to proceed.")
                 OutlinedTextField(acknowledgement, { acknowledgement = it },
-                    label = { Text("Type APPLY") }, singleLine = true)
+                    label = { Text("Type $requiredConfirmation") }, singleLine = true)
             }
         },
         confirmButton = {
             TextButton({
                 phase = 0
                 onSave(identifier, selected)
-            }, enabled = acknowledgement == "APPLY") { Text("Apply advanced value") }
+            }, enabled = acknowledgement == requiredConfirmation) { Text("Apply advanced value") }
         },
         dismissButton = { TextButton({ phase = 0 }) { Text("Cancel") } }
     )
