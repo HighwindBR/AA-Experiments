@@ -288,7 +288,7 @@ public final class AndroidAutoModule extends XposedModule {
                 Object result = chain.proceed();
                 if (!VideoTimingProtocolTrace.enabled(overrideSnapshot.get(VideoTimingProtocolTrace.KEY))) return result;
                 try {
-                    Object info = chain.getArgs()[0];
+                    Object info = chain.getArg(0);
                     int major = majorField.getInt(info);
                     int minor = minorField.getInt(info);
                     eventOnce(Log.INFO, "VTC_HU_PROTOCOL_OBSERVED", "VideoTimingController",
