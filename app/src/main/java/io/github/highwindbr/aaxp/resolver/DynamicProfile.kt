@@ -41,7 +41,7 @@ object DynamicProfile {
         val preferenceKey: String
     )
 
-    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList(), experimental: List<ExperimentalMapping> = emptyList(), advanced: List<AdvancedMapping> = emptyList()): String {
+    fun create(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, values: List<Mapping>, probes: List<Probe> = emptyList(), experimental: List<ExperimentalMapping> = emptyList(), advanced: List<AdvancedMapping> = emptyList(), videoTimingTrace: Boolean = false): String {
         val mappings = JSONArray()
         values.forEach { value -> mappings.put(JSONObject().apply {
             put("key", value.key); put("preferenceKey", value.preferenceKey); put("className", value.className)
@@ -69,6 +69,7 @@ object DynamicProfile {
             put("dexSha256", JSONObject(dexSha256)); put("mappings", mappings)
             put("probes", probeRecords); put("experimental", experimentalRecords)
             put("advanced", advancedRecords)
+            put("videoTimingTrace", videoTimingTrace)
         }.toString()
     }
 

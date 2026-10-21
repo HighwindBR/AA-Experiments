@@ -1,4 +1,4 @@
-# Advanced Overrides Mode (beta4 preflight6)
+# Advanced Overrides Mode (beta4 preflight7)
 
 This beta4 work is an opt-in capability **inside Open Full Catalog**, not
 an upgrade of the default Experiments editor. It does not treat all catalog
@@ -84,3 +84,66 @@ The legacy normal profiles and the original beta3 runtime path remain
 unchanged. This preflight is not a tagged release; install only an APK signed
 with the existing release key after public CI succeeds and the manually
 triggered signed-build workflow completes.
+
+## VTC protocol diagnostics and focused Advanced consumer tracing (preflight7)
+
+Android Auto 18.0.164204 DEX research showed that `Liyo.<init>(CarInfo)`
+reads `CarInfo.e` as the HU protocol **major** version. The ordinary timing
+branch is selected below version 6; at protocol major 6 or later, the
+`parked_exp` timing settings may be selected when `Liyo.d()` runs.
+Installing a getter hook does **not** prove this selector ran.
+
+### Opt-in read-only runtime trace
+
+In **Settings → Diagnostics → Video Timing protocol trace**, enable it
+only for the inspected base APK (SHA-256
+`cebd7c3c50885fb7dbb8fce202b5f33f0412c8f3801fac91a509da9482b9c60d`).
+A full Android Auto process restart installs two *read-only* observers:
+`Liyo.<init>(com.google.android.gms.car.CarInfo)` and
+`Liyo.d()Lxxe;`. The hooks always call `chain.proceed()`, never modify
+values, and check the remote trace-enabled preference at each invocation.
+
+Relevant LSPosed module events are `VTC_TRACE_INSTALLED`,
+`VTC_HU_PROTOCOL_OBSERVED` (`major`, `minor`, `expectedBranch`),
+`VTC_SELECTOR_INVOKED` and `VTC_BRANCH_SELECTED`
+(`branch`, `mode`, `normalFlag`). Logging omits manufacturer, model,
+VIN, vehicle IDs, Bluetooth addresses and all personal data.
+These events are deduplicated per process/state. The selector is
+only a **possible route**; logging it does not prove that the timing
+getter was invoked. Turn the diagnostic off after obtaining evidence
+and restart Android Auto to unload hook installations.
+
+Other AA builds are rejected, even when their class names look similar.
+This is a diagnostic feature: it does not expose the protocol fields to
+the editing UI.
+
+### Trace consumers (one getter)
+
+Within the unlocked **Open Full Catalog → View evidence → Advanced
+Overrides**, use **Trace consumers · read-only** on a structurally
+eligible noneditable Fenotype getter. This launches **one bounded
+directed analysis**, using the installed APK's DEX and the existing
+reverse-call-graph engine. Only that key is selected; the full
+50k-identifier catalog continues to skip consumer analysis for
+unreviewed read-only entries to preserve memory. Interface/wrapper
+paths are included in the graph evidence when statically traceable.
+
+The result updates **only** consumer evidence, runtime-consumer
+diagnostics and related metadata in the catalog DB, not permission,
+editability, compiled defaults, stored override baselines or getter
+fingerprints. It is not runtime tracing and cannot guarantee that a
+method runs in a vehicle. Large shared infrastructure fan-out may
+still produce a budget-limited result.
+
+### Test criteria
+
+- Off by default; profile contains `videoTimingTrace=false`.
+- Source build and method signatures verified before runtime hook
+  installation.
+- With a new AA session, observe actual HU protocol version and whether
+  `Liyo.d()` was reached; no vehicle-specific fields logged.
+- Run targeted consumer trace for
+  `VideoTimingControllerFeature__video_timing_controller_min_delay_parked_exp_ms`
+  and verify the saved evidence without affecting the existing LONG
+  override or its baseline.
+- Preflight release remains withheld until tests on the user's device.

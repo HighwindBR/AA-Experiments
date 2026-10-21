@@ -50,6 +50,8 @@ data class ManagerUiState(
     val resolverRun: ResolverRunSummary? = null,
     val deepResolvePending: Int = 0,
     val deepResolveRunning: Boolean = false,
+    val consumerTraceKey: String? = null,
+    val videoTimingTraceEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -60,7 +62,7 @@ enum class ExportScope { EDITABLE, MODIFIED, ALL_DISCOVERIES }
 enum class ExportFormat { JSON, CSV }
 data class ExportPayload(val fileName: String, val mimeType: String, val content: String)
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -223,6 +225,99 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     private fun reportScanProgress(progress: AnalysisProgress) {
         mutable.value = mutable.value.copy(scanProgress = progress)
+    }
+
+    /**
+     * One-key, explicit and read-only reverse call graph for Advanced getters.
+     * Does not modify getter identity, editor permissions, baseline or profiles.
+     */
+    fun traceAdvancedConsumers(key: String) = viewModelScope.launch {
+        if (mutable.value.deepResolveRunning || mutable.value.loading) {
+            mutable.value = mutable.value.copy(message = "Wait for the current catalog analysis to finish.")
+            return@launch
+        }
+        val aa = mutable.value.aa
+        val hash = aa.buildFingerprintSha256
+        val basePath = aa.basePath
+        if (!aa.runtimeTarget || hash == null || basePath == null) {
+            mutable.value = mutable.value.copy(message = "Consumer tracing requires the installed Android Auto build.")
+            return@launch
+        }
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val id = checkNotNull(database.details(hash, key)) { "Identifier not in this build." }
+            require(!id.editable && AdvancedOverridePolicy.issue(id) == null) {
+                "Only structurally eligible, non-editable Advanced getters may be traced."
+            }
+        } }
+        if (result.isFailure) {
+            mutable.value = mutable.value.copy(message = "Trace unavailable: ${result.exceptionOrNull()?.message}")
+            return@launch
+        }
+        deepResolveCancelRequested = false
+        keepAnalysisAlive(true)
+        mutable.value = mutable.value.copy(loading = true, deepResolveRunning = true,
+            consumerTraceKey = key, selectedDetails = null,
+            scanProgress = AnalysisProgress(AnalysisStage.DEEP_RESOLVING, 0, 1, "Tracing one Advanced getter"))
+        try {
+            val tracing = withContext(Dispatchers.IO) { runCatching {
+                val selected = setOf(key)
+                val baseline = database.compatibilityMappingsByKeys(hash, selected)
+                var found: DiscoveredIdentifier? = null
+                DexCatalogAnalyzer().analyze(
+                    File(basePath), aa.splitPaths.map(::File),
+                    previousMappings = baseline, previousBaseSha256 = hash,
+                    buildIdentity = BuildFingerprint.compute(aa.versionCode ?: 0,
+                        File(basePath), aa.splitPaths.map(::File)),
+                    deepResolveKeys = selected, streamDeepResolveResults = true,
+                    shouldContinueDeepResolve = { !deepResolveCancelRequested },
+                    onDeepResolveResult = { enriched, _, _ ->
+                        if (enriched.key == key) {
+                            database.updateDeepResolveResults(hash, listOf(enriched))
+                            found = enriched
+                        }
+                    },
+                    onProgress = ::reportScanProgress
+                )
+                checkNotNull(found) { "The getter was not located in the inspected DEX." }
+                val updated = checkNotNull(database.details(hash, key)) { "Saved evidence missing." }
+                updated
+            } }
+            tracing.onSuccess { updated ->
+                mutable.value = mutable.value.copy(
+                    selectedDetails = updated, message = "Consumer trace completed for $key: " +
+                        "${updated.consumers.size} static path(s); does not prove runtime invocation."
+                )
+            }.onFailure { error ->
+                mutable.value = mutable.value.copy(
+                    message = "Consumer trace failed: ${error.javaClass.simpleName}: ${error.message}"
+                )
+            }
+        } finally {
+            mutable.value = mutable.value.copy(loading = false, deepResolveRunning = false,
+                consumerTraceKey = null, scanProgress = null)
+            keepAnalysisAlive(false)
+        }
+    }
+
+    fun setVideoTimingProtocolTrace(enabled: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        if (!aa.runtimeTarget || !io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256)) {
+            mutable.value = mutable.value.copy(message = "Read-only VTC protocol tracing is pinned to the inspected Android Auto 18.0 base APK.")
+            return@launch
+        }
+        val ok = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY,
+                    enabled.toString())?.commit() == true
+        }
+        if (!ok) {
+            mutable.value = mutable.value.copy(message = "Cannot update VTC trace: LSPosed remote preferences unavailable.")
+            return@launch
+        }
+        refreshOverridesAndProfile()
+        mutable.value = mutable.value.copy(message = if (enabled)
+            "VTC read-only trace enabled. Restart Android Auto, then inspect LSPosed module logs."
+        else "VTC trace disabled. Existing hooks fail open; restart AA to unload them.")
     }
 
     fun deepResolveInconclusive() = viewModelScope.launch {
@@ -727,6 +822,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val result = withContext(Dispatchers.IO) { runCatching {
             val prefs = ServiceBridge.dynamicPreferencesOrNull()
             val allPrefs = prefs?.all.orEmpty()
+            val protocolTraceOn =
+                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256) &&
+                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
+                    allPrefs[io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY] as? String)
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()
@@ -808,15 +907,17 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
                 aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes,
-                experimentalMappings, advancedMappings)
+                experimentalMappings, advancedMappings, protocolTraceOn)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
-                advancedRecords, if (published.isSuccess) advancedMappings.size else 0)
+                advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
+                protocolTraceOn)
         } }
         result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,
             suspendedOverrides=outcome.suspended, probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
             advancedRecords=outcome.advanced, advancedPublishedCount=outcome.advancedPublishedCount,
+            videoTimingTraceEnabled=outcome.videoTimingTraceEnabled,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }

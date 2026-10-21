@@ -67,6 +67,19 @@ class DynamicProfileTest {
         assertEquals("LONG", root.getJSONArray("advanced").getJSONObject(0).getString("type"))
     }
 
+    @Test fun protocolTraceOptInIsOffByDefaultAndSeparateFromOverrides() {
+        val defaultProfile = JSONObject(DynamicProfile.create("build", "base", 42,
+            emptyMap(), emptyMap(), emptyList()))
+        assertEquals(false, defaultProfile.getBoolean("videoTimingTrace"))
+        val traceProfile = JSONObject(DynamicProfile.create("build", "base", 42,
+            emptyMap(), emptyMap(), emptyList(), emptyList(), emptyList(),
+            emptyList(), true))
+        assertEquals(true, traceProfile.getBoolean("videoTimingTrace"))
+        assertEquals(0, traceProfile.getJSONArray("mappings").length())
+        assertEquals(0, traceProfile.getJSONArray("advanced").length())
+        assertEquals(3, traceProfile.getInt("schemaVersion"))
+    }
+
     @Test fun emitsCompactDatabaseBackedMappings() {
         val mapping = DynamicProfile.Mapping("flag", "override.v2.hash", "a.b", "c", "()Z", "BOOLEAN")
         val root = JSONObject(DynamicProfile.create("build", "base", 42, mapOf("base" to "base"), mapOf("classes.dex" to "dex"), listOf(mapping)))

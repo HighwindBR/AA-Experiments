@@ -11,6 +11,8 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.lang.reflect.Method;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
@@ -75,6 +77,9 @@ public final class AndroidAutoModule extends XposedModule {
             JSONArray advanced = profile.optJSONArray("advanced");
             if (advanced != null) for (int i = 0; i < advanced.length(); i++)
                 installAdvanced(param.getClassLoader(), advanced.getJSONObject(i), identity.getFingerprintSha256());
+            if (profile.optBoolean("videoTimingTrace", false)) {
+                installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
+            }
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
                     "experimental", String.valueOf(experimental == null ? 0 : experimental.length()),
@@ -247,6 +252,84 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable failure) {
             event(Log.ERROR, "ADVANCED_HOOK_FAILED", key, "reason", failure.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Advanced hook installation failed for " + key, failure);
+        }
+    }
+
+    /**
+     * Optional diagnostic for AA 18.0, proven by the exact base APK hash.
+     * Hooks are observation-only: the original constructor and method always
+     * execute via chain.proceed() without modifying arguments or return values.
+     * Only protocol versions and the selection state are logged (no vehicle IDs).
+     */
+    private void installVideoTimingTrace(ClassLoader loader, String actualBaseSha256) {
+        if (!VideoTimingProtocolTrace.isSupported(actualBaseSha256)) {
+            event(Log.WARN, "VTC_TRACE_NOT_INSTALLED", null, "reason", "base_sha_mismatch");
+            return;
+        }
+        try {
+            Class<?> owner = Class.forName(VideoTimingProtocolTrace.CLASS, false, loader);
+            Class<?> carInfo = Class.forName(VideoTimingProtocolTrace.CAR_INFO_CLASS, false, loader);
+            Constructor<?> ctor = owner.getDeclaredConstructor(carInfo);
+            Method selector = owner.getDeclaredMethod(VideoTimingProtocolTrace.SELECTOR_METHOD);
+            if (!VideoTimingProtocolTrace.SELECTOR_DESCRIPTOR.equals(descriptor(selector))) {
+                event(Log.WARN, "VTC_TRACE_NOT_INSTALLED", null, "reason", "selector_signature_mismatch");
+                return;
+            }
+            Field majorField = carInfo.getDeclaredField("e");
+            Field minorField = carInfo.getDeclaredField("f");
+            Field modeField = owner.getDeclaredField("a");
+            Field normalField = owner.getDeclaredField("b");
+            majorField.setAccessible(true);
+            minorField.setAccessible(true);
+            modeField.setAccessible(true);
+            normalField.setAccessible(true);
+
+            hook(ctor).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                Object result = chain.proceed();
+                if (!VideoTimingProtocolTrace.enabled(overrideSnapshot.get(VideoTimingProtocolTrace.KEY))) return result;
+                try {
+                    Object info = chain.getArgs()[0];
+                    int major = majorField.getInt(info);
+                    int minor = minorField.getInt(info);
+                    eventOnce(Log.INFO, "VTC_HU_PROTOCOL_OBSERVED", "VideoTimingController",
+                            major + "." + minor, "major", String.valueOf(major),
+                            "minor", String.valueOf(minor),
+                            "expectedBranch", VideoTimingProtocolTrace.protocolBranch(major));
+                } catch (Throwable observationError) {
+                    eventOnce(Log.WARN, "VTC_TRACE_READ_FAILED", "CarInfo",
+                            observationError.getClass().getSimpleName(),
+                            "reason", observationError.getClass().getSimpleName());
+                }
+                return result;
+            });
+
+            hook(selector).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                if (VideoTimingProtocolTrace.enabled(overrideSnapshot.get(VideoTimingProtocolTrace.KEY))) {
+                    eventOnce(Log.INFO, "VTC_SELECTOR_INVOKED", "VideoTimingController", "first");
+                    try {
+                        Object instance = chain.getThisObject();
+                        int mode = modeField.getInt(instance);
+                        boolean normal = normalField.getBoolean(instance);
+                        String branch = VideoTimingProtocolTrace.selectorBranch(mode, normal);
+                        eventOnce(Log.INFO, "VTC_BRANCH_SELECTED", "VideoTimingController",
+                                branch, "branch", branch, "mode", String.valueOf(mode),
+                                "normalFlag", String.valueOf(normal));
+                    } catch (Throwable observationError) {
+                        eventOnce(Log.WARN, "VTC_TRACE_READ_FAILED", "Liyo.d",
+                                observationError.getClass().getSimpleName(),
+                                "reason", observationError.getClass().getSimpleName());
+                    }
+                }
+                return chain.proceed();
+            });
+            event(Log.INFO, "VTC_TRACE_INSTALLED", null,
+                    "target", "iyo.<init>(CarInfo) + iyo.d()Lxxe;",
+                    "mode", "READ_ONLY", "build", actualBaseSha256.substring(0, 16));
+        } catch (ClassNotFoundException | NoSuchMethodException | NoSuchFieldException | LinkageError incompatible) {
+            event(Log.WARN, "VTC_TRACE_NOT_INSTALLED", null, "reason", incompatible.getClass().getSimpleName());
+        } catch (Throwable failure) {
+            event(Log.ERROR, "VTC_TRACE_HOOK_FAILED", null, "reason", failure.getClass().getSimpleName());
+            log(Log.ERROR, TAG, "VideoTiming protocol observation hook failed", failure);
         }
     }
 

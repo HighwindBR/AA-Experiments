@@ -71,7 +71,11 @@ object ConsumerGraphAnalyzer {
             // Consumer analysis is intentionally a cold diagnostic for hookable entries only.
             // Catalog-only literals must not multiply the reverse-graph working set.
             val reviewed = ManualReferenceLayer.find(baseSha256, identifier.key)
-            if (getters.isEmpty() || (!identifier.editable && reviewed == null)) return@map identifier.also(onIdentifier)
+            // Full catalog: keep the cheap shortcut for read-only, unreviewed
+            // symbols. Explicit one-key Deep Resolve: trace them anyway, since
+            // Advanced Overrides deliberately operates on this exact cohort.
+            if (getters.isEmpty() || (!targetedTraversal && !identifier.editable && reviewed == null))
+                return@map identifier.also(onIdentifier)
             val normalWouldExhaust = directedRetryVisitedNodes != null && directedRetryVisitedNodes > maxVisitedNodes &&
                 wouldExhaust(getters, maxVisitedNodes, reverseCalls, interfaceDispatch, superclassByClass, maxDepth)
             val directedRetry = directedRetries < maxDirectedRetries && normalWouldExhaust
