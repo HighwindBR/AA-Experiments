@@ -147,3 +147,15 @@ still produce a budget-limited result.
   and verify the saved evidence without affecting the existing LONG
   override or its baseline.
 - Preflight release remains withheld until tests on the user's device.
+
+### Directed consumer evidence: regression invariant
+
+The one-key reverse-graph scanner requires a **proven value-flow edge**
+before promoting a caller to a semantic consumer. A bare `invoke-*` in
+an obfuscated DEX is not sufficient. The directed traversal tests use
+`InvokeCallOutcome.BRANCHED` when the synthetic renderer demonstrably
+branches on the getter's return. A separate negative test preserves
+`VALUE_FLOW_NOT_PROVEN` and `DORMANT` for the same synthetic call with
+unknown value flow. This avoids false claims that a method is actually
+used just because a matching invocation is present.
+
