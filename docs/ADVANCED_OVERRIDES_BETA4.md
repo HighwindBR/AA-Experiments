@@ -1,4 +1,4 @@
-# Advanced Overrides Mode (beta4 preflight9)
+# Advanced Overrides Mode (beta4 preflight10)
 
 This beta4 work is an opt-in capability **inside Open Full Catalog**, not
 an upgrade of the default Experiments editor. It does not treat all catalog
@@ -204,3 +204,67 @@ runtime conditions, timing override values, stored baselines or
 the advanced safety policy. The prior 41 ms LONG record can remain
 paused during protocol observation. Version:
 `1.0.0-beta4-preflight9` (`versionCode 152`).
+
+## Controlled LONG hook handoff — beta4 preflight10
+
+This is a **temporary, single-flag validation path**, not a general
+permission to edit already-approved normal getters through Advanced.
+The only supported getter is
+`Assistant__icon_experiment_variant` → `Laczh;->l()J`,
+compiled default `0`, on the exact inspected Android Auto
+18.0.164204 base (SHA-256 pinned in `LongHandoffPolicy.EXPECTED_BASE`).
+The manager requires an already-stored, named normal `LONG:3`
+override. Value changes of any kind are **disallowed**: experimental
+return `3` must match the original normal value `3`.
+
+### Safety model
+
+- The original normal preference `override.v2.* = LONG:3` and name
+  preference remain **unchanged** at every stage. This is deliberate:
+  a running normal hook continues to return 3 until the target is
+  restarted with a newly published profile.
+- Arming an Advanced handoff saves a separate, build-scoped,
+  getter-fingerprinted snapshot with
+  `handoffMode=NORMAL_LONG_VALIDATION` and `previousOverride=LONG:3`.
+  The Advanced profile receives the getter **instead of**, never in
+  addition to, the normal mapping. A defensive runtime collision check
+  refuses a profile carrying the same method in both lists.
+- **Pause** leaves `LONG:3` unchanged and publishes the normal mapping
+  for future AA processes. A previously installed Advanced hook
+  returns the preserved normal `3` while the process remains alive,
+  and logs `LONG_HANDOFF_BASELINE_RETURNED`, instead of falling back
+  to compiled default 0.
+- **Resume** rechecks the exact build, getter fingerprint and original
+  normal preference, then publishes the Advanced mapping again.
+- **Restore baseline** removes only the handoff snapshot, retaining the
+  original normal preference byte-for-byte. Restore-all and Pause-all
+  respect the same invariant.
+- An AA upgrade never resumes an old handoff automatically. Build,
+  getter identity and opcode hash checks remain mandatory.
+- Normal Experiments editing is disabled while an Advanced handoff
+  record exists, to prevent changing the original baseline.
+- The specific `LONG:3` and name are validated again by the runtime
+  on each Advanced call; a tampered/missing record falls back to
+  returning the preserved normal 3 rather than default 0.
+- The UI requires two confirmations, ending with typing `HANDOFF 3`.
+  The feature is visible only within the previously unlocked
+  **Full Catalog → View evidence** dialog for that exact identifier.
+
+### Device acceptance
+
+1. With the existing normal Assistant override `3` and the same
+   Android Auto 18.0 build, arm the LONG 3→3 handoff, restart the target
+   process, and verify there is **one** relevant runtime hook.
+2. Confirm `ADVANCED_HOOK_INSTALLED`,
+   `ADVANCED_GETTER_INVOKED` and
+   `ADVANCED_OVERRIDE_RETURNED` with `type=LONG`, `value=3`.
+   A normal `OVERRIDE_RETURNED` event alone does not prove Advanced.
+3. Pause without editing the normal value. On a fresh AA process,
+   confirm the normal hook returns 3, not 0. A stale Advanced hook
+   may emit `LONG_HANDOFF_BASELINE_RETURNED` before restart.
+4. Resume and verify advanced return again after target restart;
+   restore the baseline and confirm the normal editor still shows 3.
+5. The temporary permission should be removed or disabled before the
+   final tagged beta4 release.
+
+No APK or release is published by the code change alone.

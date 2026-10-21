@@ -590,6 +590,50 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             "Baseline restoration rejected: ${result.exceptionOrNull()?.message}")
     }
 
+    /**
+     * Beta4-only shadow handoff for the already proven Assistant LONG getter.
+     * Preserve the normal preference LONG:3 throughout the experiment: ONLY
+     * the build-scoped profile decides which single hook owns the getter.
+     */
+    fun startLongHandoff() = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val build = aa.buildFingerprintSha256
+        if (!aa.runtimeTarget || build == null || !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "LONG handoff requires installed AA and LSPosed.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(saveState = SaveState.SAVING,
+            saveTargetKey = LongHandoffPolicy.KEY, message = null)
+        val result = withContext(Dispatchers.IO) { runCatching {
+            val id = checkNotNull(database.details(build, LongHandoffPolicy.KEY))
+            require(LongHandoffPolicy.issue(id, aa.baseSha256) == null) {
+                LongHandoffPolicy.issue(id, aa.baseSha256) ?: "Not eligible"
+            }
+            require(probeKeyForBuild(build) != LongHandoffPolicy.KEY) {
+                "Disarm the competing getter probe first."
+            }
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+            val recordKey = AdvancedOverridePolicy.preferenceKey(LongHandoffPolicy.KEY)
+            require(prefs.getString(recordKey, null) == null) {
+                "Restore the existing Advanced record before starting a new handoff."
+            }
+            val normalKey = DynamicOverrideCodec.preferenceKey(LongHandoffPolicy.KEY)
+            val nameKey = DynamicOverrideCodec.namePreferenceKey(LongHandoffPolicy.KEY)
+            val record = LongHandoffPolicy.record(id, build, aa.baseSha256,
+                prefs.getString(normalKey, null), prefs.getString(nameKey, null),
+                System.currentTimeMillis())
+            require(prefs.edit().putString(recordKey, record.encode()).commit()) {
+                "Could not atomically save the handoff record."
+            }
+        } }
+        if (result.isSuccess) {
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(saveState = SaveState.SAVED,
+                message = "LONG 3→3 handoff armed; original LONG:3 is intact. Restart Android Auto and check ADVANCED_OVERRIDE_RETURNED.")
+        } else mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+            message = "LONG handoff rejected: ${result.exceptionOrNull()?.message}")
+    }
+
     fun setAdvancedOverride(identifier: DiscoveredIdentifier, raw: String) = viewModelScope.launch {
         val aa = mutable.value.aa
         val build = aa.buildFingerprintSha256
@@ -641,7 +685,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             require(record.key == key && record.buildFingerprint == build) { "Record from another AA build." }
             if (enabled) {
                 val id = checkNotNull(database.details(build, key))
-                require(AdvancedOverridePolicy.matches(id, record, build)) { "Method/type changed; cannot resume." }
+                require(AdvancedOverridePolicy.matches(id, record, build, mutable.value.aa.baseSha256)) {
+                    "Method/type changed; cannot resume."
+                }
+                if (record.handoffMode != null) require(LongHandoffPolicy.baselineIntact(
+                    record, prefs.getString(DynamicOverrideCodec.preferenceKey(key), null),
+                    prefs.getString(DynamicOverrideCodec.namePreferenceKey(key), null))) {
+                    "Original LONG:3 changed; cannot resume."
+                }
             }
             require(prefs.edit().putString(storageKey, record.copy(active = enabled).encode()).commit())
         } }
@@ -666,10 +717,20 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val normalKey = DynamicOverrideCodec.preferenceKey(key)
             val nameKey = DynamicOverrideCodec.namePreferenceKey(key)
             val edit = prefs.edit().remove(storageKey)
-            if (record.previousOverride == null) edit.remove(normalKey)
-            else edit.putString(normalKey, record.previousOverride)
-            if (record.previousName == null) edit.remove(nameKey)
-            else edit.putString(nameKey, record.previousName)
+            if (record.handoffMode != null) {
+                require(record.handoffMode == LongHandoffPolicy.MODE &&
+                    record.buildFingerprint == build &&
+                    LongHandoffPolicy.baselineIntact(record,
+                        prefs.getString(normalKey, null), prefs.getString(nameKey, null))) {
+                    "Normal LONG baseline changed; refuse to overwrite it."
+                }
+                // Shadow handoff NEVER removed the normal preference.
+            } else {
+                if (record.previousOverride == null) edit.remove(normalKey)
+                else edit.putString(normalKey, record.previousOverride)
+                if (record.previousName == null) edit.remove(nameKey)
+                else edit.putString(nameKey, record.previousName)
+            }
             require(edit.commit())
         } }
         if (result.isSuccess) {
@@ -715,10 +776,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 editor.remove(storageKey)
                 val normalKey = DynamicOverrideCodec.preferenceKey(record.key)
                 val nameKey = DynamicOverrideCodec.namePreferenceKey(record.key)
-                if (record.previousOverride == null) editor.remove(normalKey)
-                else editor.putString(normalKey, record.previousOverride)
-                if (record.previousName == null) editor.remove(nameKey)
-                else editor.putString(nameKey, record.previousName)
+                if (record.handoffMode != null) {
+                    require(record.handoffMode == LongHandoffPolicy.MODE &&
+                        LongHandoffPolicy.baselineIntact(record,
+                            prefs.getString(normalKey, null), prefs.getString(nameKey, null))) {
+                        "Normal LONG baseline changed; abort entire restore-all."
+                    }
+                } else {
+                    if (record.previousOverride == null) editor.remove(normalKey)
+                    else editor.putString(normalKey, record.previousOverride)
+                    if (record.previousName == null) editor.remove(nameKey)
+                    else editor.putString(nameKey, record.previousName)
+                }
             }
             require(editor.commit())
             records.size
@@ -889,13 +958,34 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     id.key, className, getter.methodName, getter.descriptor
                 ))
             }.orEmpty()
+            // Handoff controls hook ownership, not the stored normal LONG:3.
+            // Keep the preference intact so an already-running normal hook can
+            // continue returning 3 until AA restarts into its new profile.
+            val handoff = advancedRecords.singleOrNull {
+                it.key == LongHandoffPolicy.KEY && it.active &&
+                    it.buildFingerprint == aa.buildFingerprintSha256 &&
+                    it.handoffMode == LongHandoffPolicy.MODE
+            }
+            val handoffId = handoff?.let {
+                database.details(aa.buildFingerprintSha256, LongHandoffPolicy.KEY)
+            }
+            val handoffValid = handoff != null && handoffId != null &&
+                LongHandoffPolicy.matches(handoffId, handoff,
+                    aa.buildFingerprintSha256, aa.baseSha256) &&
+                LongHandoffPolicy.baselineIntact(handoff,
+                    allPrefs[DynamicOverrideCodec.preferenceKey(LongHandoffPolicy.KEY)] as? String,
+                    allPrefs[DynamicOverrideCodec.namePreferenceKey(LongHandoffPolicy.KEY)] as? String)
+            if (handoffValid) {
+                mappings.removeAll { it.key == LongHandoffPolicy.KEY }
+            }
             val reserved = (mappings.map { Triple(it.className, it.methodName, it.descriptor) } +
                 probes.map { Triple(it.className, it.methodName, it.descriptor) } +
                 experimentalMappings.map { Triple(it.className, it.methodName, it.descriptor) }).toMutableSet()
             val advancedMappings = mutableListOf<DynamicProfile.AdvancedMapping>()
             advancedRecords.filter { it.active && it.buildFingerprint == aa.buildFingerprintSha256 }.forEach { record ->
                 val id = database.details(aa.buildFingerprintSha256, record.key)
-                if (id != null && AdvancedOverridePolicy.matches(id, record, aa.buildFingerprintSha256)) {
+                if (id != null && AdvancedOverridePolicy.matches(id, record, aa.buildFingerprintSha256, aa.baseSha256) &&
+                    (record.handoffMode == null || (handoffValid && record.key == LongHandoffPolicy.KEY))) {
                     val getter = id.getterCandidates.single()
                     val cls = getter.className.removePrefix("L").removeSuffix(";").replace('/', '.')
                     val token = Triple(cls, getter.methodName, getter.descriptor)

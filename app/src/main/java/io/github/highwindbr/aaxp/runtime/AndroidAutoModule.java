@@ -75,8 +75,25 @@ public final class AndroidAutoModule extends XposedModule {
             if (experimental != null) for (int i = 0; i < experimental.length(); i++)
                 installExperimental(param.getClassLoader(), experimental.getJSONObject(i), identity.getFingerprintSha256());
             JSONArray advanced = profile.optJSONArray("advanced");
-            if (advanced != null) for (int i = 0; i < advanced.length(); i++)
-                installAdvanced(param.getClassLoader(), advanced.getJSONObject(i), identity.getFingerprintSha256());
+            if (advanced != null) for (int i = 0; i < advanced.length(); i++) {
+                JSONObject candidate = advanced.getJSONObject(i);
+                boolean conflict = false;
+                for (int j = 0; j < mappings.length(); j++) {
+                    JSONObject normal = mappings.getJSONObject(j);
+                    if (normal.optString("className").equals(candidate.optString("className")) &&
+                            normal.optString("methodName").equals(candidate.optString("methodName")) &&
+                            normal.optString("descriptor").equals(candidate.optString("descriptor"))) {
+                        conflict = true; break;
+                    }
+                }
+                if (conflict) {
+                    event(Log.WARN, "ADVANCED_REJECTED", candidate.optString("key"),
+                            "reason", "duplicate_normal_hook");
+                } else {
+                    installAdvanced(param.getClassLoader(), candidate,
+                            identity.getFingerprintSha256(), identity.getBaseSha256());
+                }
+            }
             if (profile.optBoolean("videoTimingTrace", false)) {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
             }
@@ -208,7 +225,8 @@ public final class AndroidAutoModule extends XposedModule {
     /** No arbitrary method or type: every candidate must be present in the validated
      * build-scoped profile, use a supported ABI, and carry an exact matching remote
      * record. Every failed decision calls through to the original implementation. */
-    private void installAdvanced(ClassLoader loader, JSONObject mapping, String buildFingerprint) {
+    private void installAdvanced(ClassLoader loader, JSONObject mapping,
+            String buildFingerprint, String baseSha256) {
         String key = mapping.optString("key", "<unknown>");
         try {
             String prefKey = mapping.getString("preferenceKey");
@@ -222,6 +240,12 @@ public final class AndroidAutoModule extends XposedModule {
             String methodName = mapping.getString("methodName");
             String abi = mapping.getString("descriptor");
             String type = mapping.getString("type");
+            if (LongHandoffRuntime.KEY.equals(key) &&
+                    (!LongHandoffRuntime.isTarget(key, cls, methodName, abi, type) ||
+                     !LongHandoffRuntime.isExpectedBase(baseSha256))) {
+                event(Log.WARN, "ADVANCED_REJECTED", key, "reason", "handoff_target_or_build_mismatch");
+                return;
+            }
             if (!abi.equals(AdvancedRuntimeDecision.expectedDescriptor(type))) {
                 event(Log.WARN, "ADVANCED_REJECTED", key, "reason", "unsupported_abi"); return;
             }
@@ -232,9 +256,30 @@ public final class AndroidAutoModule extends XposedModule {
             }
             hook(getter).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
                 eventOnce(Log.INFO, "ADVANCED_GETTER_INVOKED", key, "first");
+                String rawRecord = overrideSnapshot.get(prefKey);
+                if (LongHandoffRuntime.KEY.equals(key)) {
+                    // The normal LONG:3 preference remains stored throughout
+                    // the handoff. A stale Advanced hook must still return 3
+                    // after Pause/Restore, even before a process restart.
+                    String normal = overrideSnapshot.get(
+                            io.github.highwindbr.aaxp.core.DynamicOverrideCodec.INSTANCE.preferenceKey(key));
+                    String name = overrideSnapshot.get(
+                            io.github.highwindbr.aaxp.core.DynamicOverrideCodec.INSTANCE.namePreferenceKey(key));
+                    if (!LongHandoffRuntime.baselineIntact(normal, name) ||
+                            !LongHandoffRuntime.activeSnapshot(rawRecord,
+                                    buildFingerprint, cls, methodName, abi, type)) {
+                        if (LongHandoffRuntime.baselineIntact(normal, name)) {
+                            eventOnce(Log.INFO, "LONG_HANDOFF_BASELINE_RETURNED", key, "normal:3",
+                                    "type", "LONG", "value", "3");
+                            return LongHandoffRuntime.BASELINE_VALUE;
+                        }
+                        eventOnce(Log.WARN, "LONG_HANDOFF_BASELINE_MISSING", key, "unsafe",
+                                "reason", "original_normal_value_missing");
+                        return chain.proceed();
+                    }
+                }
                 AdvancedRuntimeDecision.Result value = AdvancedRuntimeDecision.evaluate(
-                        overrideSnapshot.get(prefKey), key, buildFingerprint,
-                        cls, methodName, abi, type);
+                        rawRecord, key, buildFingerprint, cls, methodName, abi, type);
                 if (!value.shouldOverride()) {
                     eventOnce(Log.WARN, "ADVANCED_FALLBACK", key, value.status.name(),
                             "reason", value.status.name());

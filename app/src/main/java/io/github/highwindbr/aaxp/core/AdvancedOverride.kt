@@ -20,7 +20,8 @@ data class AdvancedOverrideRecord(
     val previousOverride: String?,
     val previousName: String?,
     val active: Boolean,
-    val createdAtMillis: Long
+    val createdAtMillis: Long,
+    val handoffMode: String? = null
 ) {
     fun encode(): String = JSONObject().apply {
         put("schema", 1); put("key", key); put("type", type.name); put("value", value)
@@ -30,6 +31,7 @@ data class AdvancedOverrideRecord(
         put("previousOverride", previousOverride ?: JSONObject.NULL)
         put("previousName", previousName ?: JSONObject.NULL)
         put("active", active); put("createdAtMillis", createdAtMillis)
+        if (handoffMode != null) put("handoffMode", handoffMode)
     }.toString()
 
     companion object {
@@ -44,11 +46,16 @@ data class AdvancedOverrideRecord(
             val name = json.optString("previousName").takeUnless { json.isNull("previousName") }
             require(previous == null || DynamicOverrideCodec.deserialize(previous)?.type == type)
             require(key.isNotBlank())
+            val mode = if (json.isNull("handoffMode")) null else json.optString("handoffMode").takeIf { it.isNotBlank() }
+            require(mode == null || (mode == LongHandoffPolicy.MODE &&
+                key == LongHandoffPolicy.KEY && type == DiscoveredType.LONG &&
+                value == LongHandoffPolicy.EFFECTIVE && previous == LongHandoffPolicy.ORIGINAL &&
+                name == LongHandoffPolicy.KEY))
             AdvancedOverrideRecord(
                 key, type, value, json.getString("build"), json.getString("targetClass"),
                 json.getString("targetMethod"), json.getString("descriptor"),
                 json.getString("opcodeFingerprint"), json.getInt("instructionCount"),
-                previous, name, json.getBoolean("active"), json.getLong("createdAtMillis")
+                previous, name, json.getBoolean("active"), json.getLong("createdAtMillis"), mode
             )
         }.getOrNull()
     }
@@ -92,7 +99,10 @@ object AdvancedOverridePolicy {
         return null
     }
 
-    fun matches(id: DiscoveredIdentifier, record: AdvancedOverrideRecord, build: String): Boolean {
+    fun matches(id: DiscoveredIdentifier, record: AdvancedOverrideRecord, build: String,
+        baseSha256: String? = null): Boolean {
+        if (record.handoffMode != null)
+            return LongHandoffPolicy.matches(id, record, build, baseSha256)
         if (record.key != id.key || record.buildFingerprint != build ||
             record.type != id.inferredType || issue(id) != null) return false
         val getter = id.getterCandidates.single()
