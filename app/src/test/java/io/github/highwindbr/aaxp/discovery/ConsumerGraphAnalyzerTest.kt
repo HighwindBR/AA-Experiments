@@ -52,8 +52,12 @@ class ConsumerGraphAnalyzerTest {
 
     @Test fun oneKeyTargetedTraceReachesConsumerForNonEditableGetter() {
         val getter = method("LreadOnly;", "a")
+        // Directed tracing intentionally rejects UNKNOWN value-flow edges.
+        // The synthetic renderer must explicitly show that it branches on the
+        // getter's result; merely recording an invoke is not sufficient.
         val caller = method("Lcomponent;", "render", "()V",
             listOf("LreadOnly;->a()Z"))
+            .withFlow("LreadOnly;->a()Z" to InvokeCallOutcome.BRANCHED)
         val id = DiscoveredIdentifier(
             "VideoTimingControllerFeature__video_timing_controller_min_delay_parked_exp_ms",
             IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.BOOLEAN, "false",
@@ -72,6 +76,26 @@ class ConsumerGraphAnalyzerTest {
         assertEquals(1, targeted.consumers.size)
         assertEquals("Lcomponent;", targeted.consumers.single().method.className)
         assertTrue(!targeted.editable)
+    }
+
+    @Test fun targetedConsumerTraceDoesNotTreatUnknownValueFlowAsProven() {
+        val getter = method("LreadOnly;", "a")
+        val unprovenCaller = method("Lcomponent;", "render", "()V",
+            listOf("LreadOnly;->a()Z"))
+        val id = DiscoveredIdentifier(
+            "Feature__non_editable", IdentifierNamespace.FENOTYPE_FLAG,
+            DiscoveredType.BOOLEAN, "false", emptyList(), listOf(getter),
+            ResolutionConfidence.UNIQUE_GETTER, null, false
+        )
+        val traced = ConsumerGraphAnalyzer.enrich(listOf(id), listOf(
+            ConsumerGraphAnalyzer.MethodRecord(getter, emptyList(), "Ljava/lang/Object;"),
+            ConsumerGraphAnalyzer.MethodRecord(unprovenCaller, emptyList(), "Ljava/lang/Object;",
+                ConsumerGraphAnalyzer.ConsumerCategory.RENDERER)
+        ), targetedTraversal = true).single()
+        assertTrue(traced.consumers.isEmpty())
+        assertEquals(RuntimeConsumerStatus.DORMANT, traced.runtimeConsumerStatus)
+        assertEquals("VALUE_FLOW_NOT_PROVEN", traced.metadata["targetedResolutionReason"])
+        assertTrue(!traced.editable)
     }
 
     @Test fun aGetterlessReadOnlyEntryIsStillSkippedInTargetedTrace() {
