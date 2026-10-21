@@ -1,4 +1,4 @@
-# Advanced Overrides Mode (beta4 preflight8)
+# Advanced Overrides Mode (beta4 preflight9)
 
 This beta4 work is an opt-in capability **inside Open Full Catalog**, not
 an upgrade of the default Experiments editor. It does not treat all catalog
@@ -181,3 +181,26 @@ an eligible full record and a connected installed-build context.
 
 This change is UI-only relative to preflight7; it does not change
 runtime hooks, existing preference records or the safety policy.
+
+## Diagnostics UI wiring — preflight9
+
+The preflight8 module contained the build-pinned `VideoTimingProtocolTrace`
+runtime hooks and `ManagerViewModel.setVideoTimingProtocolTrace`, but
+the switch had accidentally been omitted from `DiagnosticsScreen`.
+The dedicated **Video Timing protocol trace · read-only** card now appears
+in **Settings → Diagnostics**, directly after the DEX files section.
+It displays **OFF**, **ARMED**, or **Unavailable** according to the
+installed build and stored preference.
+
+**Enable VTC trace** is shown only as actionable when LSPosed remote
+preferences are connected and the installed AA base SHA-256 matches the
+exact 18.0 base analyzed previously. When enabled, the user must restart
+the Android Auto target process to install the read-only hooks. The card
+also provides a **Disable VTC trace** action and lists the expected
+structured LSPosed events.
+
+This is a UI integration correction. It does not change the trace's
+runtime conditions, timing override values, stored baselines or
+the advanced safety policy. The prior 41 ms LONG record can remain
+paused during protocol observation. Version:
+`1.0.0-beta4-preflight9` (`versionCode 152`).
