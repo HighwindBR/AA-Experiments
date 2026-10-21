@@ -1,4 +1,4 @@
-# Advanced Overrides Mode (beta4 preflight7)
+# Advanced Overrides Mode (beta4 preflight8)
 
 This beta4 work is an opt-in capability **inside Open Full Catalog**, not
 an upgrade of the default Experiments editor. It does not treat all catalog
@@ -159,3 +159,25 @@ branches on the getter's return. A separate negative test preserves
 unknown value flow. This avoids false claims that a method is actually
 used just because a matching invocation is present.
 
+
+## Full Catalog UI consistency — preflight8
+
+Catalog search results can contain abbreviated getter evidence. A search
+result no longer claims an identifier is "Read-only in advanced mode"
+based on a partial record. Open **View evidence** to use the complete
+getter/signature record for eligibility.
+
+The editor now distinguishes the **stored normal-editor classification**
+from the **current Advanced eligibility**: a legacy catalog reason
+mentioning `parked` is not a denial when the current Advanced policy
+approves the exact reviewed key.
+
+The missing **Trace consumers · read-only** button is now wired to the
+existing `ManagerViewModel.traceAdvancedConsumers` action under
+**Open Full Catalog → View evidence → Advanced Overrides**. The analysis
+examines only the selected getter, does not change the override baseline,
+and reopens the details with updated consumer evidence. The option needs
+an eligible full record and a connected installed-build context.
+
+This change is UI-only relative to preflight7; it does not change
+runtime hooks, existing preference records or the safety policy.

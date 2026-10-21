@@ -740,8 +740,7 @@ private fun suspendedName(entry: SuspendedOverride): String =
                 if (advancedEnabled) {
                     val record = state.advancedRecords.firstOrNull { it.key == item.key }
                     Text(if (record != null) "Advanced: ${if (record.active) "stored" else "paused"}"
-                        else if (AdvancedOverridePolicy.issue(item) == null) "Advanced candidate"
-                        else "Read-only in advanced mode",
+                        else "Advanced eligibility: open View evidence",
                         style = MaterialTheme.typography.labelSmall)
                 }
             } } }
@@ -757,7 +756,7 @@ private fun suspendedName(entry: SuspendedOverride): String =
             model::restoreExperimentalBaseline, advancedEnabled, { id ->
                 model.clearDetails()
                 advancedTarget = id
-            })
+            }, model::traceAdvancedConsumers)
     }
     advancedTarget?.let { id ->
         AdvancedOverrideEditor(id, state.advancedRecords.firstOrNull { it.key == id.key },
@@ -1003,7 +1002,8 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     onExperimentalPause: () -> Unit,
     onExperimentalRestore: () -> Unit,
     advancedEnabled: Boolean,
-    onOpenAdvanced: (DiscoveredIdentifier) -> Unit
+    onOpenAdvanced: (DiscoveredIdentifier) -> Unit,
+    onTraceConsumers: (String) -> Unit
 ) {
     var experimentalConfirmation by remember(identifier.key) { mutableStateOf<Boolean?>(null) }
     var restoreExperimentConfirmation by remember(identifier.key) { mutableStateOf(false) }
@@ -1060,6 +1060,16 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                                     style = MaterialTheme.typography.bodySmall)
                                 Button({ onOpenAdvanced(identifier) }, enabled = issue == null) {
                                     Text("Open advanced editor")
+                                }
+                                OutlinedButton({ onTraceConsumers(identifier.key) },
+                                    enabled = issue == null && canProbeInstalledBuild) {
+                                    Text("Trace consumers · read-only")
+                                }
+                                Text("Trace only this getter in the installed APK. The bounded DEX analysis does not change overrides or prove runtime execution.",
+                                    style = MaterialTheme.typography.labelSmall)
+                                if (identifier.metadata["targetedResolveAttempted"] == "true") {
+                                    Text("Last trace: ${identifier.metadata["targetedResolutionReason"] ?: "INCONCLUSIVE"} · ${identifier.consumers.size} path(s)",
+                                        style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -1274,7 +1284,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight7 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight8 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
     if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This removes every dynamic override and returns Android Auto to system defaults.")})
@@ -1282,7 +1292,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
-@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight7", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
+@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight8", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
 private class TouchMenuPositionProvider(
     private val pressOffset: IntOffset,

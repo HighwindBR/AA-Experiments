@@ -64,8 +64,12 @@ fun AdvancedOverrideEditor(
                     Text("Type: ${expected.name} · ${identifier.resolution}", fontWeight = FontWeight.Medium)
                     Text("Compiled default: ${identifier.compiledDefault ?: "not inferred"}")
                     Text("Consumer: ${identifier.runtimeConsumerStatus} · Confidence: ${identifier.confidence}")
-                    Text("Normal editability: ${if (identifier.editable) "approved" else "blocked"}")
-                    Text("Why blocked: ${identifier.reason ?: identifier.editabilityReason?.name ?: "insufficient semantics"}")
+                    Text("Normal editor: ${if (identifier.editable) "editable" else "read-only in the stored catalog"}")
+                    if (!identifier.editable) Text(
+                        "The normal editor's catalog verdict may predate the Advanced policy. Advanced eligibility is checked separately.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text("Advanced eligibility: ${if (issue == null) "getter and safety checks passed" else "read-only"}")
                     Text("Getter: ${identifier.getterCandidates.singleOrNull()?.let {
                         "${it.className}->${it.methodName}${it.descriptor}"
                     } ?: "not uniquely resolved"}", fontFamily = FontFamily.Monospace,
