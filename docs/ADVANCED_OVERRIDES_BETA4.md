@@ -268,3 +268,21 @@ return `3` must match the original normal value `3`.
    final tagged beta4 release.
 
 No APK or release is published by the code change alone.
+
+## Preflight10.1 — recovered missing LONG handoff UI
+
+The preflight10 feature was present in `ManagerViewModel.startLongHandoff()`,
+`LongHandoffPolicy`, and the runtime, but the published `MainActivity.kt`
+did not connect those controls to the Full Catalog. The result was a
+successful CI build with no usable handoff panel. Fixed by explicitly
+wiring the state, the one-key handoff panel and its two confirmation
+dialogs into `IdentifierDetailsDialog`.
+
+Navigate **Full Catalog → Assistant__icon_experiment_variant →
+View evidence** while Advanced mode is ON. Beneath the normal
+Advanced editor (which correctly remains read-only for editable flags),
+a **LONG hook handoff** card should show normal `LONG:3` and
+**Review LONG 3→3 handoff**.
+
+The underlying hook policy and normal/Advanced records are unchanged.
+Version `1.0.0-beta4-preflight10.1` (`versionCode 154`).

@@ -756,7 +756,12 @@ private fun suspendedName(entry: SuspendedOverride): String =
             model::restoreExperimentalBaseline, advancedEnabled, { id ->
                 model.clearDetails()
                 advancedTarget = id
-            }, model::traceAdvancedConsumers)
+            }, model::traceAdvancedConsumers,
+            state.aa.baseSha256,
+            state.dynamicOverrides[LongHandoffPolicy.KEY]?.let { DynamicOverrideCodec.serialize(it) },
+            state.advancedRecords.firstOrNull { it.key == LongHandoffPolicy.KEY },
+            model::startLongHandoff, model::pauseAdvancedOverride,
+            model::resumeAdvancedOverride, model::restoreAdvancedBaseline)
     }
     advancedTarget?.let { id ->
         AdvancedOverrideEditor(id, state.advancedRecords.firstOrNull { it.key == id.key },
@@ -1003,8 +1008,18 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     onExperimentalRestore: () -> Unit,
     advancedEnabled: Boolean,
     onOpenAdvanced: (DiscoveredIdentifier) -> Unit,
-    onTraceConsumers: (String) -> Unit
+    onTraceConsumers: (String) -> Unit,
+    installedBaseSha256: String?,
+    currentNormalLong: String?,
+    longHandoffRecord: AdvancedOverrideRecord?,
+    onStartLongHandoff: () -> Unit,
+    onPauseHandoff: (String) -> Unit,
+    onResumeHandoff: (String) -> Unit,
+    onRestoreHandoff: (String) -> Unit
 ) {
+    var longHandoffStage by remember(identifier.key) { mutableIntStateOf(0) }
+    var handoffAcknowledgement by remember(identifier.key) { mutableStateOf("") }
+    var longHandoffRestoreWarning by remember(identifier.key) { mutableStateOf(false) }
     var experimentalConfirmation by remember(identifier.key) { mutableStateOf<Boolean?>(null) }
     var restoreExperimentConfirmation by remember(identifier.key) { mutableStateOf(false) }
     var probeConfirmation by remember(identifier.key) { mutableStateOf(false) }
@@ -1071,6 +1086,63 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                                     Text("Last trace: ${identifier.metadata["targetedResolutionReason"] ?: "INCONCLUSIVE"} · ${identifier.consumers.size} path(s)",
                                         style = MaterialTheme.typography.labelSmall)
                                 }
+                            }
+                        }
+                    }
+                    if (advancedEnabled && identifier.key == LongHandoffPolicy.KEY) item {
+                        val blocker = LongHandoffPolicy.issue(identifier, installedBaseSha256)
+                        val snapshot = longHandoffRecord
+                        val sameBuild = snapshot?.buildFingerprint == installedBuildFingerprint
+                        val isHandoff = snapshot?.handoffMode == LongHandoffPolicy.MODE && sameBuild
+                        val pristineNormal = currentNormalLong == LongHandoffPolicy.ORIGINAL
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("LONG hook handoff · beta4 preflight10",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold)
+                                Text("Single reviewed getter aczh.l()J. Experimental return is fixed to 3; the existing normal LONG:3 stays stored throughout the test.",
+                                    style = MaterialTheme.typography.bodySmall)
+                                ValueRow("Normal override", currentNormalLong ?: "Not present")
+                                Text("Handoff: " + when {
+                                    isHandoff -> if (snapshot?.active == true) "ACTIVE" else "PAUSED"
+                                    snapshot == null -> "NOT ARMED"
+                                    else -> "SUSPENDED OR UNRECOGNIZED"
+                                }, style = MaterialTheme.typography.labelMedium)
+                                if (blocker != null) Text("Unavailable: $blocker",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (!pristineNormal) Text(
+                                    "Requires the existing LONG:3 normal override. Do not modify the normal editor while the handoff is active.",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall)
+                                if (snapshot == null) {
+                                    Button({
+                                        handoffAcknowledgement = ""
+                                        longHandoffStage = 1
+                                    }, enabled = blocker == null && pristineNormal &&
+                                        canProbeInstalledBuild && armedProbeKey != identifier.key) {
+                                        Text("Review LONG 3→3 handoff")
+                                    }
+                                } else if (isHandoff) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton({
+                                            if (snapshot?.active == true) onPauseHandoff(LongHandoffPolicy.KEY)
+                                            else onResumeHandoff(LongHandoffPolicy.KEY)
+                                        }, enabled = pristineNormal) {
+                                            Text(if (snapshot?.active == true) "Pause" else "Resume")
+                                        }
+                                        OutlinedButton({ longHandoffRestoreWarning = true }) {
+                                            Text("Restore baseline")
+                                        }
+                                    }
+                                }
+                                feedback?.takeIf { it.contains("handoff", ignoreCase = true) }?.let {
+                                    Text(it, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text("Restart Android Auto after changes. Verify ADVANCED_GETTER_INVOKED and ADVANCED_OVERRIDE_RETURNED with type LONG, value 3. A normal OVERRIDE_RETURNED does not prove the handoff.",
+                                    style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -1223,6 +1295,37 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             }
         }
     }
+    if (longHandoffStage == 1) AlertDialog(
+        onDismissRequest = { longHandoffStage = 0 },
+        title = { Text("Review controlled LONG handoff") },
+        text = { Text("This test is limited to Assistant__icon_experiment_variant on the inspected AA 18.0 build. Both hooks return 3. The saved normal LONG:3 remains intact, while only one mapping per getter is published. Pause and Restore return hook ownership to the normal mapping. Restart Android Auto after changes.") },
+        confirmButton = { TextButton({ longHandoffStage = 2 }) { Text("Continue") } },
+        dismissButton = { TextButton({ longHandoffStage = 0 }) { Text("Cancel") } }
+    )
+    if (longHandoffStage == 2) AlertDialog(
+        onDismissRequest = { longHandoffStage = 0 },
+        title = { Text("Final confirmation") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Type HANDOFF 3 to switch hook ownership without changing the effective LONG value.")
+            OutlinedTextField(handoffAcknowledgement, { handoffAcknowledgement = it },
+                label = { Text("HANDOFF 3") }, singleLine = true)
+        } },
+        confirmButton = { TextButton({
+            longHandoffStage = 0
+            onStartLongHandoff()
+        }, enabled = handoffAcknowledgement == "HANDOFF 3") { Text("Start handoff") } },
+        dismissButton = { TextButton({ longHandoffStage = 0 }) { Text("Cancel") } }
+    )
+    if (longHandoffRestoreWarning) AlertDialog(
+        onDismissRequest = { longHandoffRestoreWarning = false },
+        title = { Text("Restore the normal getter hook?") },
+        text = { Text("Only the experimental handoff record is removed. The original normal LONG:3 preference remains stored byte-for-byte; restart Android Auto to install its original hook.") },
+        confirmButton = { TextButton({
+            longHandoffRestoreWarning = false
+            onRestoreHandoff(LongHandoffPolicy.KEY)
+        }) { Text("Restore normal hook") } },
+        dismissButton = { TextButton({ longHandoffRestoreWarning = false }) { Text("Cancel") } }
+    )
     experimentalConfirmation?.let { newValue ->
         AlertDialog(onDismissRequest = { experimentalConfirmation = null },
             title = { Text("Confirm experimental return value") },
@@ -1285,7 +1388,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight10 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight10.1 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
     if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This removes every dynamic override and returns Android Auto to system defaults.")})
@@ -1293,7 +1396,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
-@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight10", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
+@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight10.1", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
 private class TouchMenuPositionProvider(
     private val pressOffset: IntOffset,
