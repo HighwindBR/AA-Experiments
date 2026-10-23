@@ -111,5 +111,7 @@ but are **not equivalent to building or running the full app**.
    installation scans/profile refreshes; no reproduction was established
    in this audit.
 
-**No `main` merge, signed release publication, or Android package
-version bump was performed by this audit.**
+The audit changes are staged as **1.0.0-beta4-preflight13**
+(`versionCode 159`) so a future signed test APK is distinguishable from
+preflight12b. **No `main` merge, APK build, installation or GitHub Release
+was performed by this audit.**

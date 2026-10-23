@@ -531,3 +531,10 @@ second, typed-acknowledgement dialog. All Advanced overrides require
 `APPLY`; flags with elevated parked-mode risk require `PARKED APPLY`.
 Previously ordinary Advanced overrides were written directly from the first
 review dialog. No override eligibility, runtime method, or stored values change.
+
+## Preflight13 packaging (pending Android validation)
+
+Version metadata is now `1.0.0-beta4-preflight13` / `versionCode 159`
+for the mechanism-audit hardening fixes and universal Advanced typed
+confirmation. The signed APK build, full Gradle regression suite,
+installation and release checks have **not** run yet.

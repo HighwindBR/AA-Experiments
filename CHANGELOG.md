@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0-beta4-preflight13 — development build (validation pending)
+
+### Runtime hardening and coverage audit
+- Hardened normal BOOLEAN, INT byte/short/char, FLOAT and DOUBLE decoding.
+- Redacted returned normal STRING content from LSPosed module events.
+- Added normal getter ABI/range compatibility checks and suspended colliding getter aliases.
+- Restricted backup import to current editable, compatible normal targets.
+- Required typed double confirmation for every Advanced override.
+- Added mechanism-level regression tests and `docs/BETA4_MECHANISM_AUDIT.md`.
+
+This is **not** a published release. The full Gradle test/lint/signing
+pipeline and representative installed-device regressions are still pending.
+
 ## 1.0.0-beta3 — release candidate (validation pending)
 
 ### Fixed after on-device beta3 testing
