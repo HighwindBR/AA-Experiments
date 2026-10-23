@@ -9,3 +9,5 @@
 - Resources are catalogued for diagnostics but are not directly editable through the modern API 101 runtime path.
 - A force-stop, reboot or OS process termination interrupts active work; catalog writes and directed results already committed remain preserved.
 - Release signing requires the CI secrets documented in the workflow. Debug builds use an automatically generated disposable debug key.
+
+- Preflight14 uses dual-slot remote-file publication and a shared profile-refresh coordinator, but its exact remote-file reopen/fsync behavior still requires a signed-device smoke test. The earlier successful preflight13 smoke test does not validate the new slot mechanism.

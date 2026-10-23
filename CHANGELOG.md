@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.0-beta4-preflight14 — Round A reliability hardening (CI/device pending)
+
+- Dual-slot profile publication with verified read-back and durable pointer commit; legacy profile fallback remains available.
+- Serialized profile refreshes and build-scoped UI state handoffs prevent stale asynchronous publication.
+- Single-owner catalog/DEX analysis gate prevents overlapping foreground-service users.
+- Remote preference disconnection no longer publishes an empty profile; stale service-death callbacks are ignored.
+- Added injected write/read/commit failure tests, refresh concurrency tests and analysis ownership tests.
+- Restored loading/progress UI after interrupted analysis and published `PROFILE_SOURCE` diagnostic event.
+
+**Development preflight only**: full Android Gradle tests, release lint, signed APK build and LSPosed on-device smoke test have not yet been executed for this revision.
+
 ## 1.0.0-beta4-preflight13 — development build (validation pending)
 
 ### Runtime hardening and coverage audit

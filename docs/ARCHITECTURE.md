@@ -8,13 +8,22 @@ resolver. SQLite schema 7 stores catalogs under a composite build fingerprint co
 code, base APK hash and ordered split artifact hashes.
 
 Active typed preferences are validated against the current catalog and serialized into profile
-schema 3. The libxposed API 101 module independently recomputes the installed fingerprint, installs
-only zero-argument mappings from a matching profile and reads overrides from an immutable atomic
-snapshot. Every invalid or missing state executes the original getter.
+schema 3. Profile publication rotates between two remote-file slots: the manager writes and
+fsyncs the inactive slot, reads it back and validates it, then commits the selected slot name
+through libxposed RemotePreferences. If interrupted before that final commit, the previous slot
+remains selected. The module reads the selected slot with fallback to the other slot and the
+legacy `active_profile_v2.json`, preserving a safe migration path. Profiles always remain
+bound to the complete installed package fingerprint. The libxposed API 101 module independently
+recomputes that fingerprint, installs only zero-argument mappings from a matching profile and
+reads overrides from an immutable atomic snapshot. Every invalid or missing state executes the
+original getter.
 
 Long analysis runs in `viewModelScope` while a low-priority foreground data-sync service pins the
-process. The service lifetime is protected by `try/finally`; it improves screen-off resilience but
-does not promise survival after force-stop, reboot or process termination.
+process. A single-owner analysis gate prevents an overlapping scan, archive import or deep/targeted
+DEX operation from stopping the foreground service owned by another operation. The service
+lifetime is protected by `try/finally`; it improves screen-off resilience but does not promise
+survival after force-stop, reboot or process termination. A separate suspend-aware mutex serializes
+profile refresh/publication and build-state handoffs.
 
 ## Resolver
 

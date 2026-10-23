@@ -331,3 +331,35 @@ No destructive tests on the user's live 100-override profile.
 - Compact pages for the complete catalog already use SQLite pagination;
   the unbounded path is specifically the export/attachment operation.
 - The current UI remains entirely native Kotlin/Jetpack Compose.
+
+## Round A implementation addendum — preflight14
+
+Implemented in the beta4 development branch after the original review:
+
+- **P1-01: code-level mitigation implemented, device validation pending.**
+  `VerifiedProfilePublisher` publishes to the inactive remote slot and
+  commits the slot pointer only after a matching read-back; failure leaves
+  the old slot/legacy profile selected. The runtime reads the selected slot,
+  checks schema and fingerprint as before, and can fall back to another
+  valid file. Injection unit tests cover interruption, corruption, failed
+  pointer commit and legacy migration. Actual libxposed remote-file
+  reopen/fsync behavior still requires an on-device test.
+- **P1-02: code-level mitigation implemented, integration test pending.**
+  All `refreshOverridesAndProfile` operations and installed/archive
+  build-state handoffs are serialized via a cancellation-safe coroutine
+  mutex. Service state now uses `collect` rather than cancellable
+  `collectLatest`. When preferences are temporarily unavailable, the
+  manager preserves the existing file instead of publishing an empty one.
+- **P1-03: code-level mitigation implemented, integration test pending.**
+  An atomic single-owner gate covers the four scan/DEX operations and
+  balances foreground service lifetime in `finally`. Progress updates
+  are applied atomically, and exceptional exits reset UI loading state.
+  Screen-off survival remains a documented limitation.
+- **P1-04: tests added but not yet executed by Android Gradle.**
+  Added pure tests for active-slot migration/rotation, fault injection,
+  serialization ordering/unlocking, and analysis-owner exclusion.
+  CI/lint/device integration are still release gates.
+
+The addendum does **not** supersede the original evidence level: these
+are implemented changes, not a claim that a preflight14 APK has been
+built or that a physical LSPosed runtime has already validated them.
