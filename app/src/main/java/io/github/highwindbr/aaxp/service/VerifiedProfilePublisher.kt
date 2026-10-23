@@ -26,9 +26,10 @@ object VerifiedProfilePublisher {
         val verifiedBytes = storage.read(target)
         require(bytes.contentEquals(verifiedBytes)) { "Remote profile read-back mismatch" }
         val profile = JSONObject(String(verifiedBytes, Charsets.UTF_8))
+        // getJSONArray throws for malformed/non-array mapping payloads.
+        profile.getJSONArray("mappings")
         require(profile.getInt("schemaVersion") == 3 &&
-            profile.getString("buildFingerprintSha256") == buildFingerprint &&
-            profile.getJSONArray("mappings").length() >= 0) {
+            profile.getString("buildFingerprintSha256") == buildFingerprint) {
             "Remote profile verification failed"
         }
         check(storage.activate(target)) { "Could not activate verified profile slot" }
