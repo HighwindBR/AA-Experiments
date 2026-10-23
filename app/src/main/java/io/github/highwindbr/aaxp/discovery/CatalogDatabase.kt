@@ -296,6 +296,26 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         return CatalogChangeSummary(added, removed, changed)
     }
 
+    /**
+     * This is a small, build-scoped prefilter for Advanced eligibility. SQL
+     * excludes the 50k unrelated symbols before any getter objects are read.
+     * The policy is applied to *full* records by the manager afterwards.
+     */
+    fun advancedCandidateKeys(baseSha256: String): List<String> = readableDatabase.rawQuery(
+        """
+        SELECT i.key FROM identifiers i
+        INNER JOIN getters g ON g.identifier_id=i.id
+        WHERE i.base_sha=? AND i.editable=0 AND i.kind='FENOTYPE_FLAG'
+          AND i.value_type IN ('BOOLEAN','LONG','DOUBLE','STRING')
+          AND i.resolution IN ('DIRECT','STRUCTURAL')
+        GROUP BY i.id
+        HAVING COUNT(g.ordinal)=1
+        ORDER BY i.key
+        LIMIT 1000
+        """.trimIndent(),
+        arrayOf(baseSha256)
+    ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+
     fun editablePage(baseSha256: String, limit: Int, offset: Int): List<DiscoveredIdentifier> = readableDatabase.rawQuery(
         "$ROW_COLUMNS FROM identifiers WHERE base_sha=? AND editable=1 ORDER BY key LIMIT ? OFFSET ?",
         arrayOf(baseSha256, limit.toString(), offset.toString())

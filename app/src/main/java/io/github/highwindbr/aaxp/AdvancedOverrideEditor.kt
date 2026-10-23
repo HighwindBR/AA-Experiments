@@ -133,9 +133,17 @@ fun AdvancedOverrideEditor(
     }
     if (phase == 1) AlertDialog(
         onDismissRequest = { phase = 0 },
-        title = { Text("Experimental value — first confirmation") },
+        title = { Text(if (elevatedRisk == null) "Confirm Advanced override" else "Elevated-risk override — review") },
         text = { Text("Key: ${identifier.key}\nType: ${expected.name}\nCompiled default: ${identifier.compiledDefault ?: "unknown"}\nNew value: ${if (expected == DiscoveredType.STRING) "<string: ${raw.length} chars>" else selected}\nThe accepted domain and runtime behavior are not proven. Wrong values may break Android Auto." + (if (elevatedRisk != null) "\n\nELEVATED PARKED-MODE RISK: $elevatedRisk" else "")) },
-        confirmButton = { TextButton({ phase = 2; acknowledgement = "" }) { Text("Continue") } },
+        confirmButton = { TextButton({
+            if (elevatedRisk == null) {
+                phase = 0
+                onSave(identifier, selected)
+            } else {
+                phase = 2
+                acknowledgement = ""
+            }
+        }) { Text(if (elevatedRisk == null) "Apply Advanced value" else "Continue") } },
         dismissButton = { TextButton({ phase = 0 }) { Text("Cancel") } }
     )
     if (phase == 2) AlertDialog(

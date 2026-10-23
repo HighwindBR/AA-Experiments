@@ -43,6 +43,7 @@ data class ManagerUiState(
     val experimentalSnapshot: ExperimentalBooleanSnapshot? = null,
     val experimentalProfileReady: Boolean = false,
     val advancedRecords: List<AdvancedOverrideRecord> = emptyList(),
+    val advancedCandidates: List<DiscoveredIdentifier> = emptyList(),
     val advancedPublishedCount: Int = 0,
     val changes: CatalogChangeSummary? = null,
     val catalogDeltas: List<EditableCatalogDelta> = emptyList(),
@@ -111,6 +112,33 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         } finally {
             keepAnalysisAlive(false)
         }
+    }
+
+    /**
+     * Query Advanced candidates lazily, only after explicit Diagnostics opt-in.
+     * The full read-only catalog is never copied into the Experiments page.
+     * Reject results for builds which changed during the asynchronous query.
+     */
+    fun loadAdvancedCandidates() = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256
+        if (build == null || !mutable.value.aa.runtimeTarget) {
+            mutable.value = mutable.value.copy(advancedCandidates = emptyList())
+            return@launch
+        }
+        val candidates = withContext(Dispatchers.IO) {
+            database.advancedCandidateKeys(build).mapNotNull { key ->
+                database.details(build, key)?.takeIf {
+                    AdvancedOverridePolicy.issue(it) == null
+                }
+            }
+        }
+        if (mutable.value.aa.buildFingerprintSha256 == build)
+            mutable.value = mutable.value.copy(advancedCandidates = candidates)
+    }
+
+    fun clearAdvancedCandidates() {
+        if (mutable.value.advancedCandidates.isNotEmpty())
+            mutable.value = mutable.value.copy(advancedCandidates = emptyList())
     }
 
     fun searchCatalog(query: CatalogQuery, append: Boolean = false) = viewModelScope.launch {

@@ -1,4 +1,4 @@
-# Advanced Overrides Mode (beta4 preflight10)
+# Advanced Overrides Mode (beta4 preflight11)
 
 This beta4 work is an opt-in capability **inside Open Full Catalog**, not
 an upgrade of the default Experiments editor. It does not treat all catalog
@@ -286,3 +286,36 @@ a **LONG hook handoff** card should show normal `LONG:3` and
 
 The underlying hook policy and normal/Advanced records are unchanged.
 Version `1.0.0-beta4-preflight10.1` (`versionCode 154`).
+
+## Preflight11 — Diagnostics opt-in and unified Experiments
+
+Advanced discovery and editing are now configured from the **collapsible
+Settings → Diagnostics → Advanced Overrides** section. This is a
+persistent UI-only opt-in in the manager's local preferences. Enabling
+it requires reading a prominent risk warning once. The old seven-tap
+unlock is removed. Turning the switch off **hides** Advanced entries
+but never disables or deletes an existing active runtime record.
+
+The **Experiments** list adds a build-scoped, lazily loaded subset of
+non-editable Fenotype getters passing the actual
+`AdvancedOverridePolicy.issue` check on the complete record. SQL
+prefilters getter-bearing BOOLEAN/LONG/DOUBLE/STRING entries to avoid
+loading all 50k catalog symbols into memory; the manager subsequently
+validates safety, getter identity and type. Each result is marked
+**ADVANCED** and is searchable/filterable alongside normal editable
+experiments. Directly tapping an Advanced entry opens the existing
+typed advanced editor, not the ordinary editor.
+
+Normal entries retain their original controls and permissions.
+Approved Advanced records are still isolated by build and getter
+fingerprint, preserve prior values/absence and support Pause/Resume/
+Restore; the Status emergency Pause-all remains available.
+The Diagnostics section includes active, saved and published counts,
+Pause-all and a confirmed restore-all action.
+
+After the one-time opt-in, ordinary Advanced writes require a single
+per-value risk confirmation; the exact reviewed elevated-risk parked
+timing cohort still requires a second confirmation with
+`PARKED APPLY`. No change to hook policy or unsupported types.
+Version `1.0.0-beta4-preflight11`, `versionCode 155`.
+DOUBLE/STRING physical interception remains a separate test criterion.
