@@ -35,6 +35,28 @@ class GetterProbePolicyTest {
         assertNotNull(GetterProbePolicy.issue(duplicated))
     }
 
+
+    @Test fun aa18DoubleCandidatesArePinnedToExactGettersAndTypes() {
+        for ((key, target) in GetterProbePolicy.doubleCandidates) {
+            val expected = candidate(key, DiscoveredType.DOUBLE, "()D")
+                .copy(getterCandidates = listOf(
+                    getter(DiscoveredType.DOUBLE, "()D").copy(
+                        className = target.first, methodName = target.second)
+                ))
+            assertNull("Valid DOUBLE activity probe: $key", GetterProbePolicy.issue(expected))
+            assertNotNull(GetterProbePolicy.issue(expected.copy(
+                getterCandidates = listOf(expected.getterCandidates.single().copy(methodName = "x")))))
+            assertNotNull(GetterProbePolicy.issue(expected.copy(
+                getterCandidates = listOf(expected.getterCandidates.single().copy(descriptor = "()J")))))
+            assertNotNull(GetterProbePolicy.issue(expected.copy(editable = false)))
+        }
+        assertEquals(3, GetterProbePolicy.doubleCandidates.size)
+        assertNotNull(GetterProbePolicy.issue(candidate(
+            "CarSensorParameters__max_parked_speed_gps_sensor", DiscoveredType.DOUBLE, "()D")))
+        assertTrue(GetterProbePolicy.isInspectedDoubleBuild(GetterProbePolicy.DOUBLE_BASE_SHA256))
+        assertTrue(!GetterProbePolicy.isInspectedDoubleBuild("different_build"))
+    }
+
     @Test fun sslTokensOnlyMatchIndependentWords() {
         assertNull(SafetyPolicy.blockedReason("WirelessLatencyMonitor__warning_threshold_ms"))
         assertNotNull(SafetyPolicy.blockedReason("SecureSSLFeature__skip_validation"))

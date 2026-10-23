@@ -487,6 +487,30 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             ?.let { probePreferences.getString("key", null) }
 
     /** Only arms a read-only method-call trace for the exact installed build. */
+    /** Preflight12-A: choose one reviewed DOUBLE getter for a no-write runtime test. */
+    fun setDoubleGetterProbe(key: String, enabled: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val build = aa.buildFingerprintSha256
+        if (!aa.runtimeTarget || build == null ||
+            !GetterProbePolicy.isInspectedDoubleBuild(aa.baseSha256) ||
+            key !in GetterProbePolicy.doubleCandidates) {
+            mutable.value = mutable.value.copy(
+                message = "DOUBLE probe unavailable: unsupported Android Auto build or getter.")
+            return@launch
+        }
+        val id = withContext(Dispatchers.IO) { database.details(build, key) }
+        if (id == null) {
+            mutable.value = mutable.value.copy(message = "DOUBLE getter absent from the installed catalog.")
+            return@launch
+        }
+        if (enabled && probeKeyForBuild(build) != null) {
+            mutable.value = mutable.value.copy(
+                message = "Disarm the existing getter probe before selecting another.")
+            return@launch
+        }
+        setReadOnlyProbe(id, enabled)
+    }
+
     fun setReadOnlyProbe(identifier: DiscoveredIdentifier, enabled: Boolean) = viewModelScope.launch {
         val aa = mutable.value.aa
         val fingerprint = aa.buildFingerprintSha256 ?: return@launch
@@ -499,6 +523,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 val current = checkNotNull(database.details(fingerprint, identifier.key)) { "Flag is not in the installed catalog" }
                 require(GetterProbePolicy.issue(current) == null) { GetterProbePolicy.issue(current) ?: "Not eligible" }
                 require(current.key == identifier.key)
+                if (current.key in GetterProbePolicy.doubleCandidates) {
+                    require(GetterProbePolicy.isInspectedDoubleBuild(aa.baseSha256)) {
+                        "DOUBLE probe requires the exact inspected base APK."
+                    }
+                    val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull())
+                    require(prefs.getString(DynamicOverrideCodec.preferenceKey(current.key), null) == null) {
+                        "A normal DOUBLE override already owns this getter. Restore it first."
+                    }
+                }
                 require(ServiceBridge.dynamicPreferencesOrNull()?.getString(
                     AdvancedOverridePolicy.preferenceKey(current.key), null) == null) {
                     "Restore the advanced baseline before probing the getter."
@@ -970,7 +1003,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             if (recoveredNames > 0) nameEditor?.commit()
             val probeKey = probeKeyForBuild(aa.buildFingerprintSha256)
             val probeIdentifier = probeKey?.let { database.details(aa.buildFingerprintSha256, it) }
-            val selected = probeIdentifier?.takeIf { GetterProbePolicy.issue(it) == null }
+            val selected = probeIdentifier?.takeIf {
+                GetterProbePolicy.issue(it) == null &&
+                (it.key !in GetterProbePolicy.doubleCandidates ||
+                    GetterProbePolicy.isInspectedDoubleBuild(aa.baseSha256))
+            }
             val probes = selected?.let { id ->
                 val method = id.getterCandidates.single()
                 val className = method.className.removePrefix("L").removeSuffix(";").replace('/', '.')

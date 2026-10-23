@@ -70,7 +70,8 @@ public final class AndroidAutoModule extends XposedModule {
             JSONArray mappings = profile.getJSONArray("mappings");
             for (int i = 0; i < mappings.length(); i++) install(param.getClassLoader(), mappings.getJSONObject(i));
             JSONArray probes = profile.optJSONArray("probes");
-            if (probes != null) for (int i = 0; i < probes.length(); i++) installProbe(param.getClassLoader(), probes.getJSONObject(i));
+            if (probes != null) for (int i = 0; i < probes.length(); i++)
+                installProbe(param.getClassLoader(), probes.getJSONObject(i), identity.getBaseSha256());
             JSONArray experimental = profile.optJSONArray("experimental");
             if (experimental != null) for (int i = 0; i < experimental.length(); i++)
                 installExperimental(param.getClassLoader(), experimental.getJSONObject(i), identity.getFingerprintSha256());
@@ -378,23 +379,31 @@ public final class AndroidAutoModule extends XposedModule {
         }
     }
 
-    private void installProbe(ClassLoader loader, JSONObject mapping) {
+    private void installProbe(ClassLoader loader, JSONObject mapping, String baseSha256) {
         String key = mapping.optString("key", "<unknown>");
         // The read-only diagnostic feature is intentionally narrower than a future
         // Advanced Overrides mode. The runtime independently enforces the cohort.
         if (!("PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch".equals(key)
                 || "CarAppLibrary__recreate_map_view_context_on_config_change_kill_switch".equals(key)
-                || "WirelessLatencyMonitor__warning_threshold_ms".equals(key))) {
+                || "WirelessLatencyMonitor__warning_threshold_ms".equals(key)
+                || DoubleGetterProbeRuntime.isDoubleTarget(key))) {
             event(Log.WARN, "PROBE_REJECTED", key, "reason", "not_allowlisted");
             return;
         }
-        String expectedDescriptor = key.equals("WirelessLatencyMonitor__warning_threshold_ms") ? "()J" : "()Z";
+        String expectedDescriptor = DoubleGetterProbeRuntime.isDoubleTarget(key) ? "()D" :
+                key.equals("WirelessLatencyMonitor__warning_threshold_ms") ? "()J" : "()Z";
         try {
             String className = mapping.getString("className");
             String methodName = mapping.getString("methodName");
             String descriptor = mapping.getString("descriptor");
             if (!expectedDescriptor.equals(descriptor)) {
                 event(Log.WARN, "PROBE_REJECTED", key, "reason", "type_mismatch");
+                return;
+            }
+            if (DoubleGetterProbeRuntime.isDoubleTarget(key) &&
+                    !DoubleGetterProbeRuntime.permitted(key, className, methodName,
+                            descriptor, baseSha256)) {
+                event(Log.WARN, "PROBE_REJECTED", key, "reason", "double_target_or_build_mismatch");
                 return;
             }
             Class<?> cls = Class.forName(className, false, loader);

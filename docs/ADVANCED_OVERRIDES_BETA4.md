@@ -347,3 +347,47 @@ compiled default. It does not claim an observed runtime return
 based only on a stored override.
 
 Version: `1.0.0-beta4-preflight11.1` (`versionCode 156`).
+
+## Preflight12-A — DOUBLE runtime-activity qualification
+
+The Android Auto 18.0 full catalog contains **28 Fenotype DOUBLE flags**.
+**26** are already editable using the ordinary Experiments editor. The
+**2 noneditable** DOUBLE getters are
+`CarSensorParameters__max_parked_speed_gps_sensor` and
+`CarSensorParameters__max_parked_speed_wheel_sensor`; both remain
+read-only under the existing safety policy, since they are associated
+with parking-state velocity thresholds. This round does **not** add
+an override bypass or alter those thresholds.
+
+The next required evidence is **actual invocation of a DOUBLE getter**
+in a real Android Auto process. The new collapsible
+**Settings → Diagnostics → DOUBLE getter activity · 12-A** card arms
+a single *read-only* probe on the verified Android Auto
+18.0.164204 base APK (SHA-256
+`cebd7c3c50885fb7dbb8fce202b5f33f0412c8f3801fac91a509da9482b9c60d`).
+Probe targets are deliberately fixed to exact getter ABIs:
+
+| Target flag | Method | Compiled default (IEEE-754 decoded) |
+| --- | --- | --- |
+| `SystemUi__widescreen_aspect_ratio_breakpoint` | `Ladjy;->a()D` | 1.67 |
+| `ProjectionWindowManager__expected_frame_time_deviation` | `Ladiu;->b()D` | 0.2 |
+| `VideoEncoderParams__bitrate_adjustment_exponent` | `Ladll;->c()D` | 0.5 |
+
+For each target, the manager independently validates the getter from
+the installed catalog and disallows probing over an existing normal
+override. The runtime also checks a hardcoded allowlist, exact
+class/method/`()D` signature and base SHA-256 before installing
+the observation-only hook, which always executes `chain.proceed()`.
+No DOUBLE values are logged or replaced.
+
+**12-A test sequence:** arm one target, restart the Android Auto
+process, connect to Open Headunit, inspect
+`PROBE_HOOK_INSTALLED` and `PROBE_INVOKED`, disarm, and select
+another target only if no invocation occurs. No vehicle trip is
+required to perform this first pass. A positive invocation **does
+not yet prove a DOUBLE override**; the subsequent controlled
+same-value hook-ownership test must separately prove a typed
+`ADVANCED_OVERRIDE_RETURNED`.
+
+Version `1.0.0-beta4-preflight12a`, `versionCode 157`.
+No main merge or GitHub Release.
