@@ -427,3 +427,40 @@ interception; it will not alone establish any UI effect. Restore Default after t
 
 Version: `1.0.0-beta4-preflight12b` (`versionCode 158`).
 No main merge or GitHub Release.
+
+### Preflight12-B on-device validation — 2026-10-23
+
+The user confirmed that an **existing saved catalog**, without a new DEX scan,
+now displays `SystemUi__widescreen_aspect_ratio_breakpoint` default as
+decimal `1.67` rather than raw `4610199830550355640`.
+The regression fix was packaged as preflight12b (versionCode 158).
+
+Full LSPosed export `LSPosed_20261023_175245.zip` confirms the
+normal typed-override path (not an Advanced override):
+
+| Timestamp (device local) | Process | Event | Evidence |
+| --- | --- | --- | --- |
+| 17:36:42.699 | `:projection` | `HOOK_INSTALLED` | `SystemUi__widescreen_aspect_ratio_breakpoint`, `adjy.a()D` |
+| 17:36:42.716 | `:projection` | `PROFILE_ACCEPTED` | 100 normal mappings, 0 probes, 1 experimental, 0 Advanced |
+| 17:36:42.812 | `:projection` | `OVERRIDE_RETURNED` | `SystemUi__widescreen_aspect_ratio_breakpoint`, value `1.67` |
+
+The target hook was also installed in `:shared`, `:car`,
+`:provider`, and `:watchdog`, but the confirmed return was
+in `:projection`. The log segment includes zero
+`PROFILE_REJECTED`, `PROFILE_FAILED`, `HOOK_FAILED`,
+`HOOK_SUSPENDED`, or `OVERRIDE_REJECTED` events; this
+is not a general crash-safety guarantee.
+
+This establishes **normal `()D` getter interception and return of a
+finite typed DOUBLE**. It does **not** establish an observable UI
+effect, because `1.67` is the same as the decoded compiled default.
+The log alone does not establish that the user later restored Default.
+
+For a subsequent controlled A/B functional test on Open Headunit,
+keep all other overrides and the emulator display parameters
+unchanged; a 16:9 display has aspect ratio about 1.778, which
+falls between `1.67` and `1.80`. Compare unchanged baseline
+against an explicit `1.80` override, restart the Android Auto
+process between conditions, and restore Default afterward. An
+absence of visible differences is inconclusive: display-size and
+other layout thresholds may gate the behavior.
