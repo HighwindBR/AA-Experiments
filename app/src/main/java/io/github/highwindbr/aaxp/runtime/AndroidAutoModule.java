@@ -469,6 +469,7 @@ public final class AndroidAutoModule extends XposedModule {
                     throw new IllegalArgumentException("Invalid profile header");
                 if (active != null && !candidate.equals(active))
                     event(Log.WARN, "PROFILE_FALLBACK", null, "source", candidate);
+                event(Log.INFO, "PROFILE_SOURCE", null, "file", candidate);
                 return profile;
             } catch (Exception error) {
                 lastFailure = error;
