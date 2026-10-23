@@ -463,9 +463,10 @@ public final class AndroidAutoModule extends XposedModule {
                         throw new IllegalArgumentException("Profile too large");
                 }
                 JSONObject profile = new JSONObject(output.toString("UTF-8"));
+                // A wrong-type mappings field is rejected by getJSONArray.
+                profile.getJSONArray("mappings");
                 if (profile.getInt("schemaVersion") != 3 ||
-                        profile.getString("buildFingerprintSha256").isEmpty() ||
-                        profile.getJSONArray("mappings") == null)
+                        profile.getString("buildFingerprintSha256").isEmpty())
                     throw new IllegalArgumentException("Invalid profile header");
                 if (active != null && !candidate.equals(active))
                     event(Log.WARN, "PROFILE_FALLBACK", null, "source", candidate);
