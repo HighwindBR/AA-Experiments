@@ -18,7 +18,9 @@ import io.github.highwindbr.aaxp.service.ServiceBridge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -70,12 +72,16 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val database = CatalogDatabase(application)
     private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
     private val probePreferences = application.getSharedPreferences("read_only_getter_probe", Context.MODE_PRIVATE)
+    // All profile computations, writes and build-state handoffs share one coordinator.
+    private val profileRefreshMutex = Mutex()
+    // Only one expensive catalog/DEX operation may own the foreground service.
+    private val analysisOperationGate = AnalysisOperationGate()
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
 
     init {
         viewModelScope.launch {
-            ServiceBridge.state.collectLatest { framework ->
+            ServiceBridge.state.collect { framework ->
                 mutable.value = mutable.value.copy(framework = framework)
                 refreshOverridesAndProfile()
             }
@@ -84,8 +90,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshInstallation() = viewModelScope.launch {
-        keepAnalysisAlive(true)
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another catalog analysis is already running.")
+            return@launch
+        }
         try {
+            keepAnalysisAlive(true)
             mutable.value = mutable.value.copy(loading = true, scanProgress = null, message = "Loading installed Android Auto catalog…")
             val aa = withContext(Dispatchers.IO) {
                 File(getApplication<Application>().filesDir, "imports").deleteRecursively()
@@ -105,12 +115,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val resolverRun = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let(database::resolverRunSummary) }
             val deepPending = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let(database::actionableDeepResolveCount) ?: 0 }
             val hidden = hiddenKeysForBuild(aa.buildFingerprintSha256)
-            mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page,
-                loadedEditableCount = page.size, changes = changes, catalogDeltas = deltas,
-                hiddenSuspendedKeys = hidden, resolverRun = resolverRun, deepResolvePending = deepPending, message = null)
+            profileRefreshMutex.withLock {
+                mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page,
+                    loadedEditableCount = page.size, changes = changes, catalogDeltas = deltas,
+                    hiddenSuspendedKeys = hidden, resolverRun = resolverRun, deepResolvePending = deepPending, message = null)
+            }
             refreshOverridesAndProfile()
         } finally {
-            keepAnalysisAlive(false)
+            try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
 
@@ -198,8 +210,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     fun consumeExport() { mutable.value = mutable.value.copy(exportPayload = null) }
 
     fun importArchive(uri: Uri) = viewModelScope.launch {
-        keepAnalysisAlive(true)
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Finish the current catalog analysis before importing an archive.")
+            return@launch
+        }
         try {
+            keepAnalysisAlive(true)
             mutable.value = mutable.value.copy(loading = true, scanProgress = AnalysisProgress(AnalysisStage.PREPARING_ARCHIVE, detail = "Copying and opening archive"), message = "Importing and analyzing archive…")
             val result = withContext(Dispatchers.IO) { runCatching {
             val context = getApplication<Application>()
@@ -241,13 +257,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 previous?.let { compareEditableCatalogs(database.editablePage(it.baseSha256, Int.MAX_VALUE, 0), page) }.orEmpty()
             }
             val resolverRun = withContext(Dispatchers.IO) { database.resolverRunSummary(checkNotNull(aa.buildFingerprintSha256)) }
-            mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page, loadedEditableCount = page.size,
-                dynamicOverrides = emptyMap(), suspendedOverrides = emptyList(), hiddenSuspendedKeys = emptySet(),
-                profilePublished = false, changes = previous?.let { deltaSummary(deltas) }, catalogDeltas = deltas, resolverRun = resolverRun,
-                message = "Imported ${aa.identifierCount} identifiers for offline review; the installed-AA runtime profile was not replaced.")
+            profileRefreshMutex.withLock {
+                mutable.value = mutable.value.copy(loading = false, scanProgress = null, aa = aa, discovered = page, loadedEditableCount = page.size,
+                    dynamicOverrides = emptyMap(), suspendedOverrides = emptyList(), hiddenSuspendedKeys = emptySet(),
+                    profilePublished = false, changes = previous?.let { deltaSummary(deltas) }, catalogDeltas = deltas, resolverRun = resolverRun,
+                    message = "Imported ${aa.identifierCount} identifiers for offline review; the installed-AA runtime profile was not replaced.")
+            }
             }.onFailure { error -> mutable.value = mutable.value.copy(loading = false, scanProgress = null, message = "Import failed: ${error.message}") }
         } finally {
-            keepAnalysisAlive(false)
+            try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
 
@@ -281,12 +299,16 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mutable.value = mutable.value.copy(message = "Trace unavailable: ${result.exceptionOrNull()?.message}")
             return@launch
         }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another catalog analysis is already running.")
+            return@launch
+        }
         deepResolveCancelRequested = false
-        keepAnalysisAlive(true)
-        mutable.value = mutable.value.copy(loading = true, deepResolveRunning = true,
-            consumerTraceKey = key, selectedDetails = null,
-            scanProgress = AnalysisProgress(AnalysisStage.DEEP_RESOLVING, 0, 1, "Tracing one Advanced getter"))
         try {
+            keepAnalysisAlive(true)
+            mutable.value = mutable.value.copy(loading = true, deepResolveRunning = true,
+                consumerTraceKey = key, selectedDetails = null,
+                scanProgress = AnalysisProgress(AnalysisStage.DEEP_RESOLVING, 0, 1, "Tracing one Advanced getter"))
             val tracing = withContext(Dispatchers.IO) { runCatching {
                 val selected = setOf(key)
                 val baseline = database.compatibilityMappingsByKeys(hash, selected)
@@ -323,7 +345,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         } finally {
             mutable.value = mutable.value.copy(loading = false, deepResolveRunning = false,
                 consumerTraceKey = null, scanProgress = null)
-            keepAnalysisAlive(false)
+            try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
 
@@ -368,9 +390,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mutable.value = mutable.value.copy(message = "No pending inconclusive mapping remains for directed analysis.")
             return@launch
         }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another catalog analysis is already running.")
+            return@launch
+        }
         deepResolveCancelRequested = false
-        keepAnalysisAlive(true)
         try {
+            keepAnalysisAlive(true)
             mutable.value = mutable.value.copy(
             loading = true,
             deepResolveRunning = true,
@@ -423,7 +449,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
         } finally {
             deepResolveCancelRequested = false
-            keepAnalysisAlive(false)
+            try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
 
@@ -963,9 +989,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { mutable.value=mutable.value.copy(saveState=SaveState.FAILED,message="Import failed: ${it.message}") }
     }
 
-    private suspend fun refreshOverridesAndProfile() {
+    private suspend fun refreshOverridesAndProfile() = profileRefreshMutex.withLock {
         val aa = mutable.value.aa
-        if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return
+        if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return@withLock
         val result = withContext(Dispatchers.IO) { runCatching {
             val prefs = ServiceBridge.dynamicPreferencesOrNull()
             val allPrefs = prefs?.all.orEmpty()
@@ -1097,6 +1123,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
                 protocolTraceOn)
         } }
+        // Build state is handed off under the same mutex: stale queued refreshes
+        // cannot overwrite an imported archive or a newly installed AA build.
+        if (mutable.value.aa.buildFingerprintSha256 != aa.buildFingerprintSha256 ||
+            !mutable.value.aa.runtimeTarget) return@withLock
         result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,
             suspendedOverrides=outcome.suspended, probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
