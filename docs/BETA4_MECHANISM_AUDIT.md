@@ -120,3 +120,30 @@ The audit changes are staged as **1.0.0-beta4-preflight13**
 (`versionCode 159`) so a future signed test APK is distinguishable from
 preflight12b. **No `main` merge, APK build, installation or GitHub Release
 was performed by this audit.**
+
+## On-device backup/suspension check — 2026-10-23
+
+A schemaVersion-3 JSON exported from the installed AA 18.0.164204 build
+was parsed and validated offline: 100 active normal scalar overrides
+(95 BOOLEAN, 2 LONG, 2 STRING, 1 DOUBLE) and 3 suspended preferences.
+All serialized values passed scalar syntax checks, and all three suspended
+preference digests matched their corresponding identifier names. Each
+suspension was reported as **mapping missing in this build**, not a
+duplicate getter or a changed ABI. The backup data itself was **not**
+committed to the repository.
+
+The single currently published Experimental BOOLEAN record is intentionally
+**not part of the normal export**. The manager correctly blocks normal
+backup import while an Experimental or Advanced record remains stored;
+no destructive import/restore test was performed on the user's device.
+
+The Settings UI was adjusted to make the export's limited scope explicit,
+explain import restrictions, and warn that global restore deletes Advanced
+and Experimental records/baselines which a normal JSON backup cannot
+recover. Global restore is now enabled even if only those special or
+suspended records remain.
+
+This completes **static exported-data and suspended-state inspection**,
+not a full round-trip import regression. Import tests can be exercised
+independently of the user's live settings; do not reset their configured
+Android Auto profile just to meet a release checklist.
