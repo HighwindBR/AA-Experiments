@@ -432,7 +432,8 @@ public final class AndroidAutoModule extends XposedModule {
     private void logReturnOnce(String key, String event, String generation, Object value) {
         String token = event + ':' + generation;
         if (token.equals(lastReturnEvent.put(key, token))) return;
-        event(Log.INFO, event, key, "value", String.valueOf(value));
+        // Normal STRING overrides may contain personal or provider data. Never log contents.
+        event(Log.INFO, event, key, "value", value instanceof String ? "<redacted>" : String.valueOf(value));
     }
 
     private void event(int priority, String event, String key, String... fields) {

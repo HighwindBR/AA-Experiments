@@ -431,7 +431,19 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key, message = null)
         val result = withContext(Dispatchers.IO) { runCatching {
             require(mutable.value.aa.runtimeTarget) { "Imported archives are read-only; refresh the installed Android Auto before editing." }
-            require(identifier.editable) { identifier.reason ?: "Identifier is read-only" }
+            val build = checkNotNull(mutable.value.aa.buildFingerprintSha256) { "No installed Android Auto build" }
+            val current = checkNotNull(database.details(build, identifier.key)) { "Flag absent from current build" }
+            require(current.inferredType == identifier.inferredType) {
+                "Flag type changed; reopen the current installed-build catalog."
+            }
+            val value = rawInput?.let { DynamicOverrideCodec.validate(current.inferredType, it) }
+            require(current.editable && (value == null ||
+                suspendedOverrideReason(current, value) == null)) {
+                "Getter is no longer safely editable or value exceeds its return type."
+            }
+            require(probeKeyForBuild(build) != current.key) {
+                "Disarm the read-only probe for this getter before editing."
+            }
             require(ServiceBridge.dynamicPreferencesOrNull()?.getString(
                 AdvancedOverridePolicy.preferenceKey(identifier.key), null) == null) {
                 "Restore the advanced baseline before editing normally."
@@ -446,7 +458,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 editor.remove(key)
                 editor.remove(DynamicOverrideCodec.namePreferenceKey(identifier.key))
             } else {
-                editor.putString(key, DynamicOverrideCodec.serialize(DynamicOverrideCodec.validate(identifier.inferredType, rawInput)))
+                editor.putString(key, DynamicOverrideCodec.serialize(checkNotNull(value)))
                 editor.putString(DynamicOverrideCodec.namePreferenceKey(identifier.key), identifier.key)
             }
             require(editor.commit()) { "Framework rejected the preference update" }
@@ -920,7 +932,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val values = root.getJSONObject("overrides"); val keys = buildSet { values.keys().forEach(::add) }
             val byKey = database.identifiersByKeys(checkNotNull(mutable.value.aa.buildFingerprintSha256), keys)
             val accepted = mutableMapOf<String, TypedOverride>(); val rejected = mutableSetOf<String>()
-            keys.forEach { key -> val identifier=byKey[key]; val value=DynamicOverrideCodec.deserialize(values.getString(key)); if (identifier!=null && value!=null && value.type==identifier.inferredType) accepted[key]=value else rejected+=key }
+            keys.forEach { key ->
+                val identifier = byKey[key]
+                val value = DynamicOverrideCodec.deserialize(values.getString(key))
+                if (suspendedOverrideReason(identifier, value) == null) accepted[key] = checkNotNull(value)
+                else rejected += key
+            }
             val editor=prefs.edit()
             accepted.forEach { (key,value) ->
                 editor.putString(DynamicOverrideCodec.preferenceKey(key),DynamicOverrideCodec.serialize(value))
@@ -977,7 +994,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ExperimentalBooleanPolicy.matches(id, checkNotNull(activeExperiment), aa.buildFingerprintSha256)
             }
             val active = mutableMapOf<String, TypedOverride>(); val suspended = mutableListOf<SuspendedOverride>(); val mappings = mutableListOf<DynamicProfile.Mapping>()
-            snapshot.forEach { (preferenceKey, raw) ->
+            val claimedNormalGetters = mutableMapOf<Triple<String, String, String>, String>()
+            // Stable arbitration avoids registering two competing hooks on the same getter.
+            snapshot.toSortedMap().forEach { (preferenceKey, raw) ->
                 val identifier = resolved[preferenceKey]
                 val value = DynamicOverrideCodec.deserialize(raw)
                 val reason = suspendedOverrideReason(identifier, value)
@@ -996,8 +1015,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 )
                 else {
                     val safeIdentifier = checkNotNull(identifier); val safeValue = checkNotNull(value); val method = safeIdentifier.getterCandidates.single()
-                    active[safeIdentifier.key] = safeValue
-                    mappings += DynamicProfile.Mapping(safeIdentifier.key, preferenceKey, method.className.removePrefix("L").removeSuffix(";").replace('/','.'), method.methodName, method.descriptor, safeIdentifier.inferredType.name)
+                    val cls = method.className.removePrefix("L").removeSuffix(";").replace('/', '.')
+                    if (!claimNormalGetter(claimedNormalGetters, safeIdentifier.key,
+                            cls, method.methodName, method.descriptor)) {
+                        suspended += SuspendedOverride(preferenceKey, identifierName,
+                            safeValue.type.name, safeIdentifier.inferredType.name,
+                            SuspendedOverrideReason.SUSPENDED_TARGET_COLLISION,
+                            safeValue.encodedValue, raw, history?.second)
+                    } else {
+                        active[safeIdentifier.key] = safeValue
+                        mappings += DynamicProfile.Mapping(safeIdentifier.key, preferenceKey,
+                            cls, method.methodName, method.descriptor, safeIdentifier.inferredType.name)
+                    }
                 }
             }
             if (recoveredNames > 0) nameEditor?.commit()

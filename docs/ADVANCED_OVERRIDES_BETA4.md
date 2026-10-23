@@ -494,3 +494,32 @@ Continue beta4 by auditing *mechanism coverage* and remaining
 unverified supported types, not by testing 900+ effects one at a time.
 No new APK, version bump, main merge, or GitHub Release is needed
 for this documentation decision.
+
+## Beta4 mechanism audit — compatibility and fail-open hardening (2026-10-23)
+
+The audit covers normal BOOLEAN/INT/LONG/FLOAT/DOUBLE/STRING scalar overrides,
+the separate BOOLEAN/LONG/DOUBLE/STRING Advanced policy, profile publication,
+baseline preservation and build-fingerprint compatibility. The verified
+DOUBLE `OVERRIDE_RETURNED` remains representative evidence, not a guarantee
+that any particular downstream feature changes.
+
+Safeguards added to the shared normal override path:
+- Strict boolean parsing; invalid text cannot silently return `false`.
+- Non-finite FLOAT/DOUBLE rejection in the runtime, independently of
+  manager-side validation. Out-of-range `INT` for byte/short/char getters
+  is rejected consistently before publication; char runtime conversion
+  does not wrap negative or oversized codepoints.
+- Normal STRING getter values are redacted from LSPosed events, matching
+  existing Advanced privacy handling.
+- Backup import accepts only currently editable, type/ABI-compatible
+  mappings. Noneditable entries are rejected instead of reported as applied.
+- A single normal hook owns each exact target method. Aliases sharing one
+  getter remain stored under `SUSPENDED_TARGET_COLLISION` instead of
+  installing two competing normal hooks.
+- An individual normal edit rechecks the current build's identifier and
+  rejects edits while the same getter's read-only probe is armed.
+
+No changes to baseline preservation, Advanced enablement, package fingerprint,
+normal override storage schema, or existing profile version.
+Full Android Gradle unit tests and signed build remain to be run before APK
+installation. No functional test for every flag is required.

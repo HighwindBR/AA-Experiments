@@ -632,6 +632,7 @@ private fun suspendedReasonLabel(reason: SuspendedOverrideReason): String = when
     SuspendedOverrideReason.SUSPENDED_MAPPING_MISSING -> "Not found in this build"
     SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS -> "Resolver mapping unavailable or ambiguous"
     SuspendedOverrideReason.SUSPENDED_INVALID_VALUE -> "Stored value invalid"
+    SuspendedOverrideReason.SUSPENDED_TARGET_COLLISION -> "Multiple flags resolve to the same getter"
 }
 
 private fun suspendedName(entry: SuspendedOverride): String =
