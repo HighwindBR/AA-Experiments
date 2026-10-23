@@ -28,7 +28,6 @@ import io.github.libxposed.api.XposedModuleInterface;
 public final class AndroidAutoModule extends XposedModule {
     private static final String AA_PACKAGE = "com.google.android.projection.gearhead";
     private static final String PREF_GROUP = "dynamic_overrides_v2";
-    private static final String PROFILE_FILE = "active_profile_v2.json";
     private static final String TAG = "AAExperiments";
     private static final String EVENT_PREFIX = "AAX_EVENT ";
     private final OverrideSnapshot overrideSnapshot = new OverrideSnapshot();
@@ -448,13 +447,34 @@ public final class AndroidAutoModule extends XposedModule {
     }
 
     private JSONObject readProfile() throws Exception {
-        try (ParcelFileDescriptor descriptor = openRemoteFile(PROFILE_FILE);
-             FileInputStream input = new FileInputStream(descriptor.getFileDescriptor());
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[16384]; int count;
-            while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
-            return new JSONObject(output.toString("UTF-8"));
+        SharedPreferences prefs = remotePreferences != null
+                ? remotePreferences : getRemotePreferences(PREF_GROUP);
+        String active = prefs.getString(ProfileSlotPolicy.POINTER_KEY, null);
+        Throwable lastFailure = null;
+        for (String candidate : ProfileSlotPolicy.readOrder(active)) {
+            try (ParcelFileDescriptor descriptor = openRemoteFile(candidate);
+                 FileInputStream input = new FileInputStream(descriptor.getFileDescriptor());
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[16384];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                    if (output.size() > ProfileSlotPolicy.MAX_PROFILE_BYTES)
+                        throw new IllegalArgumentException("Profile too large");
+                }
+                JSONObject profile = new JSONObject(output.toString("UTF-8"));
+                if (profile.getInt("schemaVersion") != 3 ||
+                        profile.getString("buildFingerprintSha256").isEmpty() ||
+                        profile.getJSONArray("mappings") == null)
+                    throw new IllegalArgumentException("Invalid profile header");
+                if (active != null && !candidate.equals(active))
+                    event(Log.WARN, "PROFILE_FALLBACK", null, "source", candidate);
+                return profile;
+            } catch (Exception error) {
+                lastFailure = error;
+            }
         }
+        throw new IllegalStateException("No valid profile slot or legacy profile", lastFailure);
     }
 
     private static String descriptor(Method method) {
