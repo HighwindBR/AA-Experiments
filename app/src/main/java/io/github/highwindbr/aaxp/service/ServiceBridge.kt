@@ -9,7 +9,6 @@ import kotlinx.coroutines.flow.StateFlow
 import android.os.ParcelFileDescriptor
 import io.github.highwindbr.aaxp.runtime.ProfileSlotPolicy
 import java.io.ByteArrayOutputStream
-import org.json.JSONObject
 import io.github.highwindbr.aaxp.resolver.DynamicProfile
 
 object ServiceBridge : XposedServiceHelper.OnServiceListener {
@@ -29,7 +28,8 @@ object ServiceBridge : XposedServiceHelper.OnServiceListener {
     }
 
     override fun onServiceDied(dead: XposedService) {
-        if (service === dead) service = null
+        if (service !== dead) return // Ignore the death of an obsolete connection.
+        service = null
         mutableState.value = FrameworkState(error = "Xposed service disconnected")
     }
 
@@ -52,42 +52,40 @@ object ServiceBridge : XposedServiceHelper.OnServiceListener {
         val bound = checkNotNull(service) { "Xposed service is not connected" }
         val prefs = bound.getRemotePreferences(DYNAMIC_PREF_GROUP)
         val bytes = DynamicProfile.create(buildFingerprintSha256, baseSha256, packageVersionCode, packageArtifactSha256, dexSha256, mappings, probes, experimental, advanced, videoTimingTrace).toByteArray(Charsets.UTF_8)
-        val current = prefs.getString(ProfileSlotPolicy.POINTER_KEY, null)
-        val target = ProfileSlotPolicy.inactiveSlot(current)
-        bound.openRemoteFile(target).use { descriptor ->
-            ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
-                output.channel.truncate(0)
-                output.channel.position(0)
-                output.write(bytes)
-                output.flush()
-                output.fd.sync()
-            }
-        }
-        // Read back through the same remote-file service before activating the slot.
-        val readBack = bound.openRemoteFile(target).use { descriptor ->
-            ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
-                ByteArrayOutputStream().use { output ->
-                    val buffer = ByteArray(16 * 1024)
-                    var read: Int
-                    while (input.read(buffer).also { read = it } != -1) {
-                        output.write(buffer, 0, read)
-                        require(output.size() <= ProfileSlotPolicy.MAX_PROFILE_BYTES) {
-                            "Profile read-back exceeds size limit"
-                        }
+        val storage = object : ProfileStorage {
+            override fun activeSlot(): String? = prefs.getString(ProfileSlotPolicy.POINTER_KEY, null)
+            override fun write(slot: String, content: ByteArray) {
+                bound.openRemoteFile(slot).use { descriptor ->
+                    ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
+                        output.channel.truncate(0)
+                        output.channel.position(0)
+                        output.write(content)
+                        output.flush()
+                        output.fd.sync()
                     }
-                    output.toByteArray()
                 }
             }
+            override fun read(slot: String): ByteArray =
+                bound.openRemoteFile(slot).use { descriptor ->
+                    ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                        ByteArrayOutputStream().use { output ->
+                            val buffer = ByteArray(16 * 1024)
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count == -1) break
+                                output.write(buffer, 0, count)
+                                require(output.size() <= ProfileSlotPolicy.MAX_PROFILE_BYTES) {
+                                    "Profile read-back exceeds size limit"
+                                }
+                            }
+                            output.toByteArray()
+                        }
+                    }
+                }
+            override fun activate(slot: String): Boolean =
+                prefs.edit().putString(ProfileSlotPolicy.POINTER_KEY, slot).commit()
         }
-        require(bytes.contentEquals(readBack)) { "Remote profile read-back mismatch" }
-        val verified = JSONObject(String(readBack, Charsets.UTF_8))
-        require(verified.getInt("schemaVersion") == 3 &&
-            verified.getString("buildFingerprintSha256") == buildFingerprintSha256) {
-            "Remote profile verification failed"
-        }
-        require(prefs.edit().putString(ProfileSlotPolicy.POINTER_KEY, target).commit()) {
-            "Could not activate verified profile slot"
-        }
+        VerifiedProfilePublisher.publish(storage, bytes, buildFingerprintSha256)
         bytes.size
     }
 

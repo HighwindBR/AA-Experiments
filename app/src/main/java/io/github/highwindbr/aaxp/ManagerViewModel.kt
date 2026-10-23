@@ -993,8 +993,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val aa = mutable.value.aa
         if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return@withLock
         val result = withContext(Dispatchers.IO) { runCatching {
-            val prefs = ServiceBridge.dynamicPreferencesOrNull()
-            val allPrefs = prefs?.all.orEmpty()
+            // A transient LSPosed disconnection must not publish an empty profile.
+            // The last selected verified slot remains active until reconnection.
+            val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) {
+                "Remote preferences unavailable; preserving last published profile"
+            }
+            val allPrefs = prefs.all
             val protocolTraceOn =
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
@@ -1004,7 +1008,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }.toMap()
             val names = database.historicalOverrideNames(snapshot.keys)
             val resolved = database.identifiersByPreferenceKeys(aa.buildFingerprintSha256, snapshot.keys).toMap()
-            val nameEditor = prefs?.edit()
+            val nameEditor = prefs.edit()
             var recoveredNames = 0
             val advancedRecords = allPrefs.mapNotNull { (key, raw) ->
                 if (!key.startsWith(AdvancedOverridePolicy.PREFIX)) null
@@ -1032,7 +1036,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 val history = names[preferenceKey]
                 val identifierName = identifier?.key ?: storedName ?: history?.first
                 if (storedName == null && identifierName != null && nameKey != null) {
-                    nameEditor?.putString(nameKey, identifierName)
+                    nameEditor.putString(nameKey, identifierName)
                     recoveredNames++
                 }
                 if (reason != null) suspended += SuspendedOverride(
@@ -1055,7 +1059,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             }
-            if (recoveredNames > 0) nameEditor?.commit()
+            if (recoveredNames > 0) require(nameEditor.commit()) { "Failed to persist recovered mapping names" }
             val probeKey = probeKeyForBuild(aa.buildFingerprintSha256)
             val probeIdentifier = probeKey?.let { database.details(aa.buildFingerprintSha256, it) }
             val selected = probeIdentifier?.takeIf {
