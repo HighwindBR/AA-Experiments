@@ -319,3 +319,31 @@ timing cohort still requires a second confirmation with
 `PARKED APPLY`. No change to hook policy or unsupported types.
 Version `1.0.0-beta4-preflight11`, `versionCode 155`.
 DOUBLE/STRING physical interception remains a separate test criterion.
+
+## Preflight11.1 — consistent Experiments details navigation
+
+A user-reported UI regression was confirmed: opening an ADVANCED-tagged
+card from **Experiments** still invoked `AdvancedOverrideEditor` as a
+large modal instead of opening the full **Experiment details** page.
+
+All Experiments cards now route through the same
+`ExperimentDetailScreen`. The screen retains the common header,
+value/evidence panels, raw identifiers, resolver confidence, and
+Back navigation. For an Advanced candidate, it renders the **same
+typed Advanced controls inline** inside the Override section, using
+the existing component's `inline` presentation option.
+
+The Full Catalog retains its research-oriented modal, but the two
+surfaces use exactly the same Advanced form and confirmation logic.
+Normal Experiments still use their unchanged editor and default
+controls. Advanced values remain build/getter-scoped, requiring
+their original safety policy checks, and still provide Pause,
+Resume, and Restore baseline. Diagnostics opt-in remains a
+presentation switch only: it does not disable saved hooks.
+
+The Advanced page shows **ADVANCED** and Active/Paused labels,
+experimental value and recorded baseline separately from the
+compiled default. It does not claim an observed runtime return
+based only on a stored override.
+
+Version: `1.0.0-beta4-preflight11.1` (`versionCode 156`).

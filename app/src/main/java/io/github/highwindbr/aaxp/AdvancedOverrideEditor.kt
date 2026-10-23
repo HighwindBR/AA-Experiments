@@ -31,7 +31,9 @@ fun AdvancedOverrideEditor(
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
     onRestore: (String) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    inline: Boolean = false,
+    connected: Boolean = true
 ) {
     val issue = AdvancedOverridePolicy.issue(identifier)
     val elevatedRisk = SafetyPolicy.elevatedRiskReason(identifier.key)
@@ -48,16 +50,18 @@ fun AdvancedOverrideEditor(
         if (raw == "true" || raw == "false") raw else "false"
     } else raw
 
-    Dialog(onDismissRequest = onClose) {
-        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.89f)) {
-            Column(Modifier.fillMaxSize().padding(16.dp)) {
-                Text("Advanced Overrides", style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold)
-                Text("Unsafe experimental getter interception", color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.labelMedium)
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Shared control tree: inline in Experiments; modal only for Full Catalog.
+    val form: @Composable () -> Unit = {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (!inline) {
+                Text("Advanced Overrides", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Unsafe experimental getter interception", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+            } else {
+                Text("Advanced override", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Experimental getter interception · unverified values", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+            }
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (!inline) {
                     Text(identifier.key, fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodyMedium)
                     HorizontalDivider()
@@ -69,6 +73,7 @@ fun AdvancedOverrideEditor(
                         "The normal editor's catalog verdict may predate the Advanced policy. Advanced eligibility is checked separately.",
                         style = MaterialTheme.typography.bodySmall
                     )
+                    }
                     Text("Advanced eligibility: ${if (issue == null) "getter and safety checks passed" else "read-only"}")
                     Text("Getter: ${identifier.getterCandidates.singleOrNull()?.let {
                         "${it.className}->${it.methodName}${it.descriptor}"
@@ -92,9 +97,9 @@ fun AdvancedOverrideEditor(
                     }
                     if (expected == DiscoveredType.BOOLEAN) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = selected == "false", onClick = { raw = "false" },
+                            FilterChip(selected = selected == "false", onClick = { raw = "false" }, enabled = connected,
                                 label = { Text("False") })
-                            FilterChip(selected = selected == "true", onClick = { raw = "true" },
+                            FilterChip(selected = selected == "true", onClick = { raw = "true" }, enabled = connected,
                                 label = { Text("True") })
                         }
                     } else {
@@ -102,7 +107,7 @@ fun AdvancedOverrideEditor(
                             Text(if (expected == DiscoveredType.LONG) "Raw signed 64-bit integer"
                                 else if (expected == DiscoveredType.DOUBLE) "Finite decimal number"
                                 else "Raw string")
-                        }, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+                        }, enabled = connected, modifier = Modifier.fillMaxWidth(), maxLines = 4)
                     }
                     if (issue == null && belongsToBuild)
                         Text("Unverified value: may be ignored, crash projection, break media, or require clearing Android Auto data.",
@@ -117,17 +122,26 @@ fun AdvancedOverrideEditor(
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedButton(onClick = {
                                 if (record.active) onPause(record.key) else onResume(record.key)
-                            }) { Text(if (record.active) "Pause" else "Resume") }
-                            OutlinedButton({ restoreWarning = true }) { Text("Restore baseline") }
+                            }, enabled = connected) { Text(if (record.active) "Pause" else "Resume") }
+                            OutlinedButton({ restoreWarning = true }, enabled = connected) { Text("Restore baseline") }
                         }
                     }
+
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                if (!inline) TextButton(onClose) { Text("Close") }
+                Button(onClick = { phase = 1 }, enabled = connected && issue == null && belongsToBuild && build != null) {
+                    Text("Review Advanced value")
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClose) { Text("Close") }
-                    Button(onClick = { phase = 1 }, enabled = issue == null && belongsToBuild && build != null) {
-                        Text("Review raw override")
-                    }
-                }
+            }
+        }
+    }
+    if (inline) form()
+    else Dialog(onDismissRequest = onClose) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.89f)) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                form()
             }
         }
     }

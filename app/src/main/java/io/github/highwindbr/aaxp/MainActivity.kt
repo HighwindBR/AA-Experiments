@@ -185,20 +185,20 @@ private val AaDarkScheme = darkColorScheme(
     LaunchedEffect(state.exportPayload) { state.exportPayload?.let { exporter.launch(it.fileName) } }
     experiment?.let { identifier ->
         BackHandler { model.clearDetails(); experimentKey = null }
-        if (identifier.editable) {
-            ExperimentDetailScreen(identifier, state.selectedDetails,
-                state.dynamicOverrides[identifier.key], state.framework.connected && state.aa.runtimeTarget,
-                state.saveState, state.saveTargetKey, state.message,
-                { value -> model.setDynamicOverride(identifier, value) },
-                { model.loadDetails(identifier.key) },
-                { model.clearDetails(); experimentKey = null })
-        } else if (advancedAccess) {
-            AdvancedOverrideEditor(identifier,
-                state.advancedRecords.firstOrNull { it.key == identifier.key },
-                state.aa.buildFingerprintSha256, state.advancedPublishedCount, state.message,
-                model::setAdvancedOverride, model::pauseAdvancedOverride, model::resumeAdvancedOverride,
-                model::restoreAdvancedBaseline, { experimentKey = null })
-        }
+        ExperimentDetailScreen(identifier, state.selectedDetails,
+            state.dynamicOverrides[identifier.key], state.framework.connected && state.aa.runtimeTarget,
+            state.saveState, state.saveTargetKey, state.message,
+            { value -> if (identifier.editable) model.setDynamicOverride(identifier, value) },
+            { model.loadDetails(identifier.key) },
+            { model.clearDetails(); experimentKey = null },
+            isAdvanced = !identifier.editable,
+            advancedRecord = state.advancedRecords.firstOrNull { it.key == identifier.key },
+            advancedBuild = state.aa.buildFingerprintSha256,
+            advancedPublishedCount = state.advancedPublishedCount,
+            onAdvancedSave = model::setAdvancedOverride,
+            onAdvancedPause = model::pauseAdvancedOverride,
+            onAdvancedResume = model::resumeAdvancedOverride,
+            onAdvancedRestore = model::restoreAdvancedBaseline)
         return
     }
     val rootBackAction = backAction(tab, settingsPage, false)
@@ -921,7 +921,26 @@ private fun technicalDisplay(value: String): String = buildString(value.length +
 private fun friendly(value: String) = value.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }
 private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("[+-]?0+(?:\\.0+)?"))
 
-@Composable private fun ExperimentDetailScreen(identifier: DiscoveredIdentifier, loaded: DiscoveredIdentifier?, override: TypedOverride?, connected: Boolean, saveState: SaveState, saveTargetKey: String?, saveMessage: String?, onChange: (String?) -> Unit, onLoadEvidence: () -> Unit, onBack: () -> Unit) {
+@Composable private fun ExperimentDetailScreen(
+    identifier: DiscoveredIdentifier,
+    loaded: DiscoveredIdentifier?,
+    override: TypedOverride?,
+    connected: Boolean,
+    saveState: SaveState,
+    saveTargetKey: String?,
+    saveMessage: String?,
+    onChange: (String?) -> Unit,
+    onLoadEvidence: () -> Unit,
+    onBack: () -> Unit,
+    isAdvanced: Boolean,
+    advancedRecord: AdvancedOverrideRecord?,
+    advancedBuild: String?,
+    advancedPublishedCount: Int,
+    onAdvancedSave: (DiscoveredIdentifier, String) -> Unit,
+    onAdvancedPause: (String) -> Unit,
+    onAdvancedResume: (String) -> Unit,
+    onAdvancedRestore: (String) -> Unit
+) {
     var input by remember(identifier.key, override) { mutableStateOf(override?.encodedValue.orEmpty()) }
     var saveConfirmed by remember(identifier.key) { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
@@ -952,19 +971,57 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
         HorizontalDivider()
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item { Text(technicalDisplay(identifier.key), modifier = Modifier.semantics { contentDescription = identifier.key }, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onBackground) }
-            item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) { MetaChip(friendly(identifier.inferredType.name), MaterialTheme.colorScheme.secondaryContainer); MetaChip(friendly(identifier.resolution.name), MaterialTheme.colorScheme.tertiaryContainer); if (override != null) MetaChip("Modified", MaterialTheme.colorScheme.primaryContainer); MetaChip(friendly(identifier.runtimeConsumerStatus.name), MaterialTheme.colorScheme.surfaceVariant) } }
-            item { identifier.metadata["reviewedSemantics"]?.let { Text(it, style = MaterialTheme.typography.bodyMedium) } ?: Text("Configure the runtime value returned by this experiment.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item { Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MetaChip(friendly(identifier.inferredType.name), MaterialTheme.colorScheme.secondaryContainer)
+                MetaChip(friendly(identifier.resolution.name), MaterialTheme.colorScheme.tertiaryContainer)
+                if (isAdvanced) MetaChip("ADVANCED", MaterialTheme.colorScheme.errorContainer)
+                if (isAdvanced && advancedRecord != null)
+                    MetaChip(if (advancedRecord.active) "Active" else "Paused", MaterialTheme.colorScheme.primaryContainer)
+                if (!isAdvanced && override != null) MetaChip("Modified", MaterialTheme.colorScheme.primaryContainer)
+                MetaChip(friendly(identifier.runtimeConsumerStatus.name), MaterialTheme.colorScheme.surfaceVariant)
+            } }
+            item { identifier.metadata["reviewedSemantics"]?.let { Text(it, style = MaterialTheme.typography.bodyMedium) } ?: Text(
+                if (isAdvanced) "Experimental getter override. Value semantics and supported ranges are not guaranteed."
+                else "Configure the runtime value returned by this experiment.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+            ) }
             item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Values", fontWeight = FontWeight.Bold)
                 ValueRow("Default value", identifier.compiledDefault ?: "Not inferred")
                 ValueRow("Runtime observed", "See LSPosed events")
-                AnimatedContent(targetState = override?.encodedValue ?: identifier.compiledDefault ?: "Default", label = "effective-value") { value ->
-                    ValueRow("Effective value", value, override != null)
+                if (isAdvanced) {
+                    val belongs = advancedRecord?.buildFingerprint == advancedBuild
+                    val activeRecord = advancedRecord?.takeIf { belongs && it.active }
+                    ValueRow("Experimental value", advancedRecord?.value ?: "Not set", activeRecord != null)
+                    ValueRow("State", when {
+                        advancedRecord == null -> "Default / original"
+                        !belongs -> "Suspended for another build"
+                        advancedRecord.active -> "Active · restart AA"
+                        else -> "Paused · original baseline"
+                    })
+                    ValueRow("Baseline", advancedRecord?.previousOverride ?: "Absent / system-managed")
+                } else {
+                    AnimatedContent(targetState = override?.encodedValue ?: identifier.compiledDefault ?: "Default",
+                        label = "effective-value") { value ->
+                        ValueRow("Effective value", value, override != null)
+                    }
                 }
                 ValueRow("Occurrences", identifier.occurrences.size.toString())
                 ValueRow("Runtime consumer", friendly(identifier.runtimeConsumerStatus.name))
             } } }
-            item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (isAdvanced) item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+                    Column(Modifier.padding(14.dp)) {
+                        AdvancedOverrideEditor(
+                            identifier, advancedRecord, advancedBuild, advancedPublishedCount,
+                            saveMessage, onAdvancedSave, onAdvancedPause,
+                            onAdvancedResume, onAdvancedRestore, onBack,
+                            inline = true, connected = connected
+                        )
+                    }
+                }
+            } else item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Override value", fontWeight = FontWeight.Bold)
                 if (identifier.inferredType == DiscoveredType.BOOLEAN) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf<String?>(null, "false", "true").forEachIndexed { index, value ->
@@ -1450,7 +1507,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight11 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version 1.0.0-beta4-preflight11.1 · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
     if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This removes every dynamic override and returns Android Auto to system defaults.")})
@@ -1458,7 +1515,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
-@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight11", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
+@Composable private fun AboutScreen(onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version 1.0.0-beta4-preflight11.1", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
 private class TouchMenuPositionProvider(
     private val pressOffset: IntOffset,
