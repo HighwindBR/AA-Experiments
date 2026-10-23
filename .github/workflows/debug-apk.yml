@@ -46,6 +46,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Verify beta4 scalar regressions and release lint
+        run: gradle --no-daemon --max-workers=1 :app:testDebugUnitTest :app:lintRelease
       - name: Restore release signing key
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
