@@ -16,7 +16,9 @@ import io.github.highwindbr.aaxp.scanner.InstalledAaScanner
 import io.github.highwindbr.aaxp.scanner.ManifestCatalog
 import io.github.highwindbr.aaxp.service.ServiceBridge
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -119,6 +121,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     hiddenSuspendedKeys = hidden, resolverRun = resolverRun, deepResolvePending = deepPending, message = null)
             }
             refreshOverridesAndProfile()
+        } catch (cancelled: CancellationException) {
+            mutable.update { it.copy(loading = false, scanProgress = null) }
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.update { it.copy(loading = false, scanProgress = null,
+                message = "Installed catalog scan failed: ${failure.javaClass.simpleName}: ${failure.message}") }
         } finally {
             try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
@@ -262,13 +270,21 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     message = "Imported ${aa.identifierCount} identifiers for offline review; the installed-AA runtime profile was not replaced.")
             }
             }.onFailure { error -> mutable.value = mutable.value.copy(loading = false, scanProgress = null, message = "Import failed: ${error.message}") }
+        } catch (cancelled: CancellationException) {
+            mutable.update { it.copy(loading = false, scanProgress = null) }
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.update { it.copy(loading = false, scanProgress = null,
+                message = "Archive analysis failed: ${failure.javaClass.simpleName}: ${failure.message}") }
         } finally {
             try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
 
     private fun reportScanProgress(progress: AnalysisProgress) {
-        mutable.value = mutable.value.copy(scanProgress = progress)
+        // This callback runs on the DEX/IO worker thread; avoid overwriting
+        // simultaneous framework state changes with a non-atomic read-copy-write.
+        mutable.update { it.copy(scanProgress = progress) }
     }
 
     /**
@@ -340,9 +356,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     message = "Consumer trace failed: ${error.javaClass.simpleName}: ${error.message}"
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.update { it.copy(message =
+                "Consumer tracing stopped: ${failure.javaClass.simpleName}: ${failure.message}") }
         } finally {
-            mutable.value = mutable.value.copy(loading = false, deepResolveRunning = false,
-                consumerTraceKey = null, scanProgress = null)
+            mutable.update { it.copy(loading = false, deepResolveRunning = false,
+                consumerTraceKey = null, scanProgress = null) }
             try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
@@ -445,8 +466,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mutable.value = mutable.value.copy(loading = false, deepResolveRunning = false, scanProgress = null, resolverRun = resolverRun,
                 deepResolvePending = pending, message = "Deep resolve stopped: ${error.javaClass.simpleName}: ${error.message}. Completed mappings were preserved.")
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.update { it.copy(message =
+                "Deep analysis failed: ${failure.javaClass.simpleName}: ${failure.message}") }
         } finally {
             deepResolveCancelRequested = false
+            mutable.update { it.copy(loading = false, deepResolveRunning = false, scanProgress = null) }
             try { keepAnalysisAlive(false) } finally { analysisOperationGate.finish() }
         }
     }
