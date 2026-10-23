@@ -523,3 +523,11 @@ No changes to baseline preservation, Advanced enablement, package fingerprint,
 normal override storage schema, or existing profile version.
 Full Android Gradle unit tests and signed build remain to be run before APK
 installation. No functional test for every flag is required.
+
+### Advanced editor confirmation consistency
+
+Audit correction: the review dialog now **always** transitions to the
+second, typed-acknowledgement dialog. All Advanced overrides require
+`APPLY`; flags with elevated parked-mode risk require `PARKED APPLY`.
+Previously ordinary Advanced overrides were written directly from the first
+review dialog. No override eligibility, runtime method, or stored values change.
