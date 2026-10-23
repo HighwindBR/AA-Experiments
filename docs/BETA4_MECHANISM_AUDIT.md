@@ -95,6 +95,11 @@ but are **not equivalent to building or running the full app**.
 
 **Still required before declaring the beta4 release ready:**
 
+The branch's manually triggered signed-preflight workflow now **gates
+keystore restoration, signing and artifact upload behind unit tests and
+release lint**. This protection is configured but has not yet been
+executed for preflight13.
+
 1. Execute `:app:testDebugUnitTest`, `:app:lintRelease`, and
    `:app:assembleRelease` with the configured signed-preflight CI path.
 2. Regression-check imported normal backups, including noneditable keys,
