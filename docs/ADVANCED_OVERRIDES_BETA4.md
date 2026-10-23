@@ -385,9 +385,9 @@ process, connect to Open Headunit, inspect
 `PROBE_HOOK_INSTALLED` and `PROBE_INVOKED`, disarm, and select
 another target only if no invocation occurs. No vehicle trip is
 required to perform this first pass. A positive invocation **does
-not yet prove a DOUBLE override**; the subsequent controlled
-same-value hook-ownership test must separately prove a typed
-`ADVANCED_OVERRIDE_RETURNED`.
+not yet prove a DOUBLE override**; the subsequent normal-editor
+same-value hook-ownership test independently verified the typed
+`OVERRIDE_RETURNED` event in preflight12-B (not an Advanced override).
 
 Version `1.0.0-beta4-preflight12a`, `versionCode 157`.
 No main merge or GitHub Release.
@@ -456,11 +456,41 @@ finite typed DOUBLE**. It does **not** establish an observable UI
 effect, because `1.67` is the same as the decoded compiled default.
 The log alone does not establish that the user later restored Default.
 
-For a subsequent controlled A/B functional test on Open Headunit,
-keep all other overrides and the emulator display parameters
-unchanged; a 16:9 display has aspect ratio about 1.778, which
-falls between `1.67` and `1.80`. Compare unchanged baseline
-against an explicit `1.80` override, restart the Android Auto
-process between conditions, and restore Default afterward. An
-absence of visible differences is inconclusive: display-size and
-other layout thresholds may gate the behavior.
+## Beta4 validation policy — representative runtime tests, not 900+ A/B tests
+
+Decision (2026-10-23): **omit the proposed preflight12-C visual A/B
+exercise** and do not require an observable functional effect for each
+catalogued flag. Preflight12-B completes the DOUBLE qualification.
+The goal is a reliable, type-safe, build-aware override engine; discovering
+and proving the downstream UI or feature semantics of every registered
+key is not a practical release criterion.
+
+Four levels of evidence must remain distinct:
+
+1. **Per-identifier static checks (automated):** typed getter,
+   exact signature, nonambiguous mapping, fingerprint, build compatibility,
+   known safety restrictions, and default-value decoding.
+2. **Per-type regression tests (automated):** BOOLEAN, LONG, DOUBLE,
+   STRING, INT, FLOAT and any other supported scalar type; validate
+   serialization/deserialization, validation errors, publication,
+   pause/restore and fail-open behavior where applicable.
+3. **Representative on-device checks:** sample actual getter invocation
+   and typed override returns for each runtime hook *mechanism* and
+   primitive type, not every identifier. DOUBLE normal-editor proof
+   exists via `OVERRIDE_RETURNED` for `SystemUi__widescreen_aspect_ratio_breakpoint`.
+   Other types/mechanisms require their own evidence where not already
+   established; do not infer universal success from a single flag.
+4. **Optional functional A/B only when targeted:** high-impact features,
+   newly introduced hook mechanisms, regression investigations, or
+   failure reports. Never promote this to an all-keys release gate.
+
+User-facing claims must distinguish **statically eligible / configurable**
+from **runtime return observed** and **functional effect independently
+verified**. A successful hook or emitted `OVERRIDE_RETURNED` alone
+does not guarantee that the value wins all downstream gates/caches or
+causes a visible change.
+
+Continue beta4 by auditing *mechanism coverage* and remaining
+unverified supported types, not by testing 900+ effects one at a time.
+No new APK, version bump, main merge, or GitHub Release is needed
+for this documentation decision.
