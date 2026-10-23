@@ -19,6 +19,8 @@ public final class ProfileSlotPolicy {
     public static String[] readOrder(String active) {
         if (SLOT_A.equals(active)) return new String[]{SLOT_A, SLOT_B, LEGACY_FILE};
         if (SLOT_B.equals(active)) return new String[]{SLOT_B, SLOT_A, LEGACY_FILE};
-        return new String[]{LEGACY_FILE, SLOT_A, SLOT_B};
+        // With no committed pointer, only the legacy file is authorized.
+        // An uncommitted staged slot must never become implicitly active.
+        return new String[]{LEGACY_FILE};
     }
 }

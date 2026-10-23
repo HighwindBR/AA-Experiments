@@ -6,8 +6,7 @@ import org.junit.Test;
 public class ProfileSlotPolicyTest {
     @Test public void firstPublishPreservesLegacyUntilPointerCommits() {
         assertEquals(ProfileSlotPolicy.SLOT_A, ProfileSlotPolicy.inactiveSlot(null));
-        assertArrayEquals(new String[]{ProfileSlotPolicy.LEGACY_FILE,
-            ProfileSlotPolicy.SLOT_A, ProfileSlotPolicy.SLOT_B},
+        assertArrayEquals(new String[]{ProfileSlotPolicy.LEGACY_FILE},
             ProfileSlotPolicy.readOrder(null));
     }
     @Test public void writingNeverTruncatesSelectedSlot() {

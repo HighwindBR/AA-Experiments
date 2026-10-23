@@ -85,5 +85,9 @@ class VerifiedProfilePublisherTest {
             VerifiedProfilePublisher.publish(storage, good, "otherBuild")
         }
         assertNull(storage.activeSlot())
+        // The valid staged bytes cannot be activated by a new process without
+        // an explicit committed pointer.
+        assertArrayEquals(arrayOf(ProfileSlotPolicy.LEGACY_FILE),
+            ProfileSlotPolicy.readOrder(storage.activeSlot()))
     }
 }

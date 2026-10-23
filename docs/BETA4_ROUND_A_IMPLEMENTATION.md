@@ -25,9 +25,10 @@ Publication order:
 6. Only then report publication success.
 
 The runtime first reads the selected slot; if invalid/unavailable it
-tries the other slot and then the legacy profile. Before the first
-successful new publication, the legacy file is the preferred reader
-source. No existing normal/Advanced/Experimental preferences are reset.
+tries the other slot and then the legacy profile. **Without a committed
+pointer, only the legacy file may be loaded**; an uncommitted staged
+slot is not eligible for recovery. This prevents exposing data from a
+failed first activation. No existing normal/Advanced/Experimental preferences are reset.
 Every successful loaded profile is still subject to normal AA package
 fingerprint verification before any hooks are installed.
 
