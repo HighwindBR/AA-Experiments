@@ -19,8 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -73,7 +71,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
     private val probePreferences = application.getSharedPreferences("read_only_getter_probe", Context.MODE_PRIVATE)
     // All profile computations, writes and build-state handoffs share one coordinator.
-    private val profileRefreshMutex = Mutex()
+    private val profileRefreshMutex = ProfileRefreshGate()
     // Only one expensive catalog/DEX operation may own the foreground service.
     private val analysisOperationGate = AnalysisOperationGate()
     val state: StateFlow<ManagerUiState> = mutable
