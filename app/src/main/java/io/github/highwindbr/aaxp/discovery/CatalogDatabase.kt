@@ -432,14 +432,28 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         return found
     }
 
-    private fun row(c: android.database.Cursor, details: Boolean) = DiscoveredIdentifier(
-        c.getString(1), IdentifierNamespace.valueOf(c.getString(2)), DiscoveredType.valueOf(c.getString(3)), c.getStringOrNull(4),
-        List(c.getInt(7)) { IdentifierOccurrence(emptyMethod(), it) }, if (details) getters(c.getLong(0)) else emptyList(), ResolutionConfidence.valueOf(c.getString(5)), c.getStringOrNull(6), c.getInt(14) != 0, decodeMap(c.getString(13)),
-        kind = identifierKind(c.getString(8)), resolution = MappingResolution.valueOf(c.getString(9)),
-        runtimeConsumerStatus = RuntimeConsumerStatus.valueOf(c.getString(10)), semanticsReviewed = c.getInt(11) != 0,
-        editabilityReason = c.getStringOrNull(12)?.let(EditabilityReason::valueOf), consumers = if (details) consumers(c.getLong(0)) else emptyList(),
-        storageType = enumOr(c.getString(15), StorageValueType.UNKNOWN), semanticType = enumOr(c.getString(16), SemanticValueType.UNKNOWN),
-        evidenceConfidence = decodeConfidence(c.getString(17)), semanticsProvenance = enumOr(c.getString(18), SemanticsProvenance.NONE))
+    private fun row(c: android.database.Cursor, details: Boolean): DiscoveredIdentifier {
+        val type = DiscoveredType.valueOf(c.getString(3))
+        val metadata = decodeMap(c.getString(13))
+        // Normalize cached catalogs from preflight12a without rescanning Android Auto.
+        // The original, unmodified DEX occurrence evidence is retained separately.
+        return DiscoveredIdentifier(
+            c.getString(1), IdentifierNamespace.valueOf(c.getString(2)), type,
+            CompiledDefaultCodec.normalize(c.getStringOrNull(4), type, metadata["defaultSource"]),
+            List(c.getInt(7)) { IdentifierOccurrence(emptyMethod(), it) },
+            if (details) getters(c.getLong(0)) else emptyList(),
+            ResolutionConfidence.valueOf(c.getString(5)), c.getStringOrNull(6),
+            c.getInt(14) != 0, metadata,
+            kind = identifierKind(c.getString(8)), resolution = MappingResolution.valueOf(c.getString(9)),
+            runtimeConsumerStatus = RuntimeConsumerStatus.valueOf(c.getString(10)),
+            semanticsReviewed = c.getInt(11) != 0,
+            editabilityReason = c.getStringOrNull(12)?.let(EditabilityReason::valueOf),
+            consumers = if (details) consumers(c.getLong(0)) else emptyList(),
+            storageType = enumOr(c.getString(15), StorageValueType.UNKNOWN),
+            semanticType = enumOr(c.getString(16), SemanticValueType.UNKNOWN),
+            evidenceConfidence = decodeConfidence(c.getString(17)),
+            semanticsProvenance = enumOr(c.getString(18), SemanticsProvenance.NONE))
+    }
 
     private fun getters(identifierId: Long): List<MethodFingerprint> = readableDatabase.rawQuery(
         "SELECT dex,class_name,method_name,descriptor,return_type,parameter_types,instruction_count,opcode_sha,is_clinit,referenced_fields,invoked_methods FROM getters WHERE identifier_id=? ORDER BY ordinal", arrayOf(identifierId.toString())

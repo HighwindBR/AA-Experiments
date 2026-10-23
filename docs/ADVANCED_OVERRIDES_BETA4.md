@@ -391,3 +391,39 @@ same-value hook-ownership test must separately prove a typed
 
 Version `1.0.0-beta4-preflight12a`, `versionCode 157`.
 No main merge or GitHub Release.
+
+
+## Preflight12-B — DOUBLE compiled-default correction and qualification results
+
+Three separate read-only tests on 2026-10-23 confirmed actual `PROBE_INVOKED`:
+- `SystemUi__widescreen_aspect_ratio_breakpoint`, `adjy.a()D`, process `:projection`, 15:19:15.
+- `ProjectionWindowManager__expected_frame_time_deviation`, `adiu.b()D`, process `:car`, 16:46:28.248.
+- `VideoEncoderParams__bitrate_adjustment_exponent`, `adll.c()D`, process `:car`, 16:47:35.218.
+
+Each event proves getter invocation only, not return-value modification or downstream visual effects.
+The two uploaded LSPosed archives overlap and contain the latter two confirmations.
+
+### Compiled defaults: raw IEEE-754 bits are not decimal values
+
+Prior discovery stored a registration's `const-wide` bits as a decimal integer
+even when the getter's return type was DOUBLE. For example,
+`4610199830550355640` is the 64-bit encoding of `1.67`, and
+`4596373779694328218` encodes `0.2`.
+New scans now decode FLOAT/DOUBLE registration defaults only when
+the recorded provenance is `INVOKE_ARGUMENT` or `REGISTRY_FLOW`.
+`DIRECT_RETURN` values are already decoded; other origins remain unchanged.
+Cached SQLite catalogs and imported inventory JSON are normalized on read,
+so no APK re-scan or catalog deletion is required. Raw DEX occurrence evidence
+and LONG flags remain untouched.
+
+This correction affects display and the compiled-default catalog, not stored
+overrides, getters, or existing runtime hook policy. The `Double value` input
+continues to accept typed decimal input such as `1.67`, never the raw bit integer.
+
+Next: disarm read-only probes; use the normal editor to apply a *same-value*
+`1.67` override on the SystemUi DOUBLE getter. After restarting Android Auto,
+`HOOK_INSTALLED` plus `OVERRIDE_RETURNED` will verify typed return
+interception; it will not alone establish any UI effect. Restore Default after testing.
+
+Version: `1.0.0-beta4-preflight12b` (`versionCode 158`).
+No main merge or GitHub Release.
