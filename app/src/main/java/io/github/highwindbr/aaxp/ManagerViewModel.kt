@@ -971,6 +971,88 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         })
     }.toString(2)
 
+    /** Only the exact current AA build may export/restore all special baselines. */
+    fun exportCompleteRecoveryJson(): String {
+        val aa = mutable.value.aa
+        require(aa.runtimeTarget && aa.buildFingerprintSha256 != null && aa.versionCode != null) {
+            "Installed Android Auto is not available."
+        }
+        val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) {
+            "LSPosed remote preferences are disconnected."
+        }
+        return FullRecoveryBundle.create(prefs.all, aa.buildFingerprintSha256, aa.versionCode)
+    }
+
+    fun reportRecoveryMessage(text: String) {
+        mutable.update { it.copy(message = text.take(250)) }
+    }
+
+    /** Exact replacement of managed keys only; never touches debug/traces or slot pointers. */
+    fun restoreCompleteRecoveryJson(text: String) = viewModelScope.launch {
+        mutable.update { it.copy(saveState = SaveState.SAVING, message = "Checking complete recovery bundle…") }
+        val result = withContext(Dispatchers.IO) { runCatching {
+            profileRefreshMutex.withLock {
+                val aa = mutable.value.aa
+                val build = checkNotNull(aa.buildFingerprintSha256) { "No installed build fingerprint" }
+                val version = checkNotNull(aa.versionCode) { "No installed AA version code" }
+                require(aa.runtimeTarget) { "Imported archives are read-only." }
+                val bundle = FullRecoveryBundle.decode(text, build, version)
+                val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) {
+                    "LSPosed is not connected"
+                }
+                val current = prefs.all
+                val activeAdv = bundle.entries.filterKeys {
+                    it.startsWith(AdvancedOverridePolicy.PREFIX)
+                }.values.map { checkNotNull(AdvancedOverrideRecord.decode(it)) }
+                    .filter { it.buildFingerprint == build }
+                val exp = bundle.entries[ExperimentalBooleanPolicy.RECORD_KEY]
+                    ?.let { checkNotNull(ExperimentalBooleanSnapshot.decode(it)) }
+                    ?.takeIf { it.buildFingerprint == build }
+                val keys = activeAdv.map { it.key }.toSet() +
+                    listOfNotNull(if (exp != null) ExperimentalBooleanPolicy.KEY else null)
+                val identifiers = database.identifiersByKeys(build, keys)
+                activeAdv.forEach { record ->
+                    val id = checkNotNull(identifiers[record.key]) {
+                        "Advanced getter is absent from the installed build: ${record.key}"
+                    }
+                    require(AdvancedOverridePolicy.matches(id, record, build, aa.baseSha256)) {
+                        "Advanced getter or safety policy changed: ${record.key}"
+                    }
+                    if (record.handoffMode != null) require(LongHandoffPolicy.baselineIntact(
+                        record,
+                        bundle.entries[DynamicOverrideCodec.preferenceKey(record.key)],
+                        bundle.entries[DynamicOverrideCodec.namePreferenceKey(record.key)])) {
+                        "LONG handoff baseline missing or modified."
+                    }
+                }
+                if (exp != null) {
+                    val id = checkNotNull(identifiers[ExperimentalBooleanPolicy.KEY]) {
+                        "Experimental BOOLEAN getter is missing."
+                    }
+                    require(ExperimentalBooleanPolicy.matches(id, exp, build)) {
+                        "Experimental BOOLEAN getter or policy no longer matches."
+                    }
+                }
+                require(mutable.value.aa.buildFingerprintSha256 == build) {
+                    "Android Auto build changed before restoring."
+                }
+                val edit = prefs.edit()
+                current.keys.filter(FullRecoveryBundle::managedKey).forEach(edit::remove)
+                bundle.entries.forEach { (key, value) -> edit.putString(key, value) }
+                require(edit.commit()) { "Framework rejected the complete recovery transaction." }
+                bundle
+            }
+        } }
+        result.onSuccess { bundle ->
+            refreshOverridesAndProfile()
+            mutable.update { it.copy(saveState = SaveState.SAVED,
+                message = "Restored ${bundle.normal} normal, ${bundle.advanced} Advanced and ${bundle.experimental} Experimental records. Restart Android Auto after checking settings.") }
+        }.onFailure { ex ->
+            mutable.update { it.copy(saveState = SaveState.FAILED,
+                message = "Complete recovery rejected without changes: ${ex.message}") }
+        }
+    }
+
     fun importDynamicJson(text: String) = viewModelScope.launch {
         if (!mutable.value.aa.runtimeTarget) { mutable.value = mutable.value.copy(message = "Imported archives are read-only."); return@launch }
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING)
