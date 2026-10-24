@@ -113,8 +113,6 @@ private enum class AccentPalette { LAB_GREEN, MATERIAL_YOU }
 private enum class ExperimentFilter { ALL, MODIFIED, SUSPENDED, ADDED, REMOVED, CHANGED }
 private val AaGreen = Color(0xFF006D3F)
 private val AaGreenDark = Color(0xFF72D99A)
-private val ForceFalse = Color(0xFF415F91)
-private val WarningAmber = Color(0xFF8A5300)
 
 private val AaLightScheme = lightColorScheme(
     primary = AaGreen, onPrimary = Color.White, primaryContainer = Color(0xFFA0F4BA), onPrimaryContainer = Color(0xFF00210F),
@@ -379,7 +377,7 @@ private val AaDarkScheme = darkColorScheme(
         RuntimeReadinessKind.NO_OVERRIDES -> "Idle — no active overrides"
         else -> runtime.label
     }
-    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) WarningAmber else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 }
 
 @Composable private fun StatusDot(ok: Boolean) = Surface(Modifier.size(12.dp), shape = MaterialTheme.shapes.extraLarge, color = if (ok) AaGreen else WarningAmber) {}
