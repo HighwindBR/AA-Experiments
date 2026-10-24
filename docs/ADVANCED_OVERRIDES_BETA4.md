@@ -1,10 +1,40 @@
-# Advanced Overrides Mode (beta4 preflight11)
+# Advanced Overrides Mode (beta4)
 
-This beta4 work is an opt-in capability **inside Open Full Catalog**, not
-an upgrade of the default Experiments editor. It does not treat all catalog
-identifiers as writable flags.
+Advanced Overrides are opt-in and remain **more restricted than the full
+catalog**. The actual beta4 preflight18–19 navigation replaced the older
+preflight11 seven-tap unlock described later in this document.
 
-## Unlock and use
+## Current navigation (preflight18–19)
+
+1. Open **Settings → Diagnostics → Advanced Overrides**.
+2. Expand the card and choose **Enable Advanced Overrides**. Read and
+   confirm the risk warning; the count of eligible getters is
+   build-dependent.
+3. Open **Experiments**: eligible Advanced entries appear alongside
+   normal experiments and carry an **Advanced** indicator. Selecting
+   an entry uses the current Experiment details flow, not the old
+   Full Catalog-only editor route.
+4. Read the getter/method evidence, change only the demonstrated
+   scalar value type, then complete the editor's two confirmations.
+5. Pausing, resuming and restoring Advanced records are separate
+   operations. **Turning off the Advanced access switch only hides the
+   extra editing access; it does not disable previously installed
+   overrides.** The emergency pause control is on Status.
+6. End projection and restart Android Auto, while parked, for changed
+   hook installations. Verify installation/return events in LSPosed
+   module logs; a returned getter value does not establish a
+   downstream UI, server or head-unit feature.
+
+The read-only getter/VTC tools are grouped under the collapsible
+**Developer tools** area of Diagnostics, independently of the
+Advanced access card. The Full Catalog still exposes evidence,
+but is no longer the primary Advanced unlock pathway.
+
+## Historical preflight11 unlock and use (superseded)
+
+The following procedure documents the earlier beta4 implementation
+for reproducibility; **do not follow the seven-tap unlock instructions
+on current preflights**.
 
 1. Open **Settings → Diagnostics → Full Catalog**.
 2. Tap the **Full Catalog** heading seven times. Read the explicit danger

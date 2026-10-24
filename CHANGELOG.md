@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.0-beta4-preflight19 — static pre-RC review (not a release)
+
+- Corrected full-recovery validation so that current-build **active**
+  Advanced/Experimental hooks must pass current getter checks, while
+  preserved inactive and historical records do not need to be runnable.
+- Added tests for active versus paused/historical record selection.
+- Updated current Advanced navigation instructions, the known-limitations
+  evidence, private-runner handoff checklist, and beta4 release guidance.
+- No changes to saved preference schema, live overrides, runtime hook
+  installation, profile publication, or Android Auto package scope.
+- No RC, tag, merge, GitHub Release, or LSPosed catalog submission.
+
+**Static review code is pending its final CI/device acceptance.** Do
+not replace a working preflight18 merely for these documentation changes.
+
 ## 1.0.0-beta4-preflight18 — Round D release hardening (not an RC)
 
 - Fixed full-recovery ownership validation: paused/historical

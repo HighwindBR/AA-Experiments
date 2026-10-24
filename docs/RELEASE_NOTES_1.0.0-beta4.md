@@ -31,6 +31,9 @@ It does not unlock every Android Auto or vehicle capability.
   Advanced and Experimental records and baseline absence. Existing
   normal-only backup files remain supported. Both backup import paths
   limit input-file size to protect against oversized documents.
+  Paused and historical records remain recoverable even when their
+  getter is no longer eligible; only current-build active hooks
+  require getter revalidation on restore.
 
 ## Compatibility and safety
 

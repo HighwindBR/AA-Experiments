@@ -127,7 +127,9 @@ to inject obfuscated fixture names or mappings into production resolution logic.
 ## Maintainer fixture gates
 
 The private release workflow stages the exact APKM fixtures on a self-hosted runner and verifies
-their hashes before fixture-dependent gates run.
+their hashes before fixture-dependent gates run. The requirements and
+non-publishing manual dispatch are documented in
+[Private runner handoff](PRIVATE_RUNNER_CHECKLIST.md).
 
 ### Why the 256 MiB memory gates matter
 

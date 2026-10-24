@@ -1,6 +1,6 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** development preflight18; **not approved for an RC or a GitHub Release**.
+**Status:** development preflight19 code review; **not approved for an RC or a GitHub Release**.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
@@ -18,7 +18,7 @@ not merged to `main`.
 | Frozen 17.8 corpus gate | Same manual private workflow | Not yet verified |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
-| Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed | Pending / no live-device destructive test |
+| Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
 | Signing continuity | Release workflow prepared to compare beta4 cert with official beta3 APK | Not yet run |
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
@@ -53,6 +53,31 @@ not merged to `main`.
 - This validates safe *preflight parsing*, not persistence after
   full restoration or recovery-profile publication. Keep isolated-only
   destructive recovery testing as an unmet gate.
+
+## Additional static-review findings (preflight19)
+
+- The `FullRecoveryBundle` import accepted inactive/historical records,
+  but `ManagerViewModel.restoreCompleteRecoveryJson` still revalidated
+  every special record from the same build, including paused ones. This
+  could reject a valid recovery file whose **inactive** getter became
+  ineligible. Selection and tests now require current-build getter
+  revalidation only for records marked **active**. Paused and older-build
+  records stay preserved without activating hooks.
+- The current Advanced entry point is the **Diagnostics → Advanced
+  Overrides** card and Advanced-tagged entries in Experiments, not
+  the historical seven-tap unlock under Full Catalog. Current usage
+  documentation has been reconciled.
+- Prior known-limitations text incorrectly left large-font/zoom QA
+  and signed dual-slot smoke untested. It now distinguishes completed
+  visual/LSPosed smoke evidence from remaining landscape, TalkBack
+  and interruption-injection gaps.
+- The WSL/private runner workflow, required labels, fixtures and
+  manual non-publishing trigger are documented in
+  [Private runner handoff](PRIVATE_RUNNER_CHECKLIST.md).
+
+Code and docs changes above are **not** themselves signed-device
+validation of preflight19; public CI and release-fixture gates must
+still be checked before RC approval.
 
 ## Engineering risk review
 
@@ -111,7 +136,7 @@ not merged to `main`.
 
 ## Artifacts of Round D
 
-- `app/build.gradle`: development version only, not final RC.
+- `app/build.gradle`: preflight19 development version only, not final RC.
 - `.github/workflows/private-release.yml`: future beta4 tagging
   guarded; no tag currently created.
 - `docs/RELEASE.md`: updated publishing/RC procedure.

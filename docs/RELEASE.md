@@ -46,6 +46,9 @@ Do not create a tag or GitHub Release during this round.
 - Review the `SHA256SUMS` fixture checks, three 256 MiB tests
   and frozen corpus result.
 - Complete the checklist in [Beta4 RC readiness](BETA4_RC_READINESS.md).
+- If away from the self-hosted machine, use
+  [Private runner handoff](PRIVATE_RUNNER_CHECKLIST.md) to prepare the
+  verification without uploading fixtures or secrets.
 - Do not run a destructive full-restore test on a live profile;
   isolated, disposable storage is required.
 
@@ -66,7 +69,11 @@ skipping GitHub Release does not ensure secrecy.
 
 A candidate is for the maintainer's approval only. A fixed defect can
 require a new candidate. Do not publish on the basis of the candidate
-label alone.
+label alone. Testing an APK from one build does not prove the exact
+bytes of a subsequently rebuilt tagged APK are identical. Check
+source/ref, package metadata, signing certificate, version and SHA-256
+artifact digest; do not claim bit-for-bit reproducibility without an
+explicit reproducible-build comparison.
 
 ### Official `v1.0.0-beta4` publication
 
