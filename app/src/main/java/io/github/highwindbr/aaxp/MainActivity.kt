@@ -1545,7 +1545,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
     val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             runCatching { readRecoveryDocument(context, it) }
-                .onSuccess(model::importDynamicJson)
+                .onSuccess { data -> model.importDynamicJson(data) }
                 .onFailure { error ->
                     model.reportRecoveryMessage("Normal backup rejected: ${error.message}")
                 }
