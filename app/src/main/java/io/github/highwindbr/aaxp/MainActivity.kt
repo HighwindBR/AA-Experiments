@@ -370,7 +370,7 @@ private val AaDarkScheme = darkColorScheme(
 }
 
 @Composable private fun ScreenTitle(title: String, subtitle: String? = null) { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
-@Composable private fun MiniStatus(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, ok: Boolean) { Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, Modifier.size(22.dp), tint = if (ok) MaterialTheme.colorScheme.primary else WarningAmber); Spacer(Modifier.width(8.dp)); Column { Text(title, style = MaterialTheme.typography.labelMedium); Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) } } } }
+@Composable private fun MiniStatus(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, ok: Boolean) { Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, Modifier.size(22.dp), tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); Spacer(Modifier.width(8.dp)); Column { Text(title, style = MaterialTheme.typography.labelMedium); Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) } } } }
 @Composable private fun RuntimeBanner(runtime: RuntimeReadiness) {
     val concise = when (runtime.kind) {
         RuntimeReadinessKind.READY_AWAITING_PROCESS -> "Ready — waiting for Android Auto"
@@ -380,7 +380,7 @@ private val AaDarkScheme = darkColorScheme(
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 }
 
-@Composable private fun StatusDot(ok: Boolean) = Surface(Modifier.size(12.dp), shape = MaterialTheme.shapes.extraLarge, color = if (ok) AaGreen else WarningAmber) {}
+@Composable private fun StatusDot(ok: Boolean) = Surface(Modifier.size(12.dp), shape = MaterialTheme.shapes.extraLarge, color = if (ok) AaGreen else MaterialTheme.colorScheme.error) {}
 @Composable private fun CompactStatusRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, tint: Color = MaterialTheme.colorScheme.primary) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(12.dp)); Text(title, Modifier.weight(1f), fontWeight = FontWeight.Medium); Text(value, style = MaterialTheme.typography.bodySmall) }
 }
