@@ -13,6 +13,7 @@ import io.github.highwindbr.aaxp.core.OverrideInputFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import io.github.highwindbr.aaxp.core.AdvancedOverridePolicy
 import io.github.highwindbr.aaxp.core.AdvancedOverrideRecord
 import io.github.highwindbr.aaxp.discovery.DiscoveredIdentifier
@@ -48,6 +49,19 @@ fun AdvancedOverrideEditor(
     var phase by remember(identifier.key) { mutableIntStateOf(0) }
     var acknowledgement by remember(identifier.key) { mutableStateOf("") }
     var restoreWarning by remember(identifier.key) { mutableStateOf(false) }
+    // A prior Advanced action is not replayed every time details are reopened.
+    var observedFeedback by remember(identifier.key) { mutableStateOf(feedback) }
+    var transientFeedback by remember(identifier.key) { mutableStateOf<String?>(null) }
+    LaunchedEffect(feedback) {
+        if (feedback != observedFeedback) {
+            observedFeedback = feedback
+            if (feedback?.contains("Advanced", ignoreCase = true) == true) {
+                transientFeedback = feedback
+                delay(5000)
+                transientFeedback = null
+            } else transientFeedback = null
+        }
+    }
     val expected = identifier.inferredType
     val selected = if (expected == DiscoveredType.BOOLEAN) {
         raw.takeIf { it == "true" || it == "false" }
@@ -129,8 +143,10 @@ fun AdvancedOverrideEditor(
                             color = MaterialTheme.colorScheme.error)
                     Text("State: ${if (publishedCount > 0) "runtime profile published; restart AA" else "no advanced hook published"}",
                         style = MaterialTheme.typography.labelSmall)
-                    feedback?.takeIf { it.contains("Advanced", true) }?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    transientFeedback?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall,
+                            color = if (it.contains("rejected", true) || it.contains("failed", true))
+                                MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                     }
                     if (record != null && belongsToBuild) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
