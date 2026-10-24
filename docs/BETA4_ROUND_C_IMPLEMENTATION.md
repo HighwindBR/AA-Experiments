@@ -97,3 +97,51 @@ preflight17. On the device, first test **export only**:
   configured device without a deliberate need to recover data.
 
 Then proceed to the release-engineering/RC acceptance round.
+
+## Physical export validation — 2026-10-24 (preflight17)
+
+The user's Settings/About screenshot confirms installed
+`1.0.0-beta4-preflight17` (versionCode 163), and exposes all five
+Data operations including the distinct complete recovery actions.
+
+Four user-supplied exports were independently parsed in full. Files
+were used solely for validation and were **not** committed:
+
+| File | Size | Parsed identifiers | Result |
+| --- | ---: | ---: | --- |
+| `aa-catalog-all_discoveries.json` (with methods) | 14.98 MiB | 50,675 | Valid JSON, unique sorted keys |
+| `aa-catalog-all_discoveries.json (1)` (without methods) | 13.28 MiB | 50,675 | Valid JSON, exact field match |
+| `aa-catalog-all_discoveries.csv` | 6.10 MiB | 50,675 | Valid CSV, exact shared-field match |
+| `aa-catalog-editable.json` (with methods) | 0.59 MiB | 870 | Valid JSON; exact matching subset |
+
+Findings:
+- All four files have **zero duplicated keys**, and the editable
+  export matches all 870 corresponding full-catalog JSON objects
+  **including getter and consumer arrays**.
+- Full JSON, JSON without methods and CSV have exactly the same 50,675
+  keys and 11 shared fields, including compiled defaults and overrides.
+  No missing rows, reordered keys or shared-field mismatches.
+- The complete export has 1,588 getter entries and 5,000 consumer
+  entries, while editable contains 870 getters and 4,999 consumers.
+  The extra consumer belongs to one noneditable Video Timing flag;
+  this is consistent with the narrower EDITABLE scope.
+- Exactly **100 normal overrides** occur in each export:
+  95 BOOLEAN, 2 LONG, 2 STRING and 1 DOUBLE. No invalid scalar
+  representation was identified.
+- One noneditable raw technical identifier contains control characters
+  including U+0000. JSON correctly escapes these characters, while
+  CSV preserves them literally. The CSV parses successfully with a
+  standards-compliant reader, but some spreadsheet programs may
+  mishandle the embedded NUL. Treat this as a minor interoperability
+  concern for raw ALL discoveries, **not** as lost export records.
+- Existing GitHub Actions run
+  [40060544570](https://github.com/HighwindBR/AA-Experiments/actions/runs/40060544570)
+  completed with unit-tests, lint-release and debug-apk jobs passing.
+  That validates the debug CI, not the signed build provenance.
+
+**Round C export sign-off:** JSON and CSV full-catalog streaming,
+editable filtering, column consistency and preserved normal overrides
+PASS against real on-device data. This does not benchmark peak memory
+usage, and no complete recovery bundle was supplied. Full recovery
+write/restore behavior is **not yet device-validated**; a destructive
+restore should only be exercised on an isolated test profile.
