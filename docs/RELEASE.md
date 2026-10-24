@@ -51,8 +51,8 @@ Do not create a tag or GitHub Release during this round.
 
 ### Candidate (not a published Release)
 
-After all gates, prepare an **unsigned? No — signed** candidate
-with the existing upgrade-compatible release signing key. To minimize
+After all gates, prepare a **signed** candidate using the existing
+upgrade-compatible release signing key. To minimize
 differences between a tested candidate and the eventual official
 APK, the final `1.0.0-beta4` package metadata should be set *before*
 candidate testing. The candidate may be identified externally as
