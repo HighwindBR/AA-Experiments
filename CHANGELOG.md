@@ -7,6 +7,8 @@
   active current-build hook conflicts remain prohibited.
 - Added four recovery regression cases covering paused, historical and
   current-build ownership.
+- Limited legacy normal-backup file import to 2 MiB to avoid unbounded
+  reads from user-selected document providers; errors are reported in-app.
 - Updated release gates for an eventual `v1.0.0-beta4` tag:
   build+lint, private fixture regressions, tagged APK version checks,
   and signing-certificate comparison against the official beta3 APK.

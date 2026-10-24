@@ -29,7 +29,8 @@ It does not unlock every Android Auto or vehicle capability.
   instead of materializing more than 50,000 rows in app memory.
 - **Complete recovery bundle:** optional exact-build backup of normal,
   Advanced and Experimental records and baseline absence. Existing
-  normal-only backup files remain supported.
+  normal-only backup files remain supported. Both backup import paths
+  limit input-file size to protect against oversized documents.
 
 ## Compatibility and safety
 

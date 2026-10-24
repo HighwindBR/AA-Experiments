@@ -36,6 +36,9 @@ not merged to `main`.
   The signed APK must match the expected package/version metadata and
   the official beta3 certificate SHA-256 fingerprint.
 - No publishing action is triggered by the development branch changes.
+- Legacy normal backup import now uses the same 2 MiB capped document
+  reader as complete recovery, rather than unbounded `readText()`.
+  The normal schema and stored values are unchanged.
 
 ### Open before RC sign-off
 
