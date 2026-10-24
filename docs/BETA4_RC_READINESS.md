@@ -16,8 +16,8 @@ not merged to `main`.
 | Debug APK build | Passing on run 40113184991; rerun final patch | Passed intermediate; final pending |
 | Private 256 MiB gates | Manual `private-release.yml` workflow on beta4 branch, with self-hosted fixture runner | Not yet verified |
 | Frozen 17.8 corpus gate | Same manual private workflow | Not yet verified |
-| Physical integration | preflight14 accepted slot A and B, preflight13 typed values, preflight16 UI, preflight17 exports | Supported |
-| Complete recovery bundle export | Created 20,147-byte file on preflight17; contents not inspected | Export confirmed, integrity unknown |
+| Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
+| Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed | Pending / no live-device destructive test |
 | Signing continuity | Release workflow prepared to compare beta4 cert with official beta3 APK | Not yet run |
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
@@ -33,6 +33,26 @@ not merged to `main`.
   before this checklist can be marked fully green.
 - Public GitHub tests do not replace private corpus/memory gates or
   signing-cert continuity, which have not run yet.
+
+- [Actions run 40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594):
+  final preflight18 branch commit `44413c1a` passed unit tests,
+  release lint and debug APK build.
+- Three user-provided screenshots from the signed preflight18 show:
+  exact `1.0.0-beta4-preflight18` About version, Android Auto
+  `18.0.164204`, LSPosed service connected with configured scope,
+  100 modified normal overrides, 3 suspended, 1 Advanced
+  active/retained/published, an Experimental BOOLEAN profile published
+  and the normal dynamic profile published.
+- The preflight17 full recovery file (20,147 bytes) was opened
+  without committing it; its schema/checksum and installed-build
+  match passed preflight18's decoder, which displayed a confirmation
+  preview of **103 normal stored records = 100 active + 3 suspended**,
+  1 Advanced, 1 Experimental, 2 active special records. The dangerous
+  confirmation remained disabled until text entry and the user was
+  instructed to cancel. No stored preferences were replaced.
+- This validates safe *preflight parsing*, not persistence after
+  full restoration or recovery-profile publication. Keep isolated-only
+  destructive recovery testing as an unmet gate.
 
 ## Engineering risk review
 
