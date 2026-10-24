@@ -985,7 +985,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
     val details = loaded?.takeIf { it.key == identifier.key } ?: identifier
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to experiments") }
+            IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to experiments", tint = MaterialTheme.colorScheme.onBackground) }
             Text("Experiment details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
         }
         HorizontalDivider()
