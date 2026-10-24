@@ -141,3 +141,22 @@ not automatically attributable to this preflight.
 the CI run is accessible, and verify analysis ownership / cancel / reconnection
 only when a safe, non-destructive opportunity arises. Do not remove the user's
 existing 100 overrides or deliberately corrupt an active profile.
+
+### Public CI verification
+
+The pull-request-triggered **Verify and build Android APK** workflow
+succeeded for code commit `5ee6ccf5b8bc68ffcd340a15ffc962f26445e5d5`,
+run [40037382455](https://github.com/HighwindBR/AA-Experiments/actions/runs/40037382455).
+All three jobs completed successfully:
+
+- `unit-tests`: `:app:testDebugUnitTest`
+- `lint-release`: `:app:lintRelease`
+- `debug-apk`: `:app:assembleDebug`
+
+A previous run [40037279012](https://github.com/HighwindBR/AA-Experiments/actions/runs/40037279012)
+also passed for commit `0b36d844a33e824f5058857c9e4d6e3f900e43b7`.
+
+**Boundary:** these are Android **debug** build and lint/test results.
+They do not establish that the separately signed preflight workflow
+succeeded or validate Android instrumentation tests. The later branch
+updates after `5ee6ccf` were documentation-only.
