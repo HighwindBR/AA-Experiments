@@ -139,6 +139,9 @@ object ProtobufInspector {
 
 object ProtobufSemanticAnalyzer {
     fun enrich(identifier: DiscoveredIdentifier): DiscoveredIdentifier {
+        // A boolean default such as "true" contains valid Base64 characters, but can
+        // never be a serialized protobuf. Do not reinterpret primitive getter types.
+        if (identifier.inferredType !in setOf(DiscoveredType.STRING, DiscoveredType.BYTES)) return identifier
         val raw = identifier.compiledDefault ?: return identifier
         if (!looksLikeProtoSetting(identifier.key)) return identifier
         val inspection = ProtobufInspector.inspectBase64(raw) ?: return identifier

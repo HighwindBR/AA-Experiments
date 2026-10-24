@@ -394,7 +394,10 @@ class DexCatalogAnalyzer {
             occurrence.method in directGetters && occurrence.defaultSource == "INVOKE_ARGUMENT"
         }
         val defaultOccurrences = getterRegistrations.ifEmpty { item.occurrences }
-        val defaults = defaultOccurrences.mapNotNull { normalizeDefault(it.candidateDefault, inferred, item.key) }.distinct()
+        val defaults = defaultOccurrences.mapNotNull { occurrence ->
+            CompiledDefaultCodec.normalize(normalizeDefault(occurrence.candidateDefault, inferred, item.key),
+                inferred, occurrence.defaultSource)
+        }.distinct()
         val configurableNamespace = item.namespace !in setOf(IdentifierNamespace.STRING_LITERAL, IdentifierNamespace.RESOURCE_NAME, IdentifierNamespace.MANIFEST_COMPONENT, IdentifierNamespace.NATIVE_REFERENCE)
         val metadata = buildMap {
             if (safetyReason != null) put("risk", "BLOCKED_BY_SAFETY_POLICY")

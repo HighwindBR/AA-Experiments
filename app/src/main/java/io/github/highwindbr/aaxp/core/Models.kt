@@ -22,6 +22,7 @@ enum class SuspendedOverrideReason {
     SUSPENDED_MAPPING_MISSING,
     SUSPENDED_MAPPING_AMBIGUOUS,
     SUSPENDED_INVALID_VALUE,
+    SUSPENDED_TARGET_COLLISION,
 }
 
 data class SuspendedOverride(

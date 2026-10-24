@@ -50,6 +50,64 @@ class ConsumerGraphAnalyzerTest {
             "676205e71a75f38e0565b9be7d462c296b14490cef9a3feda3791098e5baae04", "UxPrototype__enabled")?.trueMeaning)
     }
 
+    @Test fun oneKeyTargetedTraceReachesConsumerForNonEditableGetter() {
+        val getter = method("LreadOnly;", "a")
+        // Directed tracing intentionally rejects UNKNOWN value-flow edges.
+        // The synthetic renderer must explicitly show that it branches on the
+        // getter's result; merely recording an invoke is not sufficient.
+        val caller = method("Lcomponent;", "render", "()V",
+            listOf("LreadOnly;->a()Z"))
+            .withFlow("LreadOnly;->a()Z" to InvokeCallOutcome.BRANCHED)
+        val id = DiscoveredIdentifier(
+            "VideoTimingControllerFeature__video_timing_controller_min_delay_parked_exp_ms",
+            IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.BOOLEAN, "false",
+            emptyList(), listOf(getter), ResolutionConfidence.UNIQUE_GETTER, null, false
+        )
+        val records = listOf(
+            ConsumerGraphAnalyzer.MethodRecord(getter, emptyList(), "Ljava/lang/Object;"),
+            ConsumerGraphAnalyzer.MethodRecord(caller, emptyList(), "Ljava/lang/Object;",
+                ConsumerGraphAnalyzer.ConsumerCategory.RENDERER)
+        )
+        val ordinary = ConsumerGraphAnalyzer.enrich(listOf(id), records).single()
+        assertTrue(ordinary.consumers.isEmpty())
+        val targeted = ConsumerGraphAnalyzer.enrich(listOf(id), records,
+            maxVisitedNodes = 64, targetedTraversal = true).single()
+        assertEquals(RuntimeConsumerStatus.PRESENT, targeted.runtimeConsumerStatus)
+        assertEquals(1, targeted.consumers.size)
+        assertEquals("Lcomponent;", targeted.consumers.single().method.className)
+        assertTrue(!targeted.editable)
+    }
+
+    @Test fun targetedConsumerTraceDoesNotTreatUnknownValueFlowAsProven() {
+        val getter = method("LreadOnly;", "a")
+        val unprovenCaller = method("Lcomponent;", "render", "()V",
+            listOf("LreadOnly;->a()Z"))
+        val id = DiscoveredIdentifier(
+            "Feature__non_editable", IdentifierNamespace.FENOTYPE_FLAG,
+            DiscoveredType.BOOLEAN, "false", emptyList(), listOf(getter),
+            ResolutionConfidence.UNIQUE_GETTER, null, false
+        )
+        val traced = ConsumerGraphAnalyzer.enrich(listOf(id), listOf(
+            ConsumerGraphAnalyzer.MethodRecord(getter, emptyList(), "Ljava/lang/Object;"),
+            ConsumerGraphAnalyzer.MethodRecord(unprovenCaller, emptyList(), "Ljava/lang/Object;",
+                ConsumerGraphAnalyzer.ConsumerCategory.RENDERER)
+        ), targetedTraversal = true).single()
+        assertTrue(traced.consumers.isEmpty())
+        assertEquals(RuntimeConsumerStatus.DORMANT, traced.runtimeConsumerStatus)
+        assertEquals("VALUE_FLOW_NOT_PROVEN", traced.metadata["targetedResolutionReason"])
+        assertTrue(!traced.editable)
+    }
+
+    @Test fun aGetterlessReadOnlyEntryIsStillSkippedInTargetedTrace() {
+        val id = DiscoveredIdentifier("Flag__notResolved",
+            IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.UNKNOWN, null,
+            emptyList(), emptyList(), ResolutionConfidence.UNSUPPORTED, null, false)
+        val traced = ConsumerGraphAnalyzer.enrich(listOf(id), emptyList(),
+            targetedTraversal = true).single()
+        assertTrue(traced.consumers.isEmpty())
+        assertTrue(!traced.editable)
+    }
+
     @Test fun marksGetterWithoutCallersDormantWithoutChangingEditability() {
         val getter = method("Lflag;", "a")
         val identifier = DiscoveredIdentifier("Family__flag", IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.BOOLEAN, "false",

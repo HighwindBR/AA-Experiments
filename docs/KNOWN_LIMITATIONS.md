@@ -9,3 +9,10 @@
 - Resources are catalogued for diagnostics but are not directly editable through the modern API 101 runtime path.
 - A force-stop, reboot or OS process termination interrupts active work; catalog writes and directed results already committed remain preserved.
 - Release signing requires the CI secrets documented in the workflow. Debug builds use an automatically generated disposable debug key.
+
+- Preflight14 uses dual-slot remote-file publication and a shared profile-refresh coordinator, but its exact remote-file reopen/fsync behavior still requires a signed-device smoke test. The earlier successful preflight13 smoke test does not validate the new slot mechanism.
+
+- Preflight15 improves dark theme contrast, responsive Experiments layout and typed input feedback, but large-font, landscape, TalkBack and screen-reader validation on a physical Android device is still pending.
+
+- A complete recovery bundle contains raw normal/Advanced/Experimental values (including STRING content); it is not encrypted or authenticated. Store it securely and do not import untrusted JSON. Full recovery requires an exact matching Android Auto build; it is not a cross-version migration tool.
+- Streaming full-catalog export is bounded in memory but may still take time on slower devices or document providers. If the provider fails, incomplete destination files must be discarded. A cancel/progress UI for very long exports remains future work.

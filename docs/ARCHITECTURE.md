@@ -8,13 +8,22 @@ resolver. SQLite schema 7 stores catalogs under a composite build fingerprint co
 code, base APK hash and ordered split artifact hashes.
 
 Active typed preferences are validated against the current catalog and serialized into profile
-schema 3. The libxposed API 101 module independently recomputes the installed fingerprint, installs
-only zero-argument mappings from a matching profile and reads overrides from an immutable atomic
-snapshot. Every invalid or missing state executes the original getter.
+schema 3. Profile publication rotates between two remote-file slots: the manager writes and
+fsyncs the inactive slot, reads it back and validates it, then commits the selected slot name
+through libxposed RemotePreferences. If interrupted before that final commit, the previous slot
+remains selected. The module reads the selected slot with fallback to the other slot and the
+legacy `active_profile_v2.json`, preserving a safe migration path. Profiles always remain
+bound to the complete installed package fingerprint. The libxposed API 101 module independently
+recomputes that fingerprint, installs only zero-argument mappings from a matching profile and
+reads overrides from an immutable atomic snapshot. Every invalid or missing state executes the
+original getter.
 
 Long analysis runs in `viewModelScope` while a low-priority foreground data-sync service pins the
-process. The service lifetime is protected by `try/finally`; it improves screen-off resilience but
-does not promise survival after force-stop, reboot or process termination.
+process. A single-owner analysis gate prevents an overlapping scan, archive import or deep/targeted
+DEX operation from stopping the foreground service owned by another operation. The service
+lifetime is protected by `try/finally`; it improves screen-off resilience but does not promise
+survival after force-stop, reboot or process termination. A separate suspend-aware mutex serializes
+profile refresh/publication and build-state handoffs.
 
 ## Resolver
 
@@ -91,3 +100,29 @@ incompatibility does not affect the installed runtime profile.
 
 Historical design decisions and implementation milestones live in
 [Alpha history](history/ALPHA_HISTORY.md) and `history/alpha-details/`.
+
+## Catalog exports and recovery
+
+Full-catalog JSON/CSV export is written directly to a user-selected
+Android Storage Access Framework document through a buffered writer.
+The SQLite reader pages in batches of 250 and attaches getters/consumers
+only for the relevant page keys. Export can fail if the build changes
+or the document provider stops accepting writes; any partial file should
+be discarded (the app attempts to delete it).
+
+Normal-only backups preserve the pre-existing schema 3 import/export
+behavior and do not include special baselines. A distinct schema 1
+`AA_EXPERIMENTS_COMPLETE_RECOVERY` envelope captures all manager-owned
+normal/name/Advanced/Experimental remote preference records, including
+baseline absence. The bundle is limited to 2 MiB / 4,096 records,
+includes a canonical checksum, and can be restored only to the exact
+AA package fingerprint and versionCode. The checksum checks integrity,
+not authenticity: untrusted files must never be imported.
+
+Complete restore additionally checks current-build Advanced/Experimental
+getter signatures and the safety policy, requires an explicit typed
+confirmation, and replaces only the supported preference namespaces
+in one commit. It never imports diagnostic probes, video trace state,
+LSPosed framework settings or profile-slot pointers. Cross-build
+Advanced records can remain stored for history but are not published
+on a different build.

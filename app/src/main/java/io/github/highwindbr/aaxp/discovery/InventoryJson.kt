@@ -94,7 +94,8 @@ object InventoryJson {
             ResolutionConfidence.valueOf(value.getString("confidence")), value.nullableString("compiledDefault"), emptyList()),
         semanticsProvenance = value.optString("semanticsProvenance").enumOr(
             if (value.optBoolean("semanticsReviewed", false)) SemanticsProvenance.MANUAL_EXACT_BUILD else SemanticsProvenance.NONE))
-        return SemanticClassifier.normalize(legacy)
+        return SemanticClassifier.normalize(legacy.copy(compiledDefault = CompiledDefaultCodec.normalize(
+            legacy.compiledDefault, legacy.inferredType, legacy.metadata["defaultSource"])))
     }
 
     private fun method(value: MethodFingerprint) = JSONObject().apply {
