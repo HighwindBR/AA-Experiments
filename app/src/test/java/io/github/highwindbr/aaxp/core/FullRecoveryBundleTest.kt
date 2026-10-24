@@ -163,4 +163,40 @@ class FullRecoveryBundleTest {
         assertEquals(1, parsed.normal)
         assertEquals(0, parsed.activeAdvanced)
     }
+
+    @Test fun onlyCurrentBuildActiveRecordsRequireGetterRevalidation() {
+        val current = AdvancedOverrideRecord(
+            "CurrentActive__mode", io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
+            build, "Lcurrent;", "a", "()J", "hash", 2,
+            previousOverride = null, previousName = null, active = true, createdAtMillis = 10L
+        )
+        val paused = current.copy(key = "Paused__mode", active = false)
+        val historical = current.copy(key = "Historical__mode", buildFingerprint = "a".repeat(64))
+        val pausedExperimental = ExperimentalBooleanSnapshot(
+            build, "Lold;", "b", "()Z", "fingerprint", 3,
+            value = true, previousOverride = null, previousName = null,
+            active = false, createdAtMillis = 11L
+        )
+        val source = mapOf(
+            AdvancedOverridePolicy.preferenceKey(current.key) to current.encode(),
+            AdvancedOverridePolicy.preferenceKey(paused.key) to paused.encode(),
+            AdvancedOverridePolicy.preferenceKey(historical.key) to historical.encode(),
+            ExperimentalBooleanPolicy.RECORD_KEY to pausedExperimental.encode()
+        )
+        val parsed = FullRecoveryBundle.decode(
+            FullRecoveryBundle.create(source, build, 10L), build, 10L)
+        assertEquals(3, parsed.advanced)
+        assertEquals(1, parsed.activeAdvanced)
+        assertEquals(listOf(current.key), parsed.activeAdvancedRecords().map { it.key })
+        assertNull(parsed.activeExperimentalRecord())
+        assertEquals(4, parsed.entries.size)
+
+        val activeExperimental = pausedExperimental.copy(active = true)
+        val parsedActive = FullRecoveryBundle.decode(
+            FullRecoveryBundle.create(source + (
+                ExperimentalBooleanPolicy.RECORD_KEY to activeExperimental.encode()), build, 10L),
+            build, 10L
+        )
+        assertNotNull(parsedActive.activeExperimentalRecord())
+    }
 }

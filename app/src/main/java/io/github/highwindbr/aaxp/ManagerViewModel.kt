@@ -1002,13 +1002,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     "LSPosed is not connected"
                 }
                 val current = prefs.all
-                val activeAdv = bundle.entries.filterKeys {
-                    it.startsWith(AdvancedOverridePolicy.PREFIX)
-                }.values.map { checkNotNull(AdvancedOverrideRecord.decode(it)) }
-                    .filter { it.buildFingerprint == build }
-                val exp = bundle.entries[ExperimentalBooleanPolicy.RECORD_KEY]
-                    ?.let { checkNotNull(ExperimentalBooleanSnapshot.decode(it)) }
-                    ?.takeIf { it.buildFingerprint == build }
+                // Paused/historical snapshots must be recoverable even if their
+                // former getter is no longer eligible. Only hooks to be resumed
+                // on this build require current runtime-eligibility checks.
+                val activeAdv = bundle.activeAdvancedRecords()
+                val exp = bundle.activeExperimentalRecord()
                 val keys = activeAdv.map { it.key }.toSet() +
                     listOfNotNull(if (exp != null) ExperimentalBooleanPolicy.KEY else null)
                 val identifiers = database.identifiersByKeys(build, keys)

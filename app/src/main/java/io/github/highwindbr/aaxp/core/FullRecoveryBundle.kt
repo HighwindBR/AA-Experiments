@@ -20,7 +20,20 @@ object FullRecoveryBundle {
 
     data class Parsed(val entries: Map<String, String>, val fingerprint: String,
         val versionCode: Long, val normal: Int, val names: Int, val advanced: Int,
-        val experimental: Int, val activeAdvanced: Int, val activeExperimental: Int)
+        val experimental: Int, val activeAdvanced: Int, val activeExperimental: Int) {
+        /**
+         * Inactive and older-build records are recoverable metadata, not hooks
+         * to activate now. Revalidate only current-build active mappings.
+         */
+        fun activeAdvancedRecords(): List<AdvancedOverrideRecord> =
+            entries.filterKeys { it.startsWith(AdvancedOverridePolicy.PREFIX) }
+                .values.mapNotNull(AdvancedOverrideRecord::decode)
+                .filter { it.active && it.buildFingerprint.equals(fingerprint, ignoreCase = true) }
+
+        fun activeExperimentalRecord(): ExperimentalBooleanSnapshot? =
+            ExperimentalBooleanSnapshot.decode(entries[ExperimentalBooleanPolicy.RECORD_KEY])
+                ?.takeIf { it.active && it.buildFingerprint.equals(fingerprint, ignoreCase = true) }
+    }
 
     fun managedKey(key: String): Boolean =
         key == ExperimentalBooleanPolicy.RECORD_KEY ||
