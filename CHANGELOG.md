@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0-beta4-preflight16 — visual QA follow-up (CI/device pending)
+
+- Fixed nearly invisible dark-theme back arrow in Experiment details by
+  explicitly using `MaterialTheme.colorScheme.onBackground`.
+- Armed read-only Developer tools are automatically revealed, but the
+  section can now be collapsed and reopened while a diagnostic remains
+  armed. The previous unconditional visibility made the toggle inert.
+- Documented visual validation of sixteen user-provided light/dark
+  screenshots; no personal screenshot assets are committed.
+
+No LSPosed runtime, profile, persisted override or catalog behavior changed.
+This remains development work, not an RC or release.
+
 ## 1.0.0-beta4-preflight15 — Round B Compose UX and accessibility (CI/device pending)
 
 - Responsive Experiments title and counts, avoiding collisions on small displays and larger fonts.

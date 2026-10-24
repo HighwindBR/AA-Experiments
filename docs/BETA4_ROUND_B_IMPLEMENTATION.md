@@ -83,3 +83,38 @@ non-finite values, explicit BOOLEAN selection, and empty STRING.
 - Reducing MainActivity/ViewModel size and running device-level
   UI/Compose tests can be addressed incrementally.
 - Release workflow/notes and RC gating remain a separate step.
+
+## Visual inspection follow-up — preflight16
+
+Sixteen user-provided screenshots taken 23:36–23:42 on 2026-10-23
+were reviewed from the preflight15 build. Both Lab Green
+light and dark appearances were exercised with real installed
+Android Auto catalog data, 100 normal overrides and an existing
+Advanced `AceFeature__mode` record. The screenshots are private
+test evidence, not shipped repository assets.
+
+**Confirmed visually:**
+- Experiments count is below the heading rather than colliding with it:
+  `900 shown · 100 normal modified · 30 Advanced · 3 suspended`.
+- `Configured value`, the LSPosed runtime-verification note,
+  TRUE/FALSE/Default selection and Advanced inline editor display.
+- Light/dark Lab Green cards, buttons and modified-state labels.
+- Advanced opt-in is a primary Diagnostics card; VTC trace and DOUBLE
+  probes are grouped below Developer tools when the trace is armed.
+- Recovery semantics in Settings remain explicit about normal-only backup.
+
+**Two defects identified and fixed in the next development revision:**
+- Dark Experiment details back-arrow inherited an effectively black
+  content color because this page is rendered outside the root
+  Scaffold. The icon now explicitly uses onBackground.
+- The Developer tools button could not collapse the tool cards while
+  a VTC/probe was armed because the visibility condition always
+  overrode the toggle. An armed diagnostic now auto-expands when
+  armed, but the user can collapse or reopen it.
+
+**Not proven by screenshots:** inline invalid-number errors,
+Snackbar life-cycle, Advanced two-stage typed confirmation, 320dp
+small-device layout, nondefault font scaling, TalkBack traversal
+and absence of overlap in landscape. These remain appropriate
+small UX acceptance tests, not requirements for per-flag runtime
+functional verification.
