@@ -92,4 +92,75 @@ class FullRecoveryBundleTest {
             ), build, 1L)
         }
     }
+
+    @Test fun pausedAdvancedCanCoexistWithRestoredNormalValue() {
+        val name = "AceFeature__mode"
+        val record = AdvancedOverrideRecord(
+            name, io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
+            build, "La;", "b", "()J", "hash", 2,
+            previousOverride = "LONG:3", previousName = name, active = false,
+            createdAtMillis = 100L
+        )
+        val source = mapOf(
+            DynamicOverrideCodec.preferenceKey(name) to "LONG:3",
+            DynamicOverrideCodec.namePreferenceKey(name) to name,
+            AdvancedOverridePolicy.preferenceKey(name) to record.encode()
+        )
+        val parsed = FullRecoveryBundle.decode(
+            FullRecoveryBundle.create(source, build, 1), build, 1)
+        assertEquals(1, parsed.normal)
+        assertEquals(1, parsed.advanced)
+        assertEquals(0, parsed.activeAdvanced)
+    }
+
+    @Test fun inactiveExperimentalRecordCanCoexistWithNormalBoolean() {
+        val key = ExperimentalBooleanPolicy.KEY
+        val baseline = ExperimentalBooleanSnapshot(
+            build, "Lexample/PhoneTheme;", "b", "()Z", "sha", 4,
+            value = false, previousOverride = "BOOLEAN:true", previousName = key,
+            active = false, createdAtMillis = 200L
+        )
+        val source = mapOf(
+            DynamicOverrideCodec.preferenceKey(key) to "BOOLEAN:true",
+            ExperimentalBooleanPolicy.RECORD_KEY to baseline.encode()
+        )
+        val parsed = FullRecoveryBundle.decode(
+            FullRecoveryBundle.create(source, build, 1), build, 1)
+        assertEquals(1, parsed.normal)
+        assertEquals(1, parsed.experimental)
+        assertEquals(0, parsed.activeExperimental)
+    }
+
+    @Test fun activeExperimentalRejectsNormalBooleanOwnershipCollision() {
+        val key = ExperimentalBooleanPolicy.KEY
+        val active = ExperimentalBooleanSnapshot(
+            build, "Lexample/PhoneTheme;", "b", "()Z", "sha", 4,
+            value = false, previousOverride = "BOOLEAN:true", previousName = key,
+            active = true, createdAtMillis = 200L
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            FullRecoveryBundle.create(mapOf(
+                DynamicOverrideCodec.preferenceKey(key) to "BOOLEAN:true",
+                ExperimentalBooleanPolicy.RECORD_KEY to active.encode()
+            ), build, 1)
+        }
+    }
+
+    @Test fun activeOldBuildAdvancedIsOnlyHistoricalMetadata() {
+        val key = "AceFeature__mode"
+        val record = AdvancedOverrideRecord(
+            key, io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
+            "a".repeat(64), "La;", "b", "()J", "hash", 2,
+            previousOverride = null, previousName = null, active = true,
+            createdAtMillis = 100L
+        )
+        val source = mapOf(
+            DynamicOverrideCodec.preferenceKey(key) to "LONG:3",
+            AdvancedOverridePolicy.preferenceKey(key) to record.encode()
+        )
+        val parsed = FullRecoveryBundle.decode(
+            FullRecoveryBundle.create(source, build, 1), build, 1)
+        assertEquals(1, parsed.normal)
+        assertEquals(0, parsed.activeAdvanced)
+    }
 }
