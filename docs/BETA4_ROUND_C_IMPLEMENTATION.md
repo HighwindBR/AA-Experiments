@@ -145,3 +145,21 @@ PASS against real on-device data. This does not benchmark peak memory
 usage, and no complete recovery bundle was supplied. Full recovery
 write/restore behavior is **not yet device-validated**; a destructive
 restore should only be exercised on an isolated test profile.
+
+## Full recovery export confirmation — 2026-10-24
+
+The user confirmed that the installed **preflight17** produced
+`aa-experiments-full-recovery.json` of **20,147 bytes** (19.67 KiB as
+reported by the device). This is below the 2 MiB bundle limit and
+confirms the export-to-document path produced a file.
+
+The complete recovery file's contents were **not** shared or parsed:
+this evidence alone does not verify its schema, checksum, number of
+Advanced/Experimental records or preservation of all baseline values.
+No destructive restore was performed on the live profile.
+
+**Round C acceptance:** on-device JSON/CSV catalog export, editable
+filtering and creation of a complete recovery file were validated.
+Actual full-restore execution remains a distinct isolated-profile RC
+test; it should not be performed on the user's configured device solely
+for QA. The export-side Round C work can proceed to Round D.
