@@ -11,9 +11,9 @@ not merged to `main`.
 | --- | --- | --- |
 | Review all beta4 code against beta3 | 81 commits relative to main at beginning of Round D; review new Advanced/runtime/recovery/publication files | In progress |
 | Functional regression strategy | Representative hooks, not individual behavior of 900+ flags | Adopted |
-| Unit tests | New checks for paused/historical Advanced/Experimental ownership; rerun complete suite after edits | Pending on final commit |
-| Release lint | Run `:app:lintRelease` on final branch | Pending on final commit |
-| Debug APK build | Run `:app:assembleDebug` after unit/lint | Pending on final commit |
+| Unit tests | Passing on Round D intermediate commit in Actions run [40113184991](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113184991); rerun for final bounded-import patch | Passed intermediate; final pending |
+| Release lint | Passing on run 40113184991; rerun final patch | Passed intermediate; final pending |
+| Debug APK build | Passing on run 40113184991; rerun final patch | Passed intermediate; final pending |
 | Private 256 MiB gates | Manual `private-release.yml` workflow on beta4 branch, with self-hosted fixture runner | Not yet verified |
 | Frozen 17.8 corpus gate | Same manual private workflow | Not yet verified |
 | Physical integration | preflight14 accepted slot A and B, preflight13 typed values, preflight16 UI, preflight17 exports | Supported |
@@ -22,6 +22,17 @@ not merged to `main`.
 | Signing continuity | Release workflow prepared to compare beta4 cert with official beta3 APK | Not yet run |
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
+
+## CI validation provenance
+
+- [Actions run 40113184991](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113184991):
+  `unit-tests`, `lint-release`, `debug-apk` **all passed** for an
+  intermediate Round D commit after the paused-record regression fix.
+- The final branch additionally includes a 2 MiB cap for the **legacy
+  normal backup import**. Its own unit/lint/build run must succeed
+  before this checklist can be marked fully green.
+- Public GitHub tests do not replace private corpus/memory gates or
+  signing-cert continuity, which have not run yet.
 
 ## Engineering risk review
 
