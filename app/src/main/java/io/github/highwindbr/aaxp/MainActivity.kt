@@ -4,6 +4,8 @@ package io.github.highwindbr.aaxp
 
 import android.os.Bundle
 import android.os.Build
+import android.net.Uri
+import java.io.ByteArrayOutputStream
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
@@ -1510,6 +1512,24 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
         dismissButton = { TextButton({ probeConfirmation = false }) { Text("Cancel") } })
 }
 
+/** Capped recovery import avoids ever loading an arbitrary provider-sized document. */
+private fun readRecoveryDocument(context: android.content.Context, uri: Uri): String {
+    val output = ByteArrayOutputStream()
+    context.contentResolver.openInputStream(uri).use { input ->
+        val source = checkNotNull(input) { "Cannot read the recovery document" }
+        val buffer = ByteArray(8192)
+        while (true) {
+            val size = source.read(buffer)
+            if (size == -1) break
+            require(output.size() + size <= FullRecoveryBundle.MAX_BYTES) {
+                "Recovery file exceeds the 2 MiB safety limit"
+            }
+            output.write(buffer, 0, size)
+        }
+    }
+    return String(output.toByteArray(), Charsets.UTF_8)
+}
+
 @Composable private fun SettingsScreen(state: ManagerUiState, model: ManagerViewModel,
     theme: ThemeMode, onTheme: (ThemeMode) -> Unit,
     accent: AccentPalette, onAccent: (AccentPalette) -> Unit,
@@ -1523,6 +1543,35 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     }
     val backupExport=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){ uri->uri?.let { context.contentResolver.openOutputStream(it)?.use { out->out.write(model.exportDynamicJson().toByteArray()) } } }
     val backupImport=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){ uri->uri?.let { context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader->model.importDynamicJson(reader.readText()) } } }
+    var recoveryPending by remember { mutableStateOf<Pair<String, FullRecoveryBundle.Parsed>?>(null) }
+    var recoveryAcknowledgement by remember { mutableStateOf("") }
+    val fullExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let {
+            runCatching {
+                val data = model.exportCompleteRecoveryJson()
+                context.contentResolver.openOutputStream(it, "wt").use { output ->
+                    checkNotNull(output) { "Recovery destination is not writable" }
+                    output.write(data.toByteArray(Charsets.UTF_8))
+                    output.flush()
+                }
+            }.onSuccess {
+                model.reportRecoveryMessage("Full recovery bundle exported. Keep this file private.")
+            }.onFailure { ex -> model.reportRecoveryMessage("Full recovery export failed: ${ex.message}") }
+        }
+    }
+    val fullImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            runCatching {
+                val text = readRecoveryDocument(context, it)
+                val fingerprint = checkNotNull(state.aa.buildFingerprintSha256)
+                val version = checkNotNull(state.aa.versionCode)
+                text to FullRecoveryBundle.decode(text, fingerprint, version)
+            }.onSuccess { decoded ->
+                recoveryAcknowledgement = ""
+                recoveryPending = decoded
+            }.onFailure { ex -> model.reportRecoveryMessage("Recovery file rejected: ${ex.message}") }
+        }
+    }
     when(page){
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
@@ -1540,7 +1589,24 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                 AnchoredPreferenceDropdown(Icons.Default.Palette, "Accent color", "Choose the app accent palette", listOf("Lab Green", "Material You"), accent.ordinal) { onAccent(AccentPalette.entries[it]) }
             }}}
             item{SectionLabel("Data")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Column{SettingsRow(Icons.Default.Upload,"Export normal overrides","Active and suspended only; excludes Advanced and Experimental records"){backupExport.launch("aa-experiments-overrides.json")}; HorizontalDivider(); SettingsRow(Icons.Default.Download,"Import normal overrides","Matching build only; blocked while Advanced or Experimental records exist"){backupImport.launch(arrayOf("application/json","text/plain"))}; HorizontalDivider(); SettingsRow(Icons.Default.Restore,"Restore all overrides","Also deletes Advanced and Experimental records and saved baselines",enabled=state.dynamicOverrides.isNotEmpty() || state.suspendedOverrides.isNotEmpty() || state.advancedRecords.isNotEmpty() || state.experimentalSnapshot != null){restoreConfirm=true}}}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Column{
+                SettingsRow(Icons.Default.Upload,"Export normal overrides","Active and suspended only; excludes Advanced and Experimental records"){backupExport.launch("aa-experiments-overrides.json")}
+                HorizontalDivider()
+                SettingsRow(Icons.Default.Download,"Import normal overrides","Matching build only; blocked while Advanced or Experimental records exist"){backupImport.launch(arrayOf("application/json","text/plain"))}
+                HorizontalDivider()
+                SettingsRow(Icons.Default.Upload,"Export full recovery bundle","Normal + Advanced + Experimental records and saved baselines; keep private",
+                    enabled=state.framework.connected && state.aa.runtimeTarget) {
+                    fullExport.launch("aa-experiments-full-recovery.json")
+                }
+                HorizontalDivider()
+                SettingsRow(Icons.Default.Download,"Restore full recovery bundle","Replaces all overrides; exact AA build and confirmation required",
+                    enabled=state.framework.connected && state.aa.runtimeTarget) {
+                    fullImport.launch(arrayOf("application/json", "text/plain"))
+                }
+                HorizontalDivider()
+                SettingsRow(Icons.Default.Restore,"Restore all overrides","Also deletes Advanced and Experimental records and saved baselines",
+                    enabled=state.dynamicOverrides.isNotEmpty() || state.suspendedOverrides.isNotEmpty() || state.advancedRecords.isNotEmpty() || state.experimentalSnapshot != null){restoreConfirm=true}
+            }}}
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
@@ -1548,6 +1614,29 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
         }
     }
     if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This permanently removes all active and suspended normal overrides, Experimental records and Advanced baseline snapshots. Export normal overrides does NOT back up Advanced or Experimental records, so those baselines cannot be recovered from that JSON. Continue only if you intend to discard them all.")})
+    recoveryPending?.let { (raw, preview) ->
+        AlertDialog(
+            onDismissRequest = { recoveryPending = null; recoveryAcknowledgement = "" },
+            title = { Text("Restore COMPLETE recovery bundle?") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("This replaces all normal, suspended, Advanced and Experimental records for the EXACT installed Android Auto build.")
+                Text("${preview.normal} normal, ${preview.advanced} Advanced, ${preview.experimental} Experimental records. ${preview.activeAdvanced + preview.activeExperimental} active special overrides may restart with their saved values.")
+                Text("The previous saved baselines will be replaced too. Do not restore an untrusted backup, and do not restart Android Auto while driving.",
+                    color = MaterialTheme.colorScheme.error)
+                OutlinedTextField(recoveryAcknowledgement, { recoveryAcknowledgement = it },
+                    label = { Text("Type RESTORE ALL") }, singleLine = true)
+            } },
+            confirmButton = { TextButton({
+                model.restoreCompleteRecoveryJson(raw)
+                recoveryPending = null
+                recoveryAcknowledgement = ""
+            }, enabled = recoveryAcknowledgement == "RESTORE ALL") { Text("Replace all records") } },
+            dismissButton = { TextButton({
+                recoveryPending = null
+                recoveryAcknowledgement = ""
+            }) { Text("Cancel") } }
+        )
+    }
 }
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
