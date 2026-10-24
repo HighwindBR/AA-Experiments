@@ -1046,8 +1046,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         } }
         result.onSuccess { bundle ->
             refreshOverridesAndProfile()
-            mutable.update { it.copy(saveState = SaveState.SAVED,
-                message = "Restored ${bundle.normal} normal, ${bundle.advanced} Advanced and ${bundle.experimental} Experimental records. Restart Android Auto after checking settings.") }
+            val published = mutable.value.profilePublished &&
+                mutable.value.aa.buildFingerprintSha256 == bundle.fingerprint
+            mutable.update { it.copy(saveState = if (published) SaveState.SAVED else SaveState.FAILED,
+                message = if (published)
+                    "Restored ${bundle.normal} normal, ${bundle.advanced} Advanced and ${bundle.experimental} Experimental records. Restart Android Auto after checking settings."
+                else "Recovery records were restored, but the profile was NOT published. Check LSPosed connection and Diagnostics before restarting Android Auto.") }
         }.onFailure { ex ->
             mutable.update { it.copy(saveState = SaveState.FAILED,
                 message = "Complete recovery rejected without changes: ${ex.message}") }
