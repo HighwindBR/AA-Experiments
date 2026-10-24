@@ -1522,7 +1522,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             val size = source.read(buffer)
             if (size == -1) break
             require(output.size() + size <= FullRecoveryBundle.MAX_BYTES) {
-                "Recovery file exceeds the 2 MiB safety limit"
+                "Backup file exceeds the 2 MiB safety limit"
             }
             output.write(buffer, 0, size)
         }
@@ -1542,7 +1542,15 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             .getOrNull() ?: "unknown"
     }
     val backupExport=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){ uri->uri?.let { context.contentResolver.openOutputStream(it)?.use { out->out.write(model.exportDynamicJson().toByteArray()) } } }
-    val backupImport=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){ uri->uri?.let { context.contentResolver.openInputStream(it)?.bufferedReader()?.use { reader->model.importDynamicJson(reader.readText()) } } }
+    val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let {
+            runCatching { readRecoveryDocument(context, it) }
+                .onSuccess(model::importDynamicJson)
+                .onFailure { error ->
+                    model.reportRecoveryMessage("Normal backup rejected: ${error.message}")
+                }
+        }
+    }
     var recoveryPending by remember { mutableStateOf<Pair<String, FullRecoveryBundle.Parsed>?>(null) }
     var recoveryAcknowledgement by remember { mutableStateOf("") }
     val fullExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
