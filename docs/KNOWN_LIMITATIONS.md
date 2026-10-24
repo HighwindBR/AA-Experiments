@@ -11,3 +11,5 @@
 - Release signing requires the CI secrets documented in the workflow. Debug builds use an automatically generated disposable debug key.
 
 - Preflight14 uses dual-slot remote-file publication and a shared profile-refresh coordinator, but its exact remote-file reopen/fsync behavior still requires a signed-device smoke test. The earlier successful preflight13 smoke test does not validate the new slot mechanism.
+
+- Preflight15 improves dark theme contrast, responsive Experiments layout and typed input feedback, but large-font, landscape, TalkBack and screen-reader validation on a physical Android device is still pending.

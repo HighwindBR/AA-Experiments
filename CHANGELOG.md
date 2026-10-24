@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0-beta4-preflight15 — Round B Compose UX and accessibility (CI/device pending)
+
+- Responsive Experiments title and counts, avoiding collisions on small displays and larger fonts.
+- Theme-aware status colors and accessible, 48dp+ filter toggle rows.
+- Clarified `Configured value` versus independent LSPosed runtime verification.
+- Validated normal and Advanced scalar inputs inline with shared typed logic,
+  including finite DOUBLE/FLOAT, signed bounds and explicit Advanced BOOLEAN selection.
+- Preserved valid empty-string overrides; STRING editing supports multiline input.
+- Replaced long-lived Experiments success/error banners with transient Snackbars;
+  the detail editor still displays operation-specific failure feedback.
+- Kept Advanced opt-in prominent and grouped the VTC and historical DOUBLE
+  probes in an optional Developer tools subsection.
+
+No normal/Advanced preference schema, runtime hook, catalog mapping or
+LSPosed profile was modified by Round B. **Preflight15 is not an RC or release.**
+Full CI, signed artifact and device UI smoke checks remain pending.
+
 ## 1.0.0-beta4-preflight14 — Round A reliability hardening (CI/device pending)
 
 - Dual-slot profile publication with verified read-back and durable pointer commit; legacy profile fallback remains available.

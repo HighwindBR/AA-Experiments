@@ -363,3 +363,35 @@ Implemented in the beta4 development branch after the original review:
 The addendum does **not** supersede the original evidence level: these
 are implemented changes, not a claim that a preflight14 APK has been
 built or that a physical LSPosed runtime has already validated them.
+
+## Round B implementation addendum — preflight15
+
+Source changes address the following previously reviewed UI findings:
+
+- **P2-01:** `Effective value` is now `Configured value` and
+  `Runtime observed` becomes `Runtime verification: Check LSPosed logs`.
+  No fake read-back state has been introduced.
+- **P2-02:** Experiments heading and summary now stack vertically
+  and wrap naturally, rather than sharing an unconstrained Row.
+- **P2-03:** Status/override foreground colors now use
+  `MaterialTheme.colorScheme.primary` or matching content colors,
+  including Material You and the dark Lab Green palette.
+- **P2-04:** the main Experiments page no longer renders persistent
+  `state.message` and `SaveState.SAVED` banners. The main scaffold
+  uses transient Snackbar feedback when a new message arrives.
+- **P2-05:** normal and Advanced editors use shared inline validation
+  from the production `DynamicOverrideCodec`, disable invalid saves,
+  show finite/range errors and select number/decimal keyboards.
+  STRING retains valid empty values and multiline editing.
+- **P2-06:** Advanced BOOLEAN with an unknown compiled default now
+  requires an explicit True or False selection, rather than silently
+  choosing False.
+- **P2-10:** Advanced access remains directly visible in Diagnostics;
+  historical DOUBLE probes and Video Timing Controller trace live
+  behind a developer-tools affordance and surface when armed.
+
+Filter toggles now expose a single accessible switch row with a
+48dp-minimum touch target. Numeric/type-feedback unit regressions
+were added. These changes do **not** assert that Compose layouts were
+tested at 320dp, large font scaling, landscape or TalkBack: the
+preflight15 Android build/QA step must verify those conditions.
