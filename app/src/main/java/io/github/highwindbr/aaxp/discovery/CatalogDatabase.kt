@@ -350,9 +350,19 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
     fun exportPage(baseSha256: String, query: CatalogQuery, offset: Int, limit: Int,
         includeMethods: Boolean, modifiedKeys: Set<String>? = null): List<DiscoveredIdentifier> {
         require(limit in 1..250)
-        val page = if (modifiedKeys == null)
-            search(baseSha256, query.copy(offset = offset, limit = limit)).items
-        else {
+        val page = if (modifiedKeys == null) {
+            // Export only uses editable and unknown-type predicates. Avoid
+            // SELECT COUNT(*) for every 250 rows of a ~50k-identifier corpus.
+            val clause = buildString {
+                append("base_sha=?")
+                if (query.editableOnly) append(" AND editable=1")
+                if (!query.includeUnknown) append(" AND value_type<>'UNKNOWN'")
+            }
+            readableDatabase.rawQuery(
+                "$ROW_COLUMNS FROM identifiers WHERE $clause ORDER BY key LIMIT ? OFFSET ?",
+                arrayOf(baseSha256, limit.toString(), offset.toString())
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(row(cursor, false)) } }
+        } else {
             val keys = modifiedKeys.sorted().drop(offset).take(limit).toSet()
             identifiersByKeys(baseSha256, keys).values.sortedBy { it.key }
         }
