@@ -7,6 +7,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.text.KeyboardOptions
+import io.github.highwindbr.aaxp.core.DynamicOverrideCodec
+import io.github.highwindbr.aaxp.core.OverrideInputFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
@@ -47,8 +50,11 @@ fun AdvancedOverrideEditor(
     var restoreWarning by remember(identifier.key) { mutableStateOf(false) }
     val expected = identifier.inferredType
     val selected = if (expected == DiscoveredType.BOOLEAN) {
-        if (raw == "true" || raw == "false") raw else "false"
+        raw.takeIf { it == "true" || it == "false" }
     } else raw
+    val validationIssue = selected?.let { OverrideInputFeedback.issue(expected, it) }
+        ?: if (expected == DiscoveredType.BOOLEAN) "Choose True or False before reviewing." else null
+    val validSelected = selected != null && validationIssue == null
 
     // Shared control tree: inline in Experiments; modal only for Full Catalog.
     val form: @Composable () -> Unit = {
@@ -107,8 +113,16 @@ fun AdvancedOverrideEditor(
                             Text(if (expected == DiscoveredType.LONG) "Raw signed 64-bit integer"
                                 else if (expected == DiscoveredType.DOUBLE) "Finite decimal number"
                                 else "Raw string")
-                        }, enabled = connected, modifier = Modifier.fillMaxWidth(), maxLines = 4)
+                        }, enabled = connected, modifier = Modifier.fillMaxWidth(),
+                            singleLine = expected != DiscoveredType.STRING,
+                            maxLines = if (expected == DiscoveredType.STRING) 4 else 1,
+                            keyboardOptions = KeyboardOptions(keyboardType = OverrideInputFeedback.keyboardType(expected)),
+                            isError = validationIssue != null,
+                            supportingText = if (validationIssue != null) ({ Text(validationIssue) }) else null)
                     }
+                    if (expected == DiscoveredType.BOOLEAN && validationIssue != null)
+                        Text(validationIssue, style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error)
                     if (issue == null && belongsToBuild)
                         Text("Unverified value: may be ignored, crash projection, break media, or require clearing Android Auto data.",
                             style = MaterialTheme.typography.bodySmall,
@@ -130,7 +144,7 @@ fun AdvancedOverrideEditor(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (!inline) TextButton(onClose) { Text("Close") }
-                Button(onClick = { phase = 1 }, enabled = connected && issue == null && belongsToBuild && build != null) {
+                Button(onClick = { phase = 1 }, enabled = connected && issue == null && belongsToBuild && build != null && validSelected) {
                     Text("Review Advanced value")
                 }
             }
@@ -170,8 +184,8 @@ fun AdvancedOverrideEditor(
         confirmButton = {
             TextButton({
                 phase = 0
-                onSave(identifier, selected)
-            }, enabled = acknowledgement == requiredConfirmation) { Text("Apply advanced value") }
+                selected?.let { onSave(identifier, it) }
+            }, enabled = acknowledgement == requiredConfirmation && validSelected) { Text("Apply advanced value") }
         },
         dismissButton = { TextButton({ phase = 0 }) { Text("Cancel") } }
     )

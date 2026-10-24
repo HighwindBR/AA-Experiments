@@ -71,6 +71,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -467,18 +469,17 @@ private val AaDarkScheme = darkColorScheme(
             trailingIcon = { IconButton({ filtersOpen = true }) { Icon(Icons.Default.FilterList, "Filters") } },
             singleLine = true, shape = MaterialTheme.shapes.extraLarge,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 54.dp))
-        Row(Modifier.fillMaxWidth().padding(vertical = 5.dp),
-            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("Experiments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                if (filter != ExperimentFilter.ALL)
-                    Text("Filter: ${friendly(filter.name)}", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary)
-            }
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text("Experiments", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            if (filter != ExperimentFilter.ALL)
+                Text("Filter: ${friendly(filter.name)}", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary)
             Text("$filteredCount shown · ${state.dynamicOverrides.size} normal modified" +
                 (if (advancedAccess) " · ${state.advancedCandidates.size} Advanced" else "") +
                 " · ${state.suspendedOverrides.size} suspended",
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (category != null) Text(
             if (category == EditableDeltaKind.REMOVED)
@@ -872,16 +873,17 @@ private fun suspendedName(entry: SuspendedOverride): String =
         else -> "CUSTOM"
     }
     val stateColor = when {
-        isCustom -> AaGreen
-        override?.encodedValue == "true" -> AaGreen
-        override?.encodedValue == "false" -> ForceFalse
+        isCustom -> MaterialTheme.colorScheme.primary
+        override?.encodedValue == "true" -> MaterialTheme.colorScheme.primary
+        override?.encodedValue == "false" -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val stateContent = if (override == null && advancedRecord == null)
-        MaterialTheme.colorScheme.onSurfaceVariant else Color.White
+        MaterialTheme.colorScheme.onSurfaceVariant else if (override?.encodedValue == "false")
+        MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-            if (isCustom) Box(Modifier.width(4.dp).fillMaxHeight().background(AaGreen))
+            if (isCustom) Box(Modifier.width(4.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(technicalDisplay(identifier.key), modifier = Modifier.semantics { contentDescription = identifier.key }, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = if (override != null) FontWeight.SemiBold else FontWeight.Medium, fontFamily = FontFamily.Monospace)
                 Row(verticalAlignment = Alignment.CenterVertically,
@@ -944,6 +946,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
 ) {
     var input by remember(identifier.key, override) { mutableStateOf(override?.encodedValue.orEmpty()) }
     var saveConfirmed by remember(identifier.key) { mutableStateOf(false) }
+    val normalInputIssue = OverrideInputFeedback.issue(identifier.inferredType, input)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val savingCurrent = saveTargetKey == identifier.key && saveState == SaveState.SAVING
@@ -989,7 +992,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
             item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Values", fontWeight = FontWeight.Bold)
                 ValueRow("Default value", identifier.compiledDefault ?: "Not inferred")
-                ValueRow("Runtime observed", "See LSPosed events")
+                ValueRow("Runtime verification", "Check LSPosed logs")
                 if (isAdvanced) {
                     val belongs = advancedRecord?.buildFingerprint == advancedBuild
                     val activeRecord = advancedRecord?.takeIf { belongs && it.active }
@@ -1004,7 +1007,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 } else {
                     AnimatedContent(targetState = override?.encodedValue ?: identifier.compiledDefault ?: "Default",
                         label = "effective-value") { value ->
-                        ValueRow("Effective value", value, override != null)
+                        ValueRow("Configured value", value, override != null)
                     }
                 }
                 ValueRow("Occurrences", identifier.occurrences.size.toString())
@@ -1026,15 +1029,22 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 Text("Override value", fontWeight = FontWeight.Bold)
                 if (identifier.inferredType == DiscoveredType.BOOLEAN) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf<String?>(null, "false", "true").forEachIndexed { index, value ->
-                        val selectedColor = when (value) { "true" -> AaGreen; "false" -> ForceFalse; else -> MaterialTheme.colorScheme.surfaceVariant }
-                        val selectedContent = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant else Color.White
+                        val selectedColor = when (value) { "true" -> MaterialTheme.colorScheme.primary; "false" -> MaterialTheme.colorScheme.secondary; else -> MaterialTheme.colorScheme.surfaceVariant }
+                        val selectedContent = when (value) { "true" -> MaterialTheme.colorScheme.onPrimary; "false" -> MaterialTheme.colorScheme.onSecondary; else -> MaterialTheme.colorScheme.onSurfaceVariant }
                         SegmentedButton((override?.encodedValue) == value || (override == null && value == null), { onChange(value) }, enabled = connected, shape = SegmentedButtonDefaults.itemShape(index, 3), colors = SegmentedButtonDefaults.colors(activeContainerColor = selectedColor, activeContentColor = selectedContent)) { Text(when(value){null->"Default";"false"->"False";else->"True"}) }
                     } }
                     Text(when(override?.encodedValue) { "true" -> "Force true: always return true for this experiment."; "false" -> "Force false: always return false for this experiment."; else -> "Default: use the value selected by Android Auto." }, style = MaterialTheme.typography.bodySmall)
                 } else {
-                    OutlinedTextField(input, { input = it }, label = { Text("${friendly(identifier.inferredType.name)} value") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(input, { input = it },
+                        label = { Text("${friendly(identifier.inferredType.name)} value") },
+                        singleLine = identifier.inferredType != DiscoveredType.STRING,
+                        maxLines = if (identifier.inferredType == DiscoveredType.STRING) 4 else 1,
+                        keyboardOptions = KeyboardOptions(keyboardType = OverrideInputFeedback.keyboardType(identifier.inferredType)),
+                        isError = normalInputIssue != null,
+                        supportingText = if (normalInputIssue != null) ({ Text(normalInputIssue) }) else null,
+                        modifier = Modifier.fillMaxWidth())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ onChange(input) }, enabled = connected && !savingCurrent && (identifier.inferredType == DiscoveredType.STRING || input.isNotBlank())) {
+                        Button({ onChange(input) }, enabled = connected && !savingCurrent && normalInputIssue == null) {
                             Text(when { savingCurrent -> "Saving…"; saveConfirmed -> "✓ Saved"; else -> "Apply" })
                         }
                         OutlinedButton({ onChange(null) }, enabled = connected && !savingCurrent && override != null) { Text("Default") }
@@ -1105,7 +1115,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
         .replace(Regex("\\bApk\\b"), "APK").replace(Regex("\\bId\\b"), "ID")
 }
 
-@Composable private fun ValueRow(label: String, value: String, accent: Boolean = false) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall); Text(value, Modifier.weight(1f), color = if (accent) AaGreen else MaterialTheme.colorScheme.onSurface, fontWeight = if (accent) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
+@Composable private fun ValueRow(label: String, value: String, accent: Boolean = false) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) { Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall); Text(value, Modifier.weight(1f), color = if (accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface, fontWeight = if (accent) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.End, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
 
 @Composable private fun IdentifierDetailsDialog(
     identifier: DiscoveredIdentifier,
