@@ -82,7 +82,7 @@ class FullRecoveryBundleTest {
         val record = AdvancedOverrideRecord(
             flag, io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
             build, "La;", "b", "()J", "hash", 2,
-            previousOverride = null, previousName = null, active = false,
+            previousOverride = null, previousName = null, active = true,
             createdAtMillis = 100L
         )
         assertThrows(IllegalArgumentException::class.java) {
