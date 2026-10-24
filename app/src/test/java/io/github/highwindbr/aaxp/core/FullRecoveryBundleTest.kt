@@ -47,4 +47,49 @@ class FullRecoveryBundleTest {
         val parsed = FullRecoveryBundle.decode(backup, build, 22)
         assertTrue(parsed.entries.isEmpty())
     }
+
+    @Test fun completeBundlePreservesAdvancedAndExperimentalAbsentBaselines() {
+        val advKey = "AceFeature__mode"
+        val adv = AdvancedOverrideRecord(
+            advKey, io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
+            build, "Lexample/Getter;", "a", "()J", "sha", 3,
+            previousOverride = null, previousName = null, active = true,
+            createdAtMillis = 100L
+        )
+        val exp = ExperimentalBooleanSnapshot(
+            build, "Lexample/PhoneTheme;", "b", "()Z", "sha", 4,
+            value = false, previousOverride = null, previousName = null,
+            active = true, createdAtMillis = 200L
+        )
+        val source = mapOf(
+            AdvancedOverridePolicy.preferenceKey(advKey) to adv.encode(),
+            ExperimentalBooleanPolicy.RECORD_KEY to exp.encode()
+        )
+        val json = FullRecoveryBundle.create(source, build, 180164204L)
+        val bundle = FullRecoveryBundle.decode(json, build, 180164204L)
+        assertEquals(1, bundle.advanced)
+        assertEquals(1, bundle.experimental)
+        assertEquals(1, bundle.activeAdvanced)
+        assertEquals(1, bundle.activeExperimental)
+        assertNull(AdvancedOverrideRecord.decode(bundle.entries.getValue(
+            AdvancedOverridePolicy.preferenceKey(advKey)))?.previousOverride)
+        assertNull(ExperimentalBooleanSnapshot.decode(bundle.entries.getValue(
+            ExperimentalBooleanPolicy.RECORD_KEY))?.previousOverride)
+    }
+
+    @Test fun refusesOwnershipCollisionBetweenNormalAndAdvanced() {
+        val flag = "AceFeature__mode"
+        val record = AdvancedOverrideRecord(
+            flag, io.github.highwindbr.aaxp.discovery.DiscoveredType.LONG, "0",
+            build, "La;", "b", "()J", "hash", 2,
+            previousOverride = null, previousName = null, active = false,
+            createdAtMillis = 100L
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            FullRecoveryBundle.create(mapOf(
+                DynamicOverrideCodec.preferenceKey(flag) to "LONG:3",
+                AdvancedOverridePolicy.preferenceKey(flag) to record.encode()
+            ), build, 1L)
+        }
+    }
 }
