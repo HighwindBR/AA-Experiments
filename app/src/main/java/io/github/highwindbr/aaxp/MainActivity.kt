@@ -1647,6 +1647,7 @@ private class TouchMenuPositionProvider(
 ) {
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
+    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
@@ -1658,6 +1659,55 @@ private class TouchMenuPositionProvider(
         } }
         item { DiagnosticSection("DEX files", "${state.aa.dexSha256.size} files", Icons.Default.Storage, expanded == "dex", { expanded = if(expanded=="dex") null else "dex" }) { state.aa.dexSha256.forEach { (name, hash) -> DiagnosticValue(name, hash) { copy(hash) } } } }
 
+        // Advanced access remains prominent. Historical probe tools only
+        // appear when requested, or while an existing diagnostic is armed.
+        item {
+            val countActive = state.advancedRecords.count {
+                it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
+            }
+            DiagnosticSection("Advanced Overrides",
+                if (advancedAccess) "Enabled · ${state.advancedCandidates.size} eligible" else "Disabled · tap to configure",
+                Icons.Default.Security, expanded == "advanced",
+                { expanded = if (expanded == "advanced") null else "advanced" }) {
+                FilterToggle("Show Advanced in Experiments",
+                    "Only eligible typed getters, marked ADVANCED. Enable once; edit from Experiments.",
+                    advancedAccess, onAdvancedAccess)
+                Text("Advanced mode changes editor access only. Disabling this switch does not pause an existing override.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DiagnosticValue("Eligible this build", if (advancedAccess)
+                    state.advancedCandidates.size.toString() else "Enable to load")
+                DiagnosticValue("Stored Advanced records", state.advancedRecords.size.toString())
+                DiagnosticValue("Active on current build", countActive.toString())
+                DiagnosticValue("Published Advanced hooks", state.advancedPublishedCount.toString())
+                if (state.advancedRecords.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(onPauseAllAdvanced, enabled = countActive > 0) {
+                            Text("Pause all")
+                        }
+                        OutlinedButton({ restoreAdvancedConfirm = true }) {
+                            Text("Restore baselines")
+                        }
+                    }
+                }
+                Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        item {
+            val traceArmed = state.videoTimingTraceEnabled || state.probeTargetKey != null
+            OutlinedButton(
+                onClick = { developerToolsExpanded = !developerToolsExpanded },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) {
+                Icon(Icons.Default.BugReport, null)
+                Spacer(Modifier.width(10.dp))
+                Text(if (developerToolsExpanded) "Hide developer tools"
+                    else if (traceArmed) "Developer tools · diagnostic active"
+                    else "Show developer tools")
+            }
+        }
+        if (developerToolsExpanded || state.videoTimingTraceEnabled || state.probeTargetKey != null) {
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
@@ -1700,44 +1750,11 @@ private class TouchMenuPositionProvider(
             }
         }
         item {
-            val countActive = state.advancedRecords.count {
-                it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
-            }
-            DiagnosticSection("Advanced Overrides",
-                if (advancedAccess) "Enabled · ${state.advancedCandidates.size} eligible" else "Disabled · tap to configure",
-                Icons.Default.Security, expanded == "advanced",
-                { expanded = if (expanded == "advanced") null else "advanced" }) {
-                FilterToggle("Show Advanced in Experiments",
-                    "Only eligible typed getters, marked ADVANCED. Enable once; edit from Experiments.",
-                    advancedAccess, onAdvancedAccess)
-                Text("Advanced mode changes editor access only. Disabling this switch does not pause an existing override.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                DiagnosticValue("Eligible this build", if (advancedAccess)
-                    state.advancedCandidates.size.toString() else "Enable to load")
-                DiagnosticValue("Stored Advanced records", state.advancedRecords.size.toString())
-                DiagnosticValue("Active on current build", countActive.toString())
-                DiagnosticValue("Published Advanced hooks", state.advancedPublishedCount.toString())
-                if (state.advancedRecords.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedButton(onPauseAllAdvanced, enabled = countActive > 0) {
-                            Text("Pause all")
-                        }
-                        OutlinedButton({ restoreAdvancedConfirm = true }) {
-                            Text("Restore baselines")
-                        }
-                    }
-                }
-                Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
             val supported = state.aa.runtimeTarget &&
                 GetterProbePolicy.isInspectedDoubleBuild(state.aa.baseSha256)
             val armed = state.probeTargetKey
             val isDoubleArmed = armed in GetterProbePolicy.doubleCandidates
-            DiagnosticSection("DOUBLE getter activity · 12-A",
+            DiagnosticSection("DOUBLE getter activity",
                 when {
                     isDoubleArmed -> "Armed · restart Android Auto"
                     !supported -> "Unavailable for this AA build"
@@ -1745,7 +1762,7 @@ private class TouchMenuPositionProvider(
                 },
                 Icons.Default.Search, expanded == "doubleProbe",
                 { expanded = if (expanded == "doubleProbe") null else "doubleProbe" }) {
-                Text("Find a DOUBLE getter actually invoked by Android Auto before attempting any typed override. Observation-only: no values, hook results or normal preferences are changed.",
+                Text("Read-only diagnostic for three reviewed DOUBLE getters. This does not change returned values or normal preferences.",
                     style = MaterialTheme.typography.bodySmall)
                 if (!supported) Text(
                     "This probe is restricted to the inspected Android Auto 18.0 base APK.",
@@ -1767,10 +1784,8 @@ private class TouchMenuPositionProvider(
                 }
                 Text("Only one getter per session. After arming, restart Android Auto and connect to Open Headunit. Inspect LSPosed module events PROBE_HOOK_INSTALLED and PROBE_INVOKED. If not invoked, disarm and try another. Do not set a DOUBLE override for this test.",
                     style = MaterialTheme.typography.bodySmall)
-                state.message?.takeIf { it.contains("probe", true) }?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall)
-                }
             }
+        }
         }
         item { DiagnosticSection("Resolver", "${state.aa.identifierCount} identifiers · ${state.aa.editableCount} editable", Icons.Default.Search, expanded == "resolver", { expanded = if(expanded=="resolver") null else "resolver" }) {
             DiagnosticCount("Modified", state.dynamicOverrides.size)
