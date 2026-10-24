@@ -28,8 +28,8 @@ class InstalledHeapRegressionTest {
             val diagnostic = buildString {
                 append("Frozen beta3 keys=").append(baseline.size)
                 append("; added=").append(added.size)
-                append("; missing=").append(missing.size).append('\\n')
-                append("Newly editable keys (review safety policy and getter evidence):\\n")
+                append("; missing=").append(missing.size).append('\n')
+                append("Newly editable keys (review safety policy and getter evidence):\n")
                 added.forEach { id ->
                     val oldPolicyTokens = listOf("parked", "ssl", "tls")
                         .filter { it in id.key.lowercase() }.joinToString(",").ifEmpty { "none" }
@@ -37,10 +37,10 @@ class InstalledHeapRegressionTest {
                         .append("] prior-sensitive-substring=").append(oldPolicyTokens)
                         .append(" confidence=").append(id.confidence)
                         .append(" resolution=").append(id.resolution)
-                        .append('\\n')
+                        .append('\n')
                 }
-                append("No longer editable keys:\\n")
-                missing.forEach { append(" - ").append(it).append('\\n') }
+                append("No longer editable keys:\n")
+                missing.forEach { append(" - ").append(it).append('\n') }
             }
             assertEquals(diagnostic, 919, editable.size)
         }
