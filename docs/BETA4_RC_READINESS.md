@@ -11,9 +11,9 @@ not merged to `main`.
 | --- | --- | --- |
 | Review all beta4 code against beta3 | 81 commits relative to main at beginning of Round D; review new Advanced/runtime/recovery/publication files | In progress |
 | Functional regression strategy | Representative hooks, not individual behavior of 900+ flags | Adopted |
-| Unit tests | Passing on Round D intermediate commit in Actions run [40113184991](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113184991); rerun for final bounded-import patch | Passed intermediate; final pending |
-| Release lint | Passing on run 40113184991; rerun final patch | Passed intermediate; final pending |
-| Debug APK build | Passing on run 40113184991; rerun final patch | Passed intermediate; final pending |
+| Unit tests | Preflight18 passed [40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594); preflight19 active-only restore checks passed in [40117982320](https://github.com/HighwindBR/AA-Experiments/actions/runs/40117982320) | Passed for latest code |
+| Release lint | Preflight18 passed 40113675594; preflight19 passed 40117982320 | Passed for latest code |
+| Debug APK build | Preflight18 passed 40113675594; preflight19 build running in 40117982320 at last check | Pending final build |
 | Private 256 MiB gates | Manual `private-release.yml` workflow on beta4 branch, with self-hosted fixture runner | Not yet verified |
 | Frozen 17.8 corpus gate | Same manual private workflow | Not yet verified |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
@@ -28,9 +28,12 @@ not merged to `main`.
 - [Actions run 40113184991](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113184991):
   `unit-tests`, `lint-release`, `debug-apk` **all passed** for an
   intermediate Round D commit after the paused-record regression fix.
-- The final branch additionally includes a 2 MiB cap for the **legacy
-  normal backup import**. Its own unit/lint/build run must succeed
-  before this checklist can be marked fully green.
+- The normal backup input-size cap shipped in signed preflight18 and
+  was covered by successful public CI run 40113675594.
+- The preflight19 static-review fix, selecting **only current-build
+  active** Advanced/Experimental records for runtime revalidation,
+  passed unit tests and release lint in run 40117982320.
+  The debug APK job was still in progress at the last check.
 - Public GitHub tests do not replace private corpus/memory gates or
   signing-cert continuity, which have not run yet.
 

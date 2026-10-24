@@ -64,7 +64,9 @@ For a practical overview of the breadth of Android Auto behavior that can be cus
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development, building, testing and forking](docs/DEVELOPMENT.md)
+- [Advanced Overrides mode](docs/ADVANCED_OVERRIDES_BETA4.md)
 - [Release process](docs/RELEASE.md)
+- [Private fixture runner handoff](docs/PRIVATE_RUNNER_CHECKLIST.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Privacy](PRIVACY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
