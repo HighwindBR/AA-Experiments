@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0-beta4-preflight18 — Round D release hardening (not an RC)
+
+- Fixed full-recovery ownership validation: paused/historical
+  Advanced and Experimental records can coexist with a normal value;
+  active current-build hook conflicts remain prohibited.
+- Added four recovery regression cases covering paused, historical and
+  current-build ownership.
+- Updated release gates for an eventual `v1.0.0-beta4` tag:
+  build+lint, private fixture regressions, tagged APK version checks,
+  and signing-certificate comparison against the official beta3 APK.
+- Prepared beta4 draft notes, RC readiness gates and private-candidate
+  handling guidance. No tag, release or merge was created.
+
+**Signed development build and complete CI still require verification
+for this commit.** Full-restore device testing is isolated-only;
+do not reset the user's configured Android Auto overrides.
+
 ## 1.0.0-beta4-preflight17 — Round C data recovery (CI and device pending)
 
 - Export discoveries directly to SAF documents using 250-record SQLite pages;
