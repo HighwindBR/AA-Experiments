@@ -16,3 +16,9 @@
 
 - A complete recovery bundle contains raw normal/Advanced/Experimental values (including STRING content); it is not encrypted or authenticated. Store it securely and do not import untrusted JSON. Full recovery requires an exact matching Android Auto build; it is not a cross-version migration tool.
 - Streaming full-catalog export is bounded in memory but may still take time on slower devices or document providers. If the provider fails, incomplete destination files must be discarded. A cancel/progress UI for very long exports remains future work.
+
+- The About screen states **LSPosed runtime API 101** (the module's
+  supported API), while Status may report **API 102** from the
+  connected framework service. These describe different sides of the
+  integration, not necessarily a service-version mismatch. Verify
+  actual `PROFILE_ACCEPTED` and hook events to assess compatibility.

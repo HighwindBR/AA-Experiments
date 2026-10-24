@@ -1,5 +1,14 @@
 # Read-only getter-probe preflight (beta4 development)
 
+> **Historical test instructions, not the current installation guide.**
+> The `preflight1` version and code listed below describe an early
+> signed development artifact. Current beta4 builds use the version
+> in `app/build.gradle`; the signed workflow still runs on the beta4
+> feature branch, but its generated APK is not `preflight1`.
+> Current Diagnostics groups optional probes under Developer tools.
+> For the present workflow see [Development](DEVELOPMENT.md) and
+> [Release process](RELEASE.md).
+
 This preflight is **not** Advanced Overrides and cannot change an Android Auto flag.
 It checks whether the selected getter can be hooked and whether the Android Auto
 process actually calls it. Hook installation alone does not prove runtime use or a
