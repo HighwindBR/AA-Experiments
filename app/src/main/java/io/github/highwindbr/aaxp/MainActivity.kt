@@ -213,9 +213,26 @@ private val AaDarkScheme = darkColorScheme(
         }
     }
     val destinations = listOf(Triple("Status", Icons.Default.Home, 0), Triple("Experiments", Icons.Default.Science, 1), Triple("Settings", Icons.Default.Settings, 2))
+    val feedbackHost = remember { SnackbarHostState() }
+    // Initialize with the existing message so returning from Details does not
+    // replay an earlier Advanced save/restore notification.
+    var lastFeedback by remember { mutableStateOf(state.message) }
+    LaunchedEffect(state.message) {
+        val current = state.message
+        if (current != lastFeedback) {
+            lastFeedback = current
+            if (current != null &&
+                !current.startsWith("Loading", ignoreCase = true) &&
+                !current.startsWith("Preparing", ignoreCase = true) &&
+                !current.startsWith("Importing and analyzing", ignoreCase = true) &&
+                !current.startsWith("Deep resolving", ignoreCase = true)
+            ) feedbackHost.showSnackbar(current.take(220), withDismissAction = true)
+        }
+    }
     Scaffold(
         topBar = { TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) { Image(painterResource(R.drawable.app_icon), null, Modifier.size(32.dp), contentScale = ContentScale.Fit); Spacer(Modifier.width(10.dp)); Text("AA Experiments", fontWeight = FontWeight.SemiBold) } }, actions = { if (tab == 0) IconButton(model::refreshInstallation) { Icon(Icons.Default.Refresh, "Refresh status") } }) },
-        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) -> NavigationBarItem(tab == index, { tab = index }, { Icon(icon, label) }, label = { Text(label) }) } } }
+        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) -> NavigationBarItem(tab == index, { tab = index }, { Icon(icon, label) }, label = { Text(label) }) } } },
+        snackbarHost = { SnackbarHost(feedbackHost) }
     ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) { when (tab) {
         0 -> StatusScreen(state, model) { chosen -> experimentFilterName = chosen.name; tab = 1 }
         1 -> AdvancedScreen(state, model, experimentQuery, { experimentQuery = it }, experimentFilter, { experimentFilterName = it.name }, experimentReviewedOnly, { experimentReviewedOnly = it }, experimentTypeName, { experimentTypeName = it }, experimentListState, advancedAccess) { experimentKey = it.key }
@@ -487,17 +504,6 @@ private val AaDarkScheme = darkColorScheme(
             else "Changes compared with the previously retained Android Auto build.",
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        state.message?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall,
-                color = if (it.startsWith("Import failed") || it.startsWith("Discard failed"))
-                    MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-        }
-        Text(when (state.saveState) {
-            SaveState.SAVING -> "Saving…"
-            SaveState.SAVED -> "Saved"
-            SaveState.FAILED -> "Save failed"
-            else -> ""
-        }, style = MaterialTheme.typography.labelSmall)
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(bottom = 16.dp)) {
             items(suspended, key = { "suspended:" + it.preferenceKey }) { entry ->
