@@ -1658,6 +1658,11 @@ private class TouchMenuPositionProvider(
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
     var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
+    // An armed diagnostic is revealed on entry, but can still be collapsed.
+    LaunchedEffect(state.videoTimingTraceEnabled, state.probeTargetKey) {
+        if (state.videoTimingTraceEnabled || state.probeTargetKey != null)
+            developerToolsExpanded = true
+    }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
@@ -1717,7 +1722,7 @@ private class TouchMenuPositionProvider(
                     else "Show developer tools")
             }
         }
-        if (developerToolsExpanded || state.videoTimingTraceEnabled || state.probeTargetKey != null) {
+        if (developerToolsExpanded) {
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
