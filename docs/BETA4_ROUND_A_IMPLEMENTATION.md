@@ -103,3 +103,41 @@ The complete backup schema, streaming 50k-record export, dark theme
 contrast, numeric input validation, advanced UX and release workflow
 for beta4 RC are tracked in the separate pre-RC review. No normal
 profile schema bump was needed.
+
+## Physical runtime evidence — 2026-10-23, preflight14
+
+The user installed preflight14 and provided two LSPosed diagnostic ZIPs exported
+at 22:44:45 and 22:44:52 local device time. They overlap almost entirely;
+event counts below refer to the **unique current module-log window**
+(21:30–22:43), **not** the sum of both ZIPs and not historical rotations.
+
+| Check | Evidence |
+| --- | --- |
+| Slot A read | `PROFILE_SOURCE active_profile_a_v3.json` at 21:35:05.479 (`:provider`) |
+| Slot B read | Seven `PROFILE_SOURCE active_profile_b_v3.json` events, 22:41:16–22:42:55, across `:shared`, `:projection`, `:car`, `:provider`, `:watchdog` |
+| Profile acceptance | **8** `PROFILE_ACCEPTED` events, each with **100 normal / 0 probes / 1 Experimental / 0 Advanced** mappings |
+| Hook installation | **800** `HOOK_INSTALLED` events, reflecting 100 normal getters installed on 8 process starts, not 800 unique flags |
+| Normal returns | **74** `OVERRIDE_RETURNED` events for **68 distinct** keys in the 22:41–22:43 session |
+| Other returns | One `EXPERIMENT_OVERRIDE_RETURNED` (`false`) |
+| Expected scalar examples | DOUBLE `SystemUi__widescreen_aspect_ratio_breakpoint=1.67`; LONG `Assistant__icon_experiment_variant=3`; two STRING returns redacted |
+| Head-unit observation | VTC protocol `1.2`, branch `NORMAL` |
+| Failure/fallback events | No `PROFILE_FALLBACK`, `PROFILE_REJECTED`, `PROFILE_FAILED`, `HOOK_FAILED`, `HOOK_SUSPENDED` or `OVERRIDE_REJECTED` in the reviewed current module window |
+
+**Interpretation:** the new two-slot reader works against the user's actual
+LSPosed 102/Android Auto 18.0 runtime, and the observed source changed from
+slot A earlier to slot B later. This confirms normal rotation/read behavior
+across sessions, not power-loss survival or recovery after deliberate corruption.
+The device service-side publication sequence (flush, read-back and pointer
+commit) is not individually observable through these events; unit tests target
+that sequence.
+
+A separate `FATAL EXCEPTION` in the ZIP's aggregated full log at 22:44:04.095
+belongs to `com.rifsxd.ksunext` (`ClassCastException`). It is not an
+Android Auto / AA Experiments process and is **not** evidence of a failure in
+the slot mechanism. Historic tombstones/dropbox entries in the ZIP are
+not automatically attributable to this preflight.
+
+**Remaining sign-off:** confirm Gradle test/lint/signed workflow success if
+the CI run is accessible, and verify analysis ownership / cancel / reconnection
+only when a safe, non-destructive opportunity arises. Do not remove the user's
+existing 100 overrides or deliberately corrupt an active profile.
