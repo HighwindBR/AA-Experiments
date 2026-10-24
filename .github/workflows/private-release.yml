@@ -123,7 +123,8 @@ jobs:
           TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$TOOLS/apksigner" verify --verbose "$APK"
           "$TOOLS/apksigner" verify --print-certs "$APK"
-          BADGING=$("$TOOLS/aapt" dump badging "$APK" | head -1)
+          # sed consumes all input, avoiding SIGPIPE with set -o pipefail.
+          BADGING=$("$TOOLS/aapt" dump badging "$APK" | sed -n '1p')
           echo "$BADGING"
           [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
           [[ "$BADGING" == *"versionName='${GITHUB_REF_NAME#v}'"* ]]
