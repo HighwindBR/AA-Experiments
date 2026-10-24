@@ -346,9 +346,19 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         "$ROW_COLUMNS FROM identifiers WHERE base_sha=? AND key=? LIMIT 1", arrayOf(baseSha256, key)
     ).use { c -> if (!c.moveToFirst()) null else row(c, true) }
 
+    /** Prevalidate MODIFIED keys so a missing historical flag cannot skip a page. */
+    fun existingKeys(baseSha256: String, keys: Set<String>): List<String> =
+        keys.chunked(400).flatMap { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT key FROM identifiers WHERE base_sha=? AND key IN ($placeholders)",
+                arrayOf(baseSha256, *chunk.toTypedArray())
+            ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+        }.distinct().sorted()
+
     /** Export at most 250 identifiers at a time, never a full 50k corpus. */
     fun exportPage(baseSha256: String, query: CatalogQuery, offset: Int, limit: Int,
-        includeMethods: Boolean, modifiedKeys: Set<String>? = null): List<DiscoveredIdentifier> {
+        includeMethods: Boolean, modifiedKeys: List<String>? = null): List<DiscoveredIdentifier> {
         require(limit in 1..250)
         val page = if (modifiedKeys == null) {
             // Export only uses editable and unknown-type predicates. Avoid
@@ -363,7 +373,7 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
                 arrayOf(baseSha256, limit.toString(), offset.toString())
             ).use { cursor -> buildList { while (cursor.moveToNext()) add(row(cursor, false)) } }
         } else {
-            val keys = modifiedKeys.sorted().drop(offset).take(limit).toSet()
+            val keys = modifiedKeys.drop(offset).take(limit).toSet()
             identifiersByKeys(baseSha256, keys).values.sortedBy { it.key }
         }
         return if (includeMethods) attachDetails(baseSha256, page) else page

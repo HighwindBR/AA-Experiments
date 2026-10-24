@@ -190,7 +190,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val exported = withContext(Dispatchers.IO) {
                 val context = getApplication<Application>()
                 val overrides = mutable.value.dynamicOverrides
-                val scopeKeys = if (request.scope == ExportScope.MODIFIED) overrides.keys.toSet() else null
+                val scopeKeys = if (request.scope == ExportScope.MODIFIED)
+                    database.existingKeys(build, overrides.keys) else null
                 context.contentResolver.openOutputStream(destination, "wt").use { stream ->
                     val output = checkNotNull(stream) { "The destination cannot be opened." }
                     BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8), 32 * 1024).use { writer ->
