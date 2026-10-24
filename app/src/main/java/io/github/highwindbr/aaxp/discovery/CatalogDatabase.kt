@@ -346,16 +346,31 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         "$ROW_COLUMNS FROM identifiers WHERE base_sha=? AND key=? LIMIT 1", arrayOf(baseSha256, key)
     ).use { c -> if (!c.moveToFirst()) null else row(c, true) }
 
+    /** Export at most 250 identifiers at a time, never a full 50k corpus. */
+    fun exportPage(baseSha256: String, query: CatalogQuery, offset: Int, limit: Int,
+        includeMethods: Boolean, modifiedKeys: Set<String>? = null): List<DiscoveredIdentifier> {
+        require(limit in 1..250)
+        val page = if (modifiedKeys == null)
+            search(baseSha256, query.copy(offset = offset, limit = limit)).items
+        else {
+            val keys = modifiedKeys.sorted().drop(offset).take(limit).toSet()
+            identifiersByKeys(baseSha256, keys).values.sortedBy { it.key }
+        }
+        return if (includeMethods) attachDetails(baseSha256, page) else page
+    }
+
     /** Bulk attachment avoids one getters query plus one consumers query per exported row. */
     fun attachDetails(baseSha256: String, rows: List<DiscoveredIdentifier>): List<DiscoveredIdentifier> {
         if (rows.isEmpty()) return rows
         val wanted = rows.asSequence().map { it.key }.toHashSet()
+        val clause = rows.joinToString(",") { "?" }
+        val args = arrayOf(baseSha256, *rows.map { it.key }.toTypedArray())
         val getterMap = mutableMapOf<String, MutableList<MethodFingerprint>>()
-        readableDatabase.rawQuery("SELECT i.key,g.dex,g.class_name,g.method_name,g.descriptor,g.return_type,g.parameter_types,g.instruction_count,g.opcode_sha,g.is_clinit,g.referenced_fields,g.invoked_methods FROM identifiers i JOIN getters g ON g.identifier_id=i.id WHERE i.base_sha=? ORDER BY i.key,g.ordinal", arrayOf(baseSha256)).use { c ->
+        readableDatabase.rawQuery("SELECT i.key,g.dex,g.class_name,g.method_name,g.descriptor,g.return_type,g.parameter_types,g.instruction_count,g.opcode_sha,g.is_clinit,g.referenced_fields,g.invoked_methods FROM identifiers i JOIN getters g ON g.identifier_id=i.id WHERE i.base_sha=? AND i.key IN ($clause) ORDER BY i.key,g.ordinal", args).use { c ->
             while (c.moveToNext()) if (c.getString(0) in wanted) getterMap.getOrPut(c.getString(0)) { mutableListOf() } += method(c, 1)
         }
         val consumerMap = mutableMapOf<String, MutableList<ConsumerEvidence>>()
-        readableDatabase.rawQuery("SELECT i.key,c.dex,c.class_name,c.method_name,c.descriptor,c.return_type,c.parameter_types,c.instruction_count,c.opcode_sha,c.is_clinit,c.referenced_fields,c.invoked_methods,c.depth,c.link_kind,c.path,c.semantic_summary FROM identifiers i JOIN consumers c ON c.identifier_id=i.id WHERE i.base_sha=? ORDER BY i.key,c.ordinal", arrayOf(baseSha256)).use { c ->
+        readableDatabase.rawQuery("SELECT i.key,c.dex,c.class_name,c.method_name,c.descriptor,c.return_type,c.parameter_types,c.instruction_count,c.opcode_sha,c.is_clinit,c.referenced_fields,c.invoked_methods,c.depth,c.link_kind,c.path,c.semantic_summary FROM identifiers i JOIN consumers c ON c.identifier_id=i.id WHERE i.base_sha=? AND i.key IN ($clause) ORDER BY i.key,c.ordinal", args).use { c ->
             while (c.moveToNext()) if (c.getString(0) in wanted) consumerMap.getOrPut(c.getString(0)) { mutableListOf() } += ConsumerEvidence(method(c, 1), c.getInt(12), ConsumerLinkKind.valueOf(c.getString(13)), decodeList(c.getString(14)), c.getStringOrNull(15))
         }
         return rows.map { it.copy(getterCandidates = getterMap[it.key].orEmpty(), consumers = consumerMap[it.key].orEmpty()) }

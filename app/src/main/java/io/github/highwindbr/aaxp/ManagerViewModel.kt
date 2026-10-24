@@ -26,6 +26,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.File
+import java.io.OutputStreamWriter
+import java.io.BufferedWriter
 
 data class ManagerUiState(
     val loading: Boolean = true,
@@ -36,7 +38,6 @@ data class ManagerUiState(
     val catalogTotal: Int = 0,
     val selectedDetails: DiscoveredIdentifier? = null,
     val detailsLoading: Boolean = false,
-    val exportPayload: ExportPayload? = null,
     val loadedEditableCount: Int = 0,
     val dynamicOverrides: Map<String, TypedOverride> = emptyMap(),
     val suspendedOverrides: List<SuspendedOverride> = emptyList(),
@@ -63,7 +64,9 @@ data class ManagerUiState(
 
 enum class ExportScope { EDITABLE, MODIFIED, ALL_DISCOVERIES }
 enum class ExportFormat { JSON, CSV }
-data class ExportPayload(val fileName: String, val mimeType: String, val content: String)
+data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat, val includeMethods: Boolean, val includeDefaults: Boolean, val includeOverrides: Boolean) {
+    val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
+}
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
 private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean)
 
@@ -76,6 +79,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val profileRefreshMutex = ProfileRefreshGate()
     // Only one expensive catalog/DEX operation may own the foreground service.
     private val analysisOperationGate = AnalysisOperationGate()
+    private val catalogExportGate = AnalysisOperationGate()
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
 
@@ -174,46 +178,46 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearDetails() { mutable.value = mutable.value.copy(selectedDetails = null, detailsLoading = false) }
 
-    fun requestCatalogExport(scope: ExportScope, format: ExportFormat, includeMethods: Boolean, includeDefaults: Boolean, includeOverrides: Boolean) = viewModelScope.launch {
-        val hash = mutable.value.aa.buildFingerprintSha256 ?: return@launch
-        mutable.value = mutable.value.copy(message = "Preparing export…")
-        val overrides = mutable.value.dynamicOverrides
-        val payload = withContext(Dispatchers.IO) {
-            val baseQuery = when (scope) {
-                ExportScope.EDITABLE -> CatalogQuery(editableOnly = true, includeUnknown = true, limit = Int.MAX_VALUE)
-                ExportScope.ALL_DISCOVERIES -> CatalogQuery(includeUnknown = true, limit = Int.MAX_VALUE)
-                ExportScope.MODIFIED -> CatalogQuery(editableOnly = true, includeUnknown = true, limit = Int.MAX_VALUE)
-            }
-            var rows = database.search(hash, baseQuery).items
-            if (scope == ExportScope.MODIFIED) rows = rows.filter { it.key in overrides }
-            if (includeMethods) rows = database.attachDetails(hash, rows)
-            val extension = format.name.lowercase()
-            val text = when (format) {
-                ExportFormat.JSON -> JSONArray().apply { rows.forEach { row -> put(JSONObject().apply {
-                    put("key", row.key); put("kind", row.kind.name); put("valueType", row.inferredType.name)
-                    put("storageType", row.storageType.name); put("semanticType", row.semanticType.name); put("resolution", row.resolution.name)
-                    put("editable", row.editable); put("runtimeConsumer", row.runtimeConsumerStatus.name); put("semanticsReviewed", row.semanticsReviewed)
-                    if (includeDefaults) put("compiledDefault", row.compiledDefault ?: JSONObject.NULL)
-                    if (includeOverrides) put("override", overrides[row.key]?.encodedValue ?: JSONObject.NULL)
-                    if (includeMethods) { put("getters", JSONArray(row.getterCandidates.map { "${it.className}->${it.methodName}${it.descriptor}" })); put("consumers", JSONArray(row.consumers.map { "${it.method.className}->${it.method.methodName}${it.method.descriptor}" })) }
-                }) } }.toString(2)
-                ExportFormat.CSV -> buildString {
-                    val columns = mutableListOf("key","kind","value_type","storage_type","semantic_type","resolution","editable","runtime_consumer","semantics_reviewed")
-                    if (includeDefaults) columns += "compiled_default"; if (includeOverrides) columns += "override"; if (includeMethods) columns += listOf("getters","consumers")
-                    appendLine(columns.joinToString(","))
-                    rows.forEach { row -> val values = mutableListOf(row.key,row.kind.name,row.inferredType.name,row.storageType.name,row.semanticType.name,row.resolution.name,row.editable.toString(),row.runtimeConsumerStatus.name,row.semanticsReviewed.toString())
-                        if (includeDefaults) values += row.compiledDefault.orEmpty(); if (includeOverrides) values += overrides[row.key]?.encodedValue.orEmpty()
-                        if (includeMethods) { values += row.getterCandidates.joinToString("|") { "${it.className}->${it.methodName}${it.descriptor}" }; values += row.consumers.joinToString("|") { "${it.method.className}->${it.method.methodName}${it.method.descriptor}" } }
-                        appendLine(values.joinToString(",") { csv(it) })
+    /** Bounded, direct-to-document export: no 50k-row objects in the manager UI. */
+    fun exportCatalogToUri(destination: Uri, request: CatalogExportRequest) = viewModelScope.launch {
+        val build = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        if (!catalogExportGate.tryBegin()) {
+            mutable.update { it.copy(message = "Another catalog export is already running.") }
+            return@launch
+        }
+        mutable.update { it.copy(message = "Exporting catalog…") }
+        try {
+            val exported = withContext(Dispatchers.IO) {
+                val context = getApplication<Application>()
+                val overrides = mutable.value.dynamicOverrides
+                val scopeKeys = if (request.scope == ExportScope.MODIFIED) overrides.keys.toSet() else null
+                context.contentResolver.openOutputStream(destination, "wt").use { stream ->
+                    val output = checkNotNull(stream) { "The destination cannot be opened." }
+                    BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8), 32 * 1024).use { writer ->
+                        val query = CatalogQuery(editableOnly = request.scope != ExportScope.ALL_DISCOVERIES,
+                            includeUnknown = true)
+                        CatalogExportWriter.write(writer, request.format,
+                            request.includeMethods, request.includeDefaults, request.includeOverrides,
+                            overrides, pages = { offset, size ->
+                                check(mutable.value.aa.buildFingerprintSha256 == build) {
+                                    "Installed/catalog build changed during export."
+                                }
+                                database.exportPage(build, query, offset, size,
+                                    request.includeMethods, scopeKeys)
+                            })
                     }
                 }
             }
-            ExportPayload("aa-catalog-${scope.name.lowercase()}.$extension", if (format == ExportFormat.JSON) "application/json" else "text/csv", text)
+            mutable.update { it.copy(message = "Catalog exported: $exported identifiers.") }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (ex: Exception) {
+            runCatching { getApplication<Application>().contentResolver.delete(destination, null, null) }
+            mutable.update { it.copy(message = "Export failed: ${ex.message}; any partial file should be discarded.") }
+        } finally {
+            catalogExportGate.finish()
         }
-        mutable.value = mutable.value.copy(exportPayload = payload, message = "Export ready.")
     }
-
-    fun consumeExport() { mutable.value = mutable.value.copy(exportPayload = null) }
 
     fun importArchive(uri: Uri) = viewModelScope.launch {
         if (!analysisOperationGate.tryBegin()) {

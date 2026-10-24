@@ -178,12 +178,12 @@ private val AaDarkScheme = darkColorScheme(
             state.advancedCandidates.firstOrNull { it.key == key }
     }
     val context = LocalContext.current
+    var pendingCatalogExport by remember { mutableStateOf<CatalogExportRequest?>(null) }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val payload = state.exportPayload
-        if (uri != null && payload != null) context.contentResolver.openOutputStream(uri)?.use { it.write(payload.content.toByteArray()) }
-        model.consumeExport()
+        val request = pendingCatalogExport
+        pendingCatalogExport = null
+        if (uri != null && request != null) model.exportCatalogToUri(uri, request)
     }
-    LaunchedEffect(state.exportPayload) { state.exportPayload?.let { exporter.launch(it.fileName) } }
     experiment?.let { identifier ->
         BackHandler { model.clearDetails(); experimentKey = null }
         ExperimentDetailScreen(identifier, state.selectedDetails,
@@ -837,7 +837,11 @@ private fun suspendedName(entry: SuspendedOverride): String =
             bulkRestoreWarning = false; model.restoreAllAdvanced()
         }) { Text("Restore") } },
         dismissButton = { TextButton({ bulkRestoreWarning = false }) { Text("Cancel") } })
-    if (exportOpen) ExportDialog({ exportOpen = false }, model::requestCatalogExport)
+    if (exportOpen) ExportDialog({ exportOpen = false }) { scope, format, methods, defaults, overrides ->
+        val request = CatalogExportRequest(scope, format, methods, defaults, overrides)
+        pendingCatalogExport = request
+        exporter.launch(request.fileName)
+    }
     if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Catalog filters", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
         CompactEnumFilter("Kind", kind, listOf(null)+IdentifierKind.entries, { kind=it }, Modifier.fillMaxWidth())
