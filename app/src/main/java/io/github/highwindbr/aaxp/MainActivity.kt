@@ -178,12 +178,6 @@ private val AaDarkScheme = darkColorScheme(
             state.advancedCandidates.firstOrNull { it.key == key }
     }
     val context = LocalContext.current
-    var pendingCatalogExport by remember { mutableStateOf<CatalogExportRequest?>(null) }
-    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val request = pendingCatalogExport
-        pendingCatalogExport = null
-        if (uri != null && request != null) model.exportCatalogToUri(uri, request)
-    }
     experiment?.let { identifier ->
         BackHandler { model.clearDetails(); experimentKey = null }
         ExperimentDetailScreen(identifier, state.selectedDetails,
@@ -756,6 +750,12 @@ private fun suspendedName(entry: SuspendedOverride): String =
 
 @Composable private fun CatalogScreen(state: ManagerUiState, model: ManagerViewModel,
     advancedEnabled: Boolean) {
+    var pendingCatalogExport by remember { mutableStateOf<CatalogExportRequest?>(null) }
+    val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val request = pendingCatalogExport
+        pendingCatalogExport = null
+        if (uri != null && request != null) model.exportCatalogToUri(uri, request)
+    }
     var query by remember { mutableStateOf("") }; var includeUnknown by remember { mutableStateOf(false) }
     var kind by remember { mutableStateOf<IdentifierKind?>(null) }; var type by remember { mutableStateOf<DiscoveredType?>(null) }
     var resolution by remember { mutableStateOf<MappingResolution?>(null) }; var reviewed by remember { mutableStateOf(false) }
