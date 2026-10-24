@@ -15,6 +15,8 @@ Branch: `feature/beta4-getter-probe-preflight`.
 - Global success/failure messages are shown through one Scaffold
   SnackbarHost when a *new* feedback message arrives. Existing success
   messages no longer occupy permanent space above the flag list.
+  Advanced editor feedback is shown temporarily for five seconds instead
+  of replaying earlier status strings when revisiting a flag.
 - FilterToggle now uses one TalkBack switch row and a 48dp minimum
   touch target rather than competing Row/Switch click nodes.
 
