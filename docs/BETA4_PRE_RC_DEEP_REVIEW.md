@@ -395,3 +395,29 @@ Filter toggles now expose a single accessible switch row with a
 were added. These changes do **not** assert that Compose layouts were
 tested at 320dp, large font scaling, landscape or TalkBack: the
 preflight15 Android build/QA step must verify those conditions.
+
+## Round C implementation addendum — preflight17
+
+- **P2-07:** catalog export switched from `Int.MAX_VALUE` in-memory
+  materialization to direct SAF file output using bounded 250-row
+  pages. Getters/consumers are now attached through page-key-constrained
+  SQL instead of a build-wide scan for every page.
+- **P2-08:** normal-only backup remains schema 3 and is imported exactly
+  as before. A separate, checksum-protected, exact-build full recovery
+  schema 1 exports normal/suspended, Advanced and Experimental records
+  and their baselines, including a previous value's absence.
+- Full recovery import requires the same installed AA fingerprint and
+  versionCode, validates all stored scalar data and current-build
+  special getter mappings, then commits managed-key replacement in one
+  remote preferences transaction. It does not mutate the active
+  profile file directly; the manager republishes after success.
+- The UI separates ordinary import/export from full recovery and
+  requires typed `RESTORE ALL` after a record/active-hook preview.
+- Additional tests cover page boundaries, JSON framing, CSV escaping,
+  exact-build rejection, checksum tampering, collision rejection,
+  Advanced/Experimental baseline absence and skipped unrelated settings.
+
+These are code-level implementations; performance measurements on the
+actual ~50k AA 18.0 corpus and a harmless isolated-device recovery
+round trip remain pending. No destructive test on live overrides
+is required before opening Round D.

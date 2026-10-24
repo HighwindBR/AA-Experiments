@@ -100,3 +100,29 @@ incompatibility does not affect the installed runtime profile.
 
 Historical design decisions and implementation milestones live in
 [Alpha history](history/ALPHA_HISTORY.md) and `history/alpha-details/`.
+
+## Catalog exports and recovery
+
+Full-catalog JSON/CSV export is written directly to a user-selected
+Android Storage Access Framework document through a buffered writer.
+The SQLite reader pages in batches of 250 and attaches getters/consumers
+only for the relevant page keys. Export can fail if the build changes
+or the document provider stops accepting writes; any partial file should
+be discarded (the app attempts to delete it).
+
+Normal-only backups preserve the pre-existing schema 3 import/export
+behavior and do not include special baselines. A distinct schema 1
+`AA_EXPERIMENTS_COMPLETE_RECOVERY` envelope captures all manager-owned
+normal/name/Advanced/Experimental remote preference records, including
+baseline absence. The bundle is limited to 2 MiB / 4,096 records,
+includes a canonical checksum, and can be restored only to the exact
+AA package fingerprint and versionCode. The checksum checks integrity,
+not authenticity: untrusted files must never be imported.
+
+Complete restore additionally checks current-build Advanced/Experimental
+getter signatures and the safety policy, requires an explicit typed
+confirmation, and replaces only the supported preference namespaces
+in one commit. It never imports diagnostic probes, video trace state,
+LSPosed framework settings or profile-slot pointers. Cross-build
+Advanced records can remain stored for history but are not published
+on a different build.

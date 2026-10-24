@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.0-beta4-preflight17 — Round C data recovery (CI and device pending)
+
+- Export discoveries directly to SAF documents using 250-record SQLite pages;
+  no 50,000-row JSON/CSV strings are held in the Compose ViewModel.
+- Export per-page getter/consumer evidence using key-constrained queries.
+- Added separate **full recovery bundle** with normal active/suspended,
+  Advanced and Experimental records, including original absence/baselines.
+- Full restore is build-fingerprint + versionCode pinned, checksummed,
+  type/ownership validated and atomically replaces only managed preference keys.
+- Current-build special getter records must pass their runtime safety and
+  structural matcher again before restoration can commit.
+- Requires a `RESTORE ALL` typed confirmation with a preview of counts
+  and active special records; legacy normal-only backup import remains unchanged.
+- Added paged export and recovery bundle regression tests.
+
+Recovery files contain raw STRING values and should be kept private.
+**Do not test complete restoration on the user's 100-override live profile.**
+This is not an RC or public release; full signed-device/CI validation pending.
+
 ## 1.0.0-beta4-preflight16 — visual QA follow-up (CI/device pending)
 
 - Fixed nearly invisible dark-theme back arrow in Experiment details by
