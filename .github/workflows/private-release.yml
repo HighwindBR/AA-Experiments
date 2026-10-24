@@ -46,9 +46,14 @@ jobs:
 
   private-release-gates:
     if: >-
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/tags/v1.0.0-beta3' ||
+        github.ref == 'refs/tags/v1.0.0-beta4')) ||
       (github.event_name == 'workflow_dispatch' && inputs.run_private_gates &&
-       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/1.0.0-beta3'))
+       (github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/release/1.0.0-beta3' ||
+        github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
+        github.ref == 'refs/heads/release/1.0.0-beta4'))
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     steps:
       - uses: actions/checkout@v4
@@ -81,7 +86,11 @@ jobs:
           --tests io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest
 
   signed-release:
-    if: github.event_name == 'push' && github.ref == 'refs/tags/v1.0.0-beta3'
+    # Publishing is tag-triggered ONLY, never by a dispatch on a feature/RC branch.
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/tags/v1.0.0-beta3' ||
+       github.ref == 'refs/tags/v1.0.0-beta4')
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: ubuntu-latest
     permissions:
@@ -97,7 +106,9 @@ jobs:
       - name: Restore release keystore
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aaxp-release.jks"
+        run: |
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aaxp-release.jks"
       - name: Build signed release APK
         env:
           AAXP_RELEASE_STORE_FILE: ${{ runner.temp }}/aaxp-release.jks
@@ -105,20 +116,57 @@ jobs:
           AAXP_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           AAXP_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: gradle --no-daemon --max-workers=1 :app:assembleRelease
-      - name: Verify v2 signature
-        run: >-
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose
-          app/build/outputs/apk/release/app-release.apk
+      - name: Verify signed APK and release package metadata
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          "$TOOLS/apksigner" verify --verbose "$APK"
+          "$TOOLS/apksigner" verify --print-certs "$APK"
+          BADGING=$("$TOOLS/aapt" dump badging "$APK" | head -1)
+          echo "$BADGING"
+          [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
+          [[ "$BADGING" == *"versionName='${GITHUB_REF_NAME#v}'"* ]]
+          VERSION_CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")
+          test -n "$VERSION_CODE"
+          test "$VERSION_CODE" -gt 143
+
+      - name: Verify upgrade signing certificate against official beta3
+        if: github.ref == 'refs/tags/v1.0.0-beta4'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta3"
+          gh release download v1.0.0-beta3 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "AAExperiments-1.0.0-beta3.apk" \
+            --dir "$RUNNER_TEMP/beta3"
+          BASE="$RUNNER_TEMP/beta3/AAExperiments-1.0.0-beta3.apk"
+          echo "6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e  $BASE" | sha256sum -c -
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          BASE_CERT=$("$APKSIGNER" verify --print-certs "$BASE" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          NEW_CERT=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          test -n "$BASE_CERT"
+          test "$BASE_CERT" = "$NEW_CERT"
+
       - name: Name artifact and publish checksum
         run: |
-          cp app/build/outputs/apk/release/app-release.apk AAExperiments-1.0.0-beta3.apk
-          sha256sum AAExperiments-1.0.0-beta3.apk > AAExperiments-1.0.0-beta3.apk.sha256
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp app/build/outputs/apk/release/app-release.apk "AAExperiments-$VERSION.apk"
+          sha256sum "AAExperiments-$VERSION.apk" > "AAExperiments-$VERSION.apk.sha256"
+
       - name: Publish tagged release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          AAExperiments-1.0.0-beta3.apk
-          AAExperiments-1.0.0-beta3.apk.sha256
-          --title "AA Experiments ${GITHUB_REF_NAME}"
-          --notes-file docs/RELEASE_NOTES_1.0.0-beta3.md
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES="docs/RELEASE_NOTES_$VERSION.md"
+          test -s "$NOTES"
+          gh release create "$GITHUB_REF_NAME" \
+            "AAExperiments-$VERSION.apk" \
+            "AAExperiments-$VERSION.apk.sha256" \
+            --title "AA Experiments $GITHUB_REF_NAME" \
+            --notes-file "$NOTES"
