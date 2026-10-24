@@ -38,7 +38,7 @@ object FullRecoveryBundle {
             value
         }
         require(entries.size <= MAX_ENTRIES) { "Too many recovery records" }
-        validateEntries(entries)
+        validateEntries(entries, fingerprint)
         val values = JSONObject()
         entries.toSortedMap().forEach { (key, value) -> values.put(key, value) }
         val output = JSONObject().apply {
@@ -71,7 +71,7 @@ object FullRecoveryBundle {
         require(digest(entries).equals(root.getString("sha256"), true)) {
             "Recovery bundle checksum mismatch"
         }
-        validateEntries(entries)
+        validateEntries(entries, fingerprint)
         val advanced = entries.filterKeys { it.startsWith(AdvancedOverridePolicy.PREFIX) }
             .values.map { checkNotNull(AdvancedOverrideRecord.decode(it)) }
         val experimental = entries[ExperimentalBooleanPolicy.RECORD_KEY]
@@ -84,7 +84,7 @@ object FullRecoveryBundle {
             if (experimental?.active == true && experimental.buildFingerprint == fingerprint) 1 else 0)
     }
 
-    private fun validateEntries(entries: Map<String, String>) {
+    private fun validateEntries(entries: Map<String, String>, currentBuild: String) {
         entries.forEach { (key, value) ->
             when {
                 key.startsWith(DynamicOverrideCodec.PREFIX) ->
@@ -95,7 +95,12 @@ object FullRecoveryBundle {
                     val record = checkNotNull(AdvancedOverrideRecord.decode(value)) { "Invalid Advanced record" }
                     require(AdvancedOverridePolicy.preferenceKey(record.key) == key) { "Advanced key mismatch" }
                     val normal = DynamicOverrideCodec.preferenceKey(record.key)
-                    require(record.handoffMode != null || normal !in entries) {
+                    // Paused/historical Advanced snapshots may legitimately
+                    // coexist with a live normal value. Only an active
+                    // current-build Advanced hook can contend for ownership.
+                    require(!(record.active &&
+                        record.buildFingerprint.equals(currentBuild, ignoreCase = true) &&
+                        record.handoffMode == null && normal in entries)) {
                         "Normal/Advanced ownership collision"
                     }
                 }
@@ -105,7 +110,11 @@ object FullRecoveryBundle {
                     }
                     require(record.targetClass.isNotBlank() && record.opcodeFingerprint.isNotBlank() &&
                         record.instructionCount > 0) { "Incomplete Experimental baseline" }
-                    require(DynamicOverrideCodec.preferenceKey(ExperimentalBooleanPolicy.KEY) !in entries) {
+                    // A paused or old-build Experimental baseline is
+                    // metadata; it does not compete with a normal hook.
+                    require(!(record.active &&
+                        record.buildFingerprint.equals(currentBuild, ignoreCase = true) &&
+                        DynamicOverrideCodec.preferenceKey(ExperimentalBooleanPolicy.KEY) in entries)) {
                         "Normal/Experimental ownership collision"
                     }
                 }
