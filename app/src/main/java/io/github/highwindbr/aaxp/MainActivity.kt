@@ -1589,7 +1589,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
     accent: AccentPalette, onAccent: (AccentPalette) -> Unit,
     page: SettingsPage, onPage: (SettingsPage) -> Unit,
     advancedAccess: Boolean, onAdvancedAccess: (Boolean) -> Unit) {
-    var restoreConfirm by remember { mutableStateOf(false) }; val context=LocalContext.current
+    var restoreConfirm by remember { mutableStateOf(false) }
+    var legacyBackupExpanded by rememberSaveable { mutableStateOf(false) }
+    var dangerZoneExpanded by rememberSaveable { mutableStateOf(false) }
+    val context=LocalContext.current
     // Read the installed package metadata: never pin a preflight label in UI source.
     val appVersionName = remember(context) {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
@@ -1642,6 +1645,99 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             model::setDoubleGetterProbe)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
         SettingsPage.ABOUT -> AboutScreen(appVersionName) { onPage(SettingsPage.ROOT) }
+        SettingsPage.BACKUPS -> LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { SubpageHeader("Backup & recovery", "Protect your overrides and saved baselines") { onPage(SettingsPage.ROOT) } }
+            item { SectionLabel("Backup") }
+            item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    SettingsRow(
+                        Icons.Default.Upload, "Export complete backup",
+                        "Recommended · Normal, Advanced, Experimental and saved baselines",
+                        enabled = state.framework.connected && state.aa.runtimeTarget
+                    ) { fullExport.launch("aa-experiments-full-recovery.json") }
+                }
+            }
+            item { SectionLabel("Restore") }
+            item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    SettingsRow(
+                        Icons.Default.Download, "Restore complete backup",
+                        "Replaces saved records · Exact AA build and RESTORE ALL confirmation required",
+                        enabled = state.framework.connected && state.aa.runtimeTarget
+                    ) { fullImport.launch(arrayOf("application/json", "text/plain")) }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Column {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { legacyBackupExpanded = !legacyBackupExpanded }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Storage, null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Normal-only / legacy backups", fontWeight = FontWeight.Medium)
+                                Text("Compatible with previous normal override JSON files",
+                                    style = MaterialTheme.typography.bodySmall)
+                            }
+                            Icon(if (legacyBackupExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                if (legacyBackupExpanded) "Collapse" else "Expand")
+                        }
+                        if (legacyBackupExpanded) {
+                            HorizontalDivider()
+                            SettingsRow(Icons.Default.Upload, "Export normal overrides",
+                                "Active and suspended; excludes Advanced and Experimental") {
+                                backupExport.launch("aa-experiments-overrides.json")
+                            }
+                            HorizontalDivider()
+                            SettingsRow(Icons.Default.Download, "Import normal overrides",
+                                "Matching build only; blocked with Advanced or Experimental records") {
+                                backupImport.launch(arrayOf("application/json", "text/plain"))
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Column {
+                        Row(
+                            Modifier.fillMaxWidth().clickable { dangerZoneExpanded = !dangerZoneExpanded }
+                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Restore, null, tint = MaterialTheme.colorScheme.error)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Danger zone", fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.error)
+                                Text("Destructive reset options", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Icon(if (dangerZoneExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                if (dangerZoneExpanded) "Collapse" else "Expand")
+                        }
+                        if (dangerZoneExpanded) {
+                            HorizontalDivider()
+                            SettingsRow(Icons.Default.Restore, "Reset all overrides",
+                                "Deletes normal, Advanced and Experimental records and saved baselines",
+                                enabled = state.dynamicOverrides.isNotEmpty() ||
+                                    state.suspendedOverrides.isNotEmpty() ||
+                                    state.advancedRecords.isNotEmpty() ||
+                                    state.experimentalSnapshot != null) { restoreConfirm = true }
+                        }
+                    }
+                }
+            }
+            item { Text("Full recovery backups are build-specific. Keep these files private and export again before major changes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
         else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp), verticalArrangement=Arrangement.spacedBy(10.dp)){
             item{ScreenTitle("Settings", "Appearance, data and engineering tools")}
             item{SectionLabel("Appearance")}
@@ -1651,31 +1747,17 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 AnchoredPreferenceDropdown(Icons.Default.Palette, "Accent color", "Choose the app accent palette", listOf("Lab Green", "Material You"), accent.ordinal) { onAccent(AccentPalette.entries[it]) }
             }}}
             item{SectionLabel("Data")}
-            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Column{
-                SettingsRow(Icons.Default.Upload,"Export normal overrides","Active and suspended only; excludes Advanced and Experimental records"){backupExport.launch("aa-experiments-overrides.json")}
-                HorizontalDivider()
-                SettingsRow(Icons.Default.Download,"Import normal overrides","Matching build only; blocked while Advanced or Experimental records exist"){backupImport.launch(arrayOf("application/json","text/plain"))}
-                HorizontalDivider()
-                SettingsRow(Icons.Default.Upload,"Export full recovery bundle","Normal + Advanced + Experimental records and saved baselines; keep private",
-                    enabled=state.framework.connected && state.aa.runtimeTarget) {
-                    fullExport.launch("aa-experiments-full-recovery.json")
-                }
-                HorizontalDivider()
-                SettingsRow(Icons.Default.Download,"Restore full recovery bundle","Replaces all overrides; exact AA build and confirmation required",
-                    enabled=state.framework.connected && state.aa.runtimeTarget) {
-                    fullImport.launch(arrayOf("application/json", "text/plain"))
-                }
-                HorizontalDivider()
-                SettingsRow(Icons.Default.Restore,"Restore all overrides","Also deletes Advanced and Experimental records and saved baselines",
-                    enabled=state.dynamicOverrides.isNotEmpty() || state.suspendedOverrides.isNotEmpty() || state.advancedRecords.isNotEmpty() || state.experimentalSnapshot != null){restoreConfirm=true}
-            }}}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
+                SettingsRow(Icons.Default.Storage, "Backup & recovery",
+                    "Export, import and manage saved overrides") { onPage(SettingsPage.BACKUPS) }
+            }}
             item{SectionLabel("Tools")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){SettingsRow(Icons.Default.BugReport,"Diagnostics","Runtime, resolver and full catalog"){onPage(SettingsPage.DIAGNOSTICS)}}}
             item{SectionLabel("About")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version $appVersionName · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
-    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Restore")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Restore all overrides?")},text={Text("This permanently removes all active and suspended normal overrides, Experimental records and Advanced baseline snapshots. Export normal overrides does NOT back up Advanced or Experimental records, so those baselines cannot be recovered from that JSON. Continue only if you intend to discard them all.")})
+    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently removes all active and suspended normal overrides, Experimental records and Advanced baseline snapshots. Export normal overrides does NOT back up Advanced or Experimental records, so those baselines cannot be recovered from that JSON. Continue only if you intend to discard them all.")})
     recoveryPending?.let { (raw, preview) ->
         AlertDialog(
             onDismissRequest = { recoveryPending = null; recoveryAcknowledgement = "" },

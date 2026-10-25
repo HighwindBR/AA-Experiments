@@ -15,6 +15,7 @@ class UiNavigationTest {
     @Test fun `settings subpages return to settings root`() {
         assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.DIAGNOSTICS, false))
         assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.ABOUT, false))
+        assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.BACKUPS, false))
     }
 
     @Test fun `primary tabs return to status before exit`() {
