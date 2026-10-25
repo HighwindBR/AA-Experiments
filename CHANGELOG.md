@@ -1,5 +1,23 @@
 # Changelog
 
+## Beta4 Advanced BOOLEAN and legacy-verdict UI fix — next signed candidate
+
+- Fixed an Elvis/null validation bug in `AdvancedOverrideEditor`:
+  for a correctly selected BOOLEAN, the codec returned null (no issue)
+  but the UI fell through to `Choose True or False before reviewing`,
+  disabling `Review Advanced value` permanently.
+- A new BOOLEAN Advanced override now starts without a selected value
+  instead of implicitly treating the compiled default as the user's
+  choice. Explicitly selecting True or False enables review; the
+  existing two-step/typed confirmation and elevated `PARKED APPLY`
+  protection remain mandatory.
+- Added regression tests for missing, valid and invalid scalar inputs.
+- A stale saved catalog's former parked-substring safety reason is
+  labeled **historical evidence**, not the current Advanced eligibility
+  verdict. No stored catalog or override records are rewritten.
+- These changes are staged for the next signed candidate, **not**
+  the preflight21 already on the device.
+
 ## Beta4 UX staging — next signed candidate (not yet installed)
 
 - Consolidated five Data actions into one **Backup & recovery**

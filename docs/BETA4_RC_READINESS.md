@@ -23,6 +23,36 @@ not merged to `main`.
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
 
+## Physical preflight21 screenshot acceptance (2026-10-25)
+
+- Installed version screenshot reports `1.0.0-beta4-preflight21`.
+  Status screenshot confirms Android Auto
+  `18.0.164204-release.daily`, LSPosed connected (API 102),
+  scope configured, 870 editable, **100 modified** normal flags
+  and **3 suspended**. An Advanced override remains 1 active,
+  1 retained and 1 published, and an Experimental BOOLEAN profile
+  is published. Runtime is *ready, waiting for Android Auto*, not yet
+  proven to have intercepted getter calls in a new AA session.
+- Full recovery bundle preview displays **103 normal + 1 Advanced +
+  1 Experimental**, with two active special records; the destructive
+  `RESTORE ALL` confirmation remains disabled until typed. User
+  submitted the preview only, not a destructive restore.
+- The reviewed parked-mode BOOLEAN opened in the new inline
+  Advanced details editor and showed the elevated warning.
+  **Bug reproduced**: despite choosing True or False, the button
+  `Review Advanced value` remains disabled. The cause was
+  a null-coalescing expression misinterpreting valid input
+  (`OverrideInputFeedback.issue == null`) as missing selection.
+  Fixed for the *next* build with unit regression coverage.
+- A previous catalog's `Read-only safety policy: ... parked` reason
+  appears below a currently approved Advanced eligibility.
+  The next build distinguishes stale stored reason from current
+  SafetyPolicy, without silently changing persisted catalog data.
+- Still pending: LSPosed getter-return observation during a
+  real/emulated Android Auto session; deliberate cancellation of
+  the updated Advanced review flow in the next candidate; isolated
+  full recovery write/restore; final release signing and code freeze.
+
 ## Pending device acceptance and staged UI cleanup
 
 - The signed `1.0.0-beta4-preflight21` APK from private job
