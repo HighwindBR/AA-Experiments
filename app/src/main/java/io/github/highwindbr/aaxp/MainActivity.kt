@@ -969,6 +969,18 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
     var input by remember(identifier.key, override) { mutableStateOf(override?.encodedValue.orEmpty()) }
     var saveConfirmed by remember(identifier.key) { mutableStateOf(false) }
     val normalInputIssue = OverrideInputFeedback.issue(identifier.inferredType, input)
+    val elevatedRisk = if (isAdvanced) null else SafetyPolicy.elevatedRiskReason(identifier.key)
+    var pendingElevatedValue by remember(identifier.key) { mutableStateOf<String?>(null) }
+    var elevatedAcknowledgement by remember(identifier.key) { mutableStateOf("") }
+    fun requestNormalChange(value: String?) {
+        // Removing an override restores normal behavior; only activating an
+        // elevated-risk value needs the extra typed confirmation.
+        if (value == null || elevatedRisk == null) onChange(value)
+        else {
+            pendingElevatedValue = value
+            elevatedAcknowledgement = ""
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val savingCurrent = saveTargetKey == identifier.key && saveState == SaveState.SAVING
@@ -1004,6 +1016,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 if (isAdvanced && advancedRecord != null)
                     MetaChip(if (advancedRecord.active) "Active" else "Paused", MaterialTheme.colorScheme.primaryContainer)
                 if (!isAdvanced && override != null) MetaChip("Modified", MaterialTheme.colorScheme.primaryContainer)
+                if (elevatedRisk != null) MetaChip("ELEVATED RISK", MaterialTheme.colorScheme.errorContainer)
                 MetaChip(friendly(identifier.runtimeConsumerStatus.name), MaterialTheme.colorScheme.surfaceVariant)
             } }
             item { identifier.metadata["reviewedSemantics"]?.let { Text(it, style = MaterialTheme.typography.bodyMedium) } ?: Text(
@@ -1049,11 +1062,18 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 }
             } else item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Override value", fontWeight = FontWeight.Bold)
+                if (elevatedRisk != null) {
+                    Text("ELEVATED PARKED-MODE RISK: $elevatedRisk",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                    Text("Changing this value requires an additional PARKED APPLY confirmation. Never test while driving.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 if (identifier.inferredType == DiscoveredType.BOOLEAN) {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) { listOf<String?>(null, "false", "true").forEachIndexed { index, value ->
                         val selectedColor = when (value) { "true" -> MaterialTheme.colorScheme.primary; "false" -> MaterialTheme.colorScheme.secondary; else -> MaterialTheme.colorScheme.surfaceVariant }
                         val selectedContent = when (value) { "true" -> MaterialTheme.colorScheme.onPrimary; "false" -> MaterialTheme.colorScheme.onSecondary; else -> MaterialTheme.colorScheme.onSurfaceVariant }
-                        SegmentedButton((override?.encodedValue) == value || (override == null && value == null), { onChange(value) }, enabled = connected, shape = SegmentedButtonDefaults.itemShape(index, 3), colors = SegmentedButtonDefaults.colors(activeContainerColor = selectedColor, activeContentColor = selectedContent)) { Text(when(value){null->"Default";"false"->"False";else->"True"}) }
+                        SegmentedButton((override?.encodedValue) == value || (override == null && value == null), { requestNormalChange(value) }, enabled = connected, shape = SegmentedButtonDefaults.itemShape(index, 3), colors = SegmentedButtonDefaults.colors(activeContainerColor = selectedColor, activeContentColor = selectedContent)) { Text(when(value){null->"Default";"false"->"False";else->"True"}) }
                     } }
                     Text(when(override?.encodedValue) { "true" -> "Force true: always return true for this experiment."; "false" -> "Force false: always return false for this experiment."; else -> "Default: use the value selected by Android Auto." }, style = MaterialTheme.typography.bodySmall)
                 } else {
@@ -1066,8 +1086,8 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                         supportingText = if (normalInputIssue != null) ({ Text(normalInputIssue) }) else null,
                         modifier = Modifier.fillMaxWidth())
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button({ onChange(input) }, enabled = connected && !savingCurrent && normalInputIssue == null) {
-                            Text(when { savingCurrent -> "Saving…"; saveConfirmed -> "✓ Saved"; else -> "Apply" })
+                        Button({ requestNormalChange(input) }, enabled = connected && !savingCurrent && normalInputIssue == null) {
+                            Text(when { savingCurrent -> "Saving…"; saveConfirmed -> "✓ Saved"; elevatedRisk != null -> "Review & Apply"; else -> "Apply" })
                         }
                         OutlinedButton({ onChange(null) }, enabled = connected && !savingCurrent && override != null) { Text("Default") }
                     }
@@ -1112,6 +1132,40 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
             } }
             if (!connected) item { Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) { Text("Editing is unavailable until the LSPosed service and installed Android Auto target are ready.", Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) } }
             item { Spacer(Modifier.height(12.dp)) }
+        }
+        if (pendingElevatedValue != null && elevatedRisk != null) {
+            val valueToConfirm = pendingElevatedValue!!
+            AlertDialog(
+                onDismissRequest = { pendingElevatedValue = null; elevatedAcknowledgement = "" },
+                title = { Text("Confirm elevated-risk override") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Key: ${identifier.key}")
+                        Text("New value: $valueToConfirm")
+                        Text("PARKED-MODE RISK: $elevatedRisk",
+                            color = MaterialTheme.colorScheme.error)
+                        Text("This value may destabilize Android Auto, audio/video synchronization or projection. Only test while safely parked and not projecting.")
+                        Text("Type PARKED APPLY to confirm this change.")
+                        OutlinedTextField(
+                            elevatedAcknowledgement, { elevatedAcknowledgement = it },
+                            label = { Text("Confirmation") }, singleLine = true
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton({
+                        pendingElevatedValue = null
+                        elevatedAcknowledgement = ""
+                        onChange(valueToConfirm)
+                    }, enabled = connected && !savingCurrent &&
+                        elevatedAcknowledgement == "PARKED APPLY") { Text("Apply elevated override") }
+                },
+                dismissButton = {
+                    TextButton({ pendingElevatedValue = null; elevatedAcknowledgement = "" }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
