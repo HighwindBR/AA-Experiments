@@ -345,4 +345,45 @@ class ConsumerGraphAnalyzerTest {
         assertTrue(enriched.metadata["activationScopes"].orEmpty().contains(ActivationScope.NEXT_LIFECYCLE_START.name))
         assertEquals("Llifecycle;->running:Z", enriched.metadata["runtimeLatchTargets"])
     }
+
+    @Test fun compatibilityCanEnrichInPlaceWithoutKeepingAnEntireSecondInventory() {
+        val getter = method("LcompactFlag;", "read")
+        val consumer = method("Lrender;", "show", "()V",
+            calls = listOf("LcompactFlag;->read()Z"))
+        val active = DiscoveredIdentifier(
+            "Compat__enabled", IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.BOOLEAN, "false",
+            emptyList(), listOf(getter), ResolutionConfidence.UNIQUE_GETTER, null, true
+        )
+        val ignored = DiscoveredIdentifier(
+            "ReadOnly__identifier", IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.UNKNOWN, null,
+            emptyList(), emptyList(), ResolutionConfidence.UNSUPPORTED, null, false
+        )
+        val records = listOf(
+            ConsumerGraphAnalyzer.MethodRecord(getter, emptyList(), "Ljava/lang/Object;"),
+            ConsumerGraphAnalyzer.MethodRecord(consumer, emptyList(), "Ljava/lang/Object;")
+        )
+        val expected = ConsumerGraphAnalyzer.enrich(listOf(active, ignored), records)
+        val input = mutableListOf(active, ignored)
+        val actual = ConsumerGraphAnalyzer.enrich(input, records, reuseInputStorage = true)
+        assertTrue("Compatibility scan should reuse existing identifier list", actual === input)
+        assertEquals(expected, actual)
+        assertEquals(RuntimeConsumerStatus.PRESENT, actual[0].runtimeConsumerStatus)
+        assertEquals(ignored, actual[1])
+    }
+
+    @Test fun inPlaceEnrichmentRejectsDirectedOrStreamingMode() {
+        val id = DiscoveredIdentifier(
+            "Guard__flag", IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.UNKNOWN, null,
+            emptyList(), emptyList(), ResolutionConfidence.UNSUPPORTED, null, false
+        )
+        val list = mutableListOf(id)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ConsumerGraphAnalyzer.enrich(list, emptyList(), targetedTraversal = true,
+                reuseInputStorage = true)
+        }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ConsumerGraphAnalyzer.enrich(list, emptyList(), retainResults = false,
+                reuseInputStorage = true)
+        }
+    }
 }
