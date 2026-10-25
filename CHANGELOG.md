@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.0-beta4-preflight21 — compatibility memory hardening (not an RC)
+
+- The signed-fixture WSL run
+  [40170439514](https://github.com/HighwindBR/AA-Experiments/actions/runs/40170439514)
+  passed the installed-scan 256 MiB gate with **942 exactly reviewed**
+  editable keys, confirming the preflight20 cohort fix.
+- The 256 MiB **compatibility** gate then failed with
+  `OutOfMemoryError: Java heap space`. Its stack pointed to
+  `ConsumerGraphAnalyzer.enrich` retaining another 54k-identifier
+  generation while producing the reverse-call-graph results.
+- Compatibility analysis now replaces entries **in the already-owned
+  rediscovery list**, rather than constructing another complete
+  result list while indexes are live. No traversal budgets, key-set
+  allowlists, getter confidence rules or heap gates were relaxed.
+  Normal cold scans and directed deep resolve retain their previous
+  behavior.
+- Added unit checks comparing the in-place result with the existing
+  non-mutating implementation and guarding against misuse in
+  cancelled/directed streaming sessions.
+- **Pending:** public CI and WSL/private 256 MiB/full-corpus rerun.
+  This is a candidate memory fix, not a measured pass yet.
+
 ## 1.0.0-beta4-preflight20 — frozen 17.8 fixture reconciliation (not an RC)
 
 - The private Android Auto 17.8.663814 memory gate exposed **942**

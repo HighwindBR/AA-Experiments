@@ -1,6 +1,6 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** development preflight20 private-fixture reconciliation; **not approved for an RC or a GitHub Release**.
+**Status:** development preflight21 compatibility-heap remediation; **not approved for an RC or a GitHub Release**.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
@@ -14,8 +14,8 @@ not merged to `main`.
 | Unit tests | Preflight18 passed [40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594); preflight19 active-only restore checks passed in [40117982320](https://github.com/HighwindBR/AA-Experiments/actions/runs/40117982320) | Passed for latest code |
 | Release lint | Preflight18 passed 40113675594; preflight19 passed 40117982320 | Passed for latest code |
 | Debug APK build | Preflight18 passed 40113675594; preflight19 debug APK build passed in 40117982320 | Passed for latest code |
-| Private 256 MiB gates | [Run 40142250027](https://github.com/HighwindBR/AA-Experiments/actions/runs/40142250027) reproduced 942 vs expected 919 in installed-scan 256 MiB gate; SHA-256 fixtures OK, no OutOfMemoryError reported. Exact 919+23 fixture reconciliation pending WSL rerun | Failed old baseline; rerun needed |
-| Frozen 17.8 corpus gate | Skipped after the earlier private installed-scan gate failed | Not yet run |
+| Private 256 MiB gates | [Run 40170439514](https://github.com/HighwindBR/AA-Experiments/actions/runs/40170439514): fixture integrity and installed-scan 256 MiB **passed** (exact 942). Compatibility 256 MiB **failed with Java heap OOM** in ConsumerGraphAnalyzer; fix in preflight21 pending rerun | Partial / blocking |
+| Frozen 17.8 corpus gate | Skipped after compatibility heap gate failed in run 40170439514 | Not yet run |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
@@ -84,6 +84,31 @@ not merged to `main`.
   The Advanced warning remains unchanged.
 - **Not yet verified**: public CI on the final preflight20 commit,
   rerun of four WSL private gates, and signed-device visual smoke.
+
+## Compatibility 256 MiB heap failure and corrective strategy (preflight21)
+
+- New self-hosted WSL run
+  [40170439514](https://github.com/HighwindBR/AA-Experiments/actions/runs/40170439514)
+  passed fixture integrity, the release unit suite, release lint and the
+  installed-scan 256 MiB gate. The frozen 919+23 identity/type proof
+  is therefore accepted for the *cold scan*.
+- The second gate, **compatibility rebuilding against the 919-key
+  historical getter baseline**, failed with `java.lang.OutOfMemoryError:
+  Java heap space`. The reported stack ended inside the eager
+  `enriched.toList()` in `ConsumerGraphAnalyzer.enrich` (via
+  `DexCatalogAnalyzer.analyze`). This is a real memory regression,
+  not a count mismatch or runner issue.
+- The preflight21 change opts **only compatibility full scans** into
+  in-place consumer enrichment over the independently allocated,
+  already-owned rediscovery identifier list. This avoids a second
+  complete 54k-item output generation while graph indices are live.
+  The empty-baseline path and directed/streaming analysis remain
+  unchanged. Existing per-entry enrichment and safety behavior are
+  preserved; a new unit test compares the results.
+- This is **not validated under 256 MiB until the private gate
+  passes again**. Do not increase the limit or mark RC-ready
+  prematurely. The directed-resolve and frozen full-corpus gates
+  still need execution.
 
 ## Additional static-review findings (preflight19)
 
@@ -167,7 +192,7 @@ still be checked before RC approval.
 
 ## Artifacts of Round D
 
-- `app/build.gradle`: preflight20 development version only, not final RC.
+- `app/build.gradle`: preflight21 development version only, not final RC.
 - `.github/workflows/private-release.yml`: future beta4 tagging
   guarded; no tag currently created.
 - `docs/RELEASE.md`: updated publishing/RC procedure.
