@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.0-beta4-preflight20 — frozen 17.8 fixture reconciliation (not an RC)
+
+- The private Android Auto 17.8.663814 memory gate exposed **942**
+  currently editable mappings instead of its beta3 expectation of 919.
+  All 919 beta3 reference keys were preserved. The 23 additions are
+  12 exact elevated-risk parked-mode media timing keys, 3 WirelessLatency
+  false SSL token matches, and 8 BOOLEAN config/manufacturer flags
+  previously misclassified as possible Protobuf.
+- Replaced the stale literal 919 expectation in both private regression
+  tests with an **exact key-set union**: immutable beta3 919-key
+  fixture plus a reviewed 23-key beta4 delta. Any further
+  undocumented addition, loss, type, resolver or safety change
+  continues to fail the test.
+- Applied the elevated-risk warning and typed `PARKED APPLY`
+  confirmation to the **normal** Experiment editor too. Without this,
+  the 12 newly normal-editable parked timing knobs bypassed the
+  warning previously limited to Advanced editing. Reset-to-default
+  remains a one-step recovery action.
+- Added an evidence ledger and updated release readiness.
+- Public CI and all private gates are **pending verification for this
+  preflight**. No signed RC, merge, tag or publication was made.
+
 ## 1.0.0-beta4-preflight19 — static pre-RC review (not a release)
 
 - Corrected full-recovery validation so that current-build **active**

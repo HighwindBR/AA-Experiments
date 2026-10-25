@@ -8,6 +8,13 @@ It does not unlock every Android Auto or vehicle capability.
 
 ## Highlights
 
+- **Enhanced frozen-build coverage:** the exact 17.8 regression
+  cohort retains all 919 beta3-editable keys plus 23 reviewed
+  additions (12 parked-mode media timing knobs, three WirelessLatency
+  false SSL matches, and eight BOOLEAN flags no longer mistaken for
+  Protobuf). Those additions require the same getter proofs as others;
+  parked-mode timing values require a special `PARKED APPLY`
+  acknowledgement in the normal editor as well as Advanced.
 - **Advanced Overrides:** an explicitly enabled editor for a
   restricted, structurally verified subset of BOOLEAN, LONG, DOUBLE
   and STRING getters not eligible for the normal editor. The interface

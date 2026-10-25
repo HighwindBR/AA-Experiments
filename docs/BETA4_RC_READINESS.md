@@ -1,6 +1,6 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** development preflight19 code review; **not approved for an RC or a GitHub Release**.
+**Status:** development preflight20 private-fixture reconciliation; **not approved for an RC or a GitHub Release**.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
@@ -14,8 +14,8 @@ not merged to `main`.
 | Unit tests | Preflight18 passed [40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594); preflight19 active-only restore checks passed in [40117982320](https://github.com/HighwindBR/AA-Experiments/actions/runs/40117982320) | Passed for latest code |
 | Release lint | Preflight18 passed 40113675594; preflight19 passed 40117982320 | Passed for latest code |
 | Debug APK build | Preflight18 passed 40113675594; preflight19 debug APK build passed in 40117982320 | Passed for latest code |
-| Private 256 MiB gates | Manual `private-release.yml` workflow on beta4 branch, with self-hosted fixture runner | Not yet verified |
-| Frozen 17.8 corpus gate | Same manual private workflow | Not yet verified |
+| Private 256 MiB gates | [Run 40142250027](https://github.com/HighwindBR/AA-Experiments/actions/runs/40142250027) reproduced 942 vs expected 919 in installed-scan 256 MiB gate; SHA-256 fixtures OK, no OutOfMemoryError reported. Exact 919+23 fixture reconciliation pending WSL rerun | Failed old baseline; rerun needed |
+| Frozen 17.8 corpus gate | Skipped after the earlier private installed-scan gate failed | Not yet run |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
@@ -58,6 +58,32 @@ not merged to `main`.
 - This validates safe *preflight parsing*, not persistence after
   full restoration or recovery-profile publication. Keep isolated-only
   destructive recovery testing as an unmet gate.
+
+## Frozen AA 17.8 count reconciliation (preflight20)
+
+- Private WSL run
+  [40142250027](https://github.com/HighwindBR/AA-Experiments/actions/runs/40142250027)
+  staged the proprietary fixtures, passed SHA-256 verification,
+  unit tests and lint, and failed the **installed-scan 256 MiB gate**
+  on `expected 919, actual 942`. No OOM was reported; the three
+  remaining private gates were skipped.
+- A one-time diagnostic run reported **919 baseline keys all retained,
+  23 added, 0 removed**. The 23 additions are explained by three
+  separately reviewed policy/classification fixes; the exact list
+  and root-cause evidence are in
+  [17.8 editable delta](BETA4_17_8_EDITABLE_DELTA.md).
+- Both installed-scan and compatibility tests now require the
+  **complete exact union** of baseline 919 plus 23 reviewed keys,
+  as well as the expected types and resolution confidence for each
+  new key. This does not broaden the gate to accept future unknown
+  additions or disappearances.
+- The 12 parked timing knobs become normal-editable under the exact
+  whitelist. A safety review found that the normal editor had no
+  corresponding elevated-risk confirmation; preflight20 now requires
+  typing `PARKED APPLY` before applying a value through that UI.
+  The Advanced warning remains unchanged.
+- **Not yet verified**: public CI on the final preflight20 commit,
+  rerun of four WSL private gates, and signed-device visual smoke.
 
 ## Additional static-review findings (preflight19)
 
@@ -141,7 +167,7 @@ still be checked before RC approval.
 
 ## Artifacts of Round D
 
-- `app/build.gradle`: preflight19 development version only, not final RC.
+- `app/build.gradle`: preflight20 development version only, not final RC.
 - `.github/workflows/private-release.yml`: future beta4 tagging
   guarded; no tag currently created.
 - `docs/RELEASE.md`: updated publishing/RC procedure.

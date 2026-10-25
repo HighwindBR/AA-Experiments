@@ -17,6 +17,13 @@
 - A complete recovery bundle contains raw normal/Advanced/Experimental values (including STRING content); it is not encrypted or authenticated. Store it securely and do not import untrusted JSON. Full recovery requires an exact matching Android Auto build; it is not a cross-version migration tool.
 - Streaming full-catalog export is bounded in memory but may still take time on slower devices or document providers. If the provider fails, incomplete destination files must be discarded. A cancel/progress UI for very long exports remains future work.
 
+- The reviewed parked-mode media timing flags are not parking-state
+  detectors, but their safe numeric domains and downstream vehicle
+  behavior remain unproven. Preflight20 requires typed elevated
+  acknowledgement in the normal editor, not just Advanced.
+  Do not experiment with these values during active projection or
+  while driving.
+
 - The About screen states **LSPosed runtime API 101** (the module's
   supported API), while Status may report **API 102** from the
   connected framework service. These describe different sides of the

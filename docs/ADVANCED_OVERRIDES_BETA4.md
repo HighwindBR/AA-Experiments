@@ -30,6 +30,16 @@ The read-only getter/VTC tools are grouped under the collapsible
 Advanced access card. The Full Catalog still exposes evidence,
 but is no longer the primary Advanced unlock pathway.
 
+### Elevated-risk normal editor
+
+The 12 exact reviewed `parked_exp` timing flags can also qualify
+for the **normal** Experiments editor if they pass the usual getter
+criteria. Starting with preflight20, that route displays an
+`ELEVATED RISK` indicator and requires a typed `PARKED APPLY`
+confirmation before saving a non-default value. The Advanced
+editor retains its own risk confirmation. Restoring `Default`
+does not require that additional acknowledgement.
+
 ## Historical preflight11 unlock and use (superseded)
 
 The following procedure documents the earlier beta4 implementation
