@@ -22,6 +22,17 @@ object OverrideInputFeedback {
         }
     }
 
+    /** Advanced BOOLEAN creation requires an explicit choice; never mistake
+     * the compiled default for a user selection or a valid null issue for
+     * a missing selection. Non-BOOLEAN types retain normal codec validation.
+     */
+    fun advancedIssue(type: DiscoveredType, input: String): String? {
+        if (type == DiscoveredType.BOOLEAN && input != "true" && input != "false") {
+            return "Choose True or False before reviewing."
+        }
+        return issue(type, input)
+    }
+
     fun keyboardType(type: DiscoveredType): KeyboardType = when (type) {
         DiscoveredType.INT, DiscoveredType.LONG -> KeyboardType.Number
         DiscoveredType.FLOAT, DiscoveredType.DOUBLE -> KeyboardType.Decimal

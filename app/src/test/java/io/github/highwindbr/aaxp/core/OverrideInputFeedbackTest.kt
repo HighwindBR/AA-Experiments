@@ -28,6 +28,17 @@ class OverrideInputFeedbackTest {
         assertNull(OverrideInputFeedback.issue(DiscoveredType.BOOLEAN, "true"))
     }
 
+    @Test fun advancedBooleanRequiresSelectionButAcceptsBothActualChoices() {
+        assertEquals("Choose True or False before reviewing.",
+            OverrideInputFeedback.advancedIssue(DiscoveredType.BOOLEAN, ""))
+        assertNotNull(OverrideInputFeedback.advancedIssue(DiscoveredType.BOOLEAN, "TRUE"))
+        assertNull(OverrideInputFeedback.advancedIssue(DiscoveredType.BOOLEAN, "false"))
+        assertNull(OverrideInputFeedback.advancedIssue(DiscoveredType.BOOLEAN, "true"))
+        assertNull(OverrideInputFeedback.advancedIssue(DiscoveredType.LONG, "0"))
+        assertNotNull(OverrideInputFeedback.advancedIssue(DiscoveredType.LONG, "overflow"))
+        assertNull(OverrideInputFeedback.advancedIssue(DiscoveredType.STRING, ""))
+    }
+
     @Test fun emptyStringIsAValidExplicitOverride() {
         assertNull(OverrideInputFeedback.issue(DiscoveredType.STRING, ""))
     }

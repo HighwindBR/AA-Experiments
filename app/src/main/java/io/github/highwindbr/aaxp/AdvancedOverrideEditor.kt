@@ -44,7 +44,11 @@ fun AdvancedOverrideEditor(
     val requiredConfirmation = if (elevatedRisk != null) "PARKED APPLY" else "APPLY"
     val belongsToBuild = record == null || record.buildFingerprint == build
     var raw by remember(identifier.key, record?.value) {
-        mutableStateOf(record?.value ?: identifier.compiledDefault.orEmpty())
+        // A compiled BOOLEAN default is not an explicit user choice.
+        // Keep an existing saved Advanced value, but require a deliberate
+        // True/False selection when creating a fresh override.
+        mutableStateOf(record?.value ?: if (identifier.inferredType == DiscoveredType.BOOLEAN)
+            "" else identifier.compiledDefault.orEmpty())
     }
     var phase by remember(identifier.key) { mutableIntStateOf(0) }
     var acknowledgement by remember(identifier.key) { mutableStateOf("") }
@@ -66,8 +70,10 @@ fun AdvancedOverrideEditor(
     val selected = if (expected == DiscoveredType.BOOLEAN) {
         raw.takeIf { it == "true" || it == "false" }
     } else raw
-    val validationIssue = selected?.let { OverrideInputFeedback.issue(expected, it) }
-        ?: if (expected == DiscoveredType.BOOLEAN) "Choose True or False before reviewing." else null
+    // issue() returns null for valid values. The former Elvis expression
+    // treated that null as a missing BOOLEAN choice, permanently disabling
+    // Review Advanced value even after tapping True or False.
+    val validationIssue = OverrideInputFeedback.advancedIssue(expected, raw)
     val validSelected = selected != null && validationIssue == null
 
     // Shared control tree: inline in Experiments; modal only for Full Catalog.
@@ -90,7 +96,7 @@ fun AdvancedOverrideEditor(
                     Text("Consumer: ${identifier.runtimeConsumerStatus} · Confidence: ${identifier.confidence}")
                     Text("Normal editor: ${if (identifier.editable) "editable" else "read-only in the stored catalog"}")
                     if (!identifier.editable) Text(
-                        "The normal editor's catalog verdict may predate the Advanced policy. Advanced eligibility is checked separately.",
+                        "The normal editor's stored catalog verdict may predate the current safety policy. Advanced eligibility is checked separately.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     }
