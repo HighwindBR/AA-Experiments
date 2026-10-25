@@ -1,5 +1,20 @@
 # Changelog
 
+## beta4 full-corpus gate activation — post-preflight21 audit
+
+- Verified private run 40182926717 passes all **three real 256 MiB**
+  fixture gates, including prior compatibility OOM remediation.
+- Found the fourth `FullDeepResolveDistributionTest` could be
+  **silently skipped**: it depended on a non-versioned
+  `outputs/discovery/` inventory and an unforwarded Gradle system
+  property. Its green Actions step is not adequate evidence.
+- Replaced the private baseline with the frozen, tracked and
+  manifest-verified 919-key compatibility reference; a missing
+  baseline now fails rather than skips. Forwarded `aa.full.deep`
+  to forked JUnit workers.
+- The full-corpus gate is **not verified yet**. No RC, merge, tag or
+  release has been authorized.
+
 ## 1.0.0-beta4-preflight21 — compatibility memory hardening (not an RC)
 
 - The signed-fixture WSL run

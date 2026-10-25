@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
-import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 
 /** Explicit release gate. Run with -Daa.full.deep=true; omitted from routine unit runs. */
@@ -15,9 +15,17 @@ class FullDeepResolveDistributionTest {
         assumeTrue(System.getProperty("aa.full.deep") == "true" || System.getenv("AA_FULL_DEEP") == "true")
         val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
-        val baselineFile = File(root, "outputs/discovery/inventory-17.8.663814.json")
-        assumeTrue(archive.isFile && baselineFile.isFile)
-        val keys = editableKeys(baselineFile)
+        // The previous untracked outputs/discovery inventory is not shipped
+        // to a clean Actions checkout; assumeTrue made this release gate
+        // silently skip. The committed compatibility oracle is immutable,
+        // contains the exact 919 beta3 editable keys, and is SHA-256 verified
+        // by the private workflow. Missing/corrupt input must FAIL.
+        val baselineFile = File(root, "fixtures/compatibility-17.8.663814.json")
+        assertTrue("Frozen 17.8 compatibility reference missing", baselineFile.isFile)
+        val rows = JSONArray(baselineFile.readText())
+        val keys = (0 until rows.length())
+            .map { rows.getJSONObject(it).getString("key") }.toSet()
+        assertEquals("Frozen 17.8 baseline must contain 919 distinct keys", 919, keys.size)
         System.gc()
         val resolved = ArchiveInputResolver.resolve(archive, File(root, "app/build/tmp/full-deep-distribution"))
         val reasons = linkedMapOf<String, Int>()
@@ -47,42 +55,4 @@ class FullDeepResolveDistributionTest {
         assertTrue("Blocking UNKNOWN callsites remain: $blockingUnknownKeys", blockingUnknownKeys.isEmpty())
     }
 
-    private fun editableKeys(file: File): Set<String> {
-        val marker = "\"identifiers\":["
-        val keys = linkedSetOf<String>()
-        file.bufferedReader().use { reader ->
-            var matched = 0
-            while (matched < marker.length) {
-                val next = reader.read()
-                require(next >= 0) { "identifiers array not found" }
-                matched = if (next.toChar() == marker[matched]) matched + 1 else if (next.toChar() == marker[0]) 1 else 0
-            }
-            var depth = 0
-            var inString = false
-            var escaped = false
-            var objectText: StringBuilder? = null
-            while (true) {
-                val raw = reader.read()
-                if (raw < 0) break
-                val ch = raw.toChar()
-                if (depth == 0 && ch == ']') break
-                if (depth == 0 && ch == '{') objectText = StringBuilder().append(ch)
-                else objectText?.append(ch)
-                if (escaped) { escaped = false; continue }
-                if (inString && ch == '\\') { escaped = true; continue }
-                if (ch == '"') { inString = !inString; continue }
-                if (inString) continue
-                if (ch == '{') depth++
-                if (ch == '}') {
-                    depth--
-                    if (depth == 0) {
-                        val value = objectText.toString()
-                        if ("\"editable\":true" in value) keys += JSONObject(value).getString("key")
-                        objectText = null
-                    }
-                }
-            }
-        }
-        return keys
-    }
 }

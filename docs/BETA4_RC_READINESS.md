@@ -14,8 +14,8 @@ not merged to `main`.
 | Unit tests | Preflight18 passed [40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594); preflight19 active-only restore checks passed in [40117982320](https://github.com/HighwindBR/AA-Experiments/actions/runs/40117982320) | Passed for latest code |
 | Release lint | Preflight18 passed 40113675594; preflight19 passed 40117982320 | Passed for latest code |
 | Debug APK build | Preflight18 passed 40113675594; preflight19 debug APK build passed in 40117982320 | Passed for latest code |
-| Private 256 MiB gates | [Run 40170439514](https://github.com/HighwindBR/AA-Experiments/actions/runs/40170439514): fixture integrity and installed-scan 256 MiB **passed** (exact 942). Compatibility 256 MiB **failed with Java heap OOM** in ConsumerGraphAnalyzer; fix in preflight21 pending rerun | Partial / blocking |
-| Frozen 17.8 corpus gate | Skipped after compatibility heap gate failed in run 40170439514 | Not yet run |
+| Private 256 MiB gates | [Run 40182926717](https://github.com/HighwindBR/AA-Experiments/actions/runs/40182926717): fixture SHA256 + installed-scan + compatibility + directed-resolve all passed with 256 MiB following in-place list fix | **Passed (3/3)** |
+| Frozen 17.8 corpus gate | Run [40182926717](https://github.com/HighwindBR/AA-Experiments/actions/runs/40182926717) marked its step successful, but the JUnit test was silently skipped (untracked inventory path and missing forwarded aa.full.deep property); fixed in next preflight, **rerun required** | **Not verified** |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
@@ -84,6 +84,34 @@ not merged to `main`.
   The Advanced warning remains unchanged.
 - **Not yet verified**: public CI on the final preflight20 commit,
   rerun of four WSL private gates, and signed-device visual smoke.
+
+## Private runner results and full-corpus skip guard
+
+- [Run 40182926717](https://github.com/HighwindBR/AA-Experiments/actions/runs/40182926717)
+  on commit `0725d7e` passed the three actual memory gates (installed
+  scan, historical compatibility, and three-key directed resolve) with
+  256 MiB JVM test workers. It also passed the release unit suite and
+  lint. The public build
+  [40181986952](https://github.com/HighwindBR/AA-Experiments/actions/runs/40181986952)
+  passed tests, lint and debug APK.
+- **Audit finding:** although the `Frozen 17.8 full-corpus release gate`
+  step reported success, its JUnit test was guarded by
+  `assumeTrue(archive.isFile && outputs/discovery/inventory-17.8.663814.json.isFile)`.
+  The untracked `outputs/discovery/` file is not supplied by a clean
+  Git checkout or fixture staging. The test also depended on
+  `aa.full.deep=true` being inherited automatically by the test
+  worker, which Gradle does not guarantee. No `FULL_DEEP completed=...`
+  output appeared in the private logs, and the step completed without
+  evidence of the 919-key scan. **Do not count this as full-corpus success.**
+- The follow-up patch loads the tracked, SHA-256-verified
+  `fixtures/compatibility-17.8.663814.json` as its exact 919-key
+  baseline, fails closed when missing or malformed, and explicitly
+  forwards `aa.full.deep` from Gradle to the forked test JVM.
+  The test still requires all 919 keys to be processed without
+  unknown blocking value-flow outcomes under the original 256 MiB.
+- Rerun the private workflow at the new branch head; observe the
+  result of the final `FullDeepResolveDistributionTest` directly.
+  Until then, full corpus and the RC gate remain **pending**.
 
 ## Compatibility 256 MiB heap failure and corrective strategy (preflight21)
 

@@ -26,6 +26,10 @@ android {
             // Gradle test-worker heap is insufficient even though a normal app scan keeps
             // only one inventory at a time.
             maxHeapSize = System.getProperty('aa.test.heap', '1536m')
+            // Gradle's -D system properties are not inherited by forked test
+            // JVMs. Without explicit forwarding, the private full-corpus test
+            // silently exits via JUnit Assume although the workflow is green.
+            systemProperty 'aa.full.deep', System.getProperty('aa.full.deep', 'false')
         }
     }
 
