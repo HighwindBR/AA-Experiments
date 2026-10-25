@@ -225,6 +225,20 @@ still be checked before RC approval.
 7. Preserve accepted limitations and obtain explicit maintainer
    approval before tagging/releasing.
 
+## Local signed-device candidate procedure
+
+After the signed preflight18 full recovery export was saved, a
+non-publishing workflow was added for a manual, **release-key-signed**
+preflight21 APK retained only on the user's WSL host. This build
+verifies v2 signature, versionCode 167, package identity, and
+certificate continuity with the pinned official beta3 APK before
+copying any APK to the private host destination.
+
+See [Signed candidate device test](BETA4_SIGNED_CANDIDATE.md).
+The existence of this workflow does **not** count as execution,
+installation, signing acceptance, or RC approval. The job requires
+explicit manual dispatch and no release/public artifact is created.
+
 ## Publication controls and interpretation
 
 - `workflow_dispatch` of private release gates **does not publish**.
