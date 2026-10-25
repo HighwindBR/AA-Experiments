@@ -26,7 +26,7 @@ class InstalledCompatibilityHeapRegressionTest {
             previousBaseSha256 = "676205e71a75f38e0565b9be7d462c296b14490cef9a3feda3791098e5baae04",
         )
 
-        assertEquals(919, rebuilt.identifiers.count { it.editable })
+        FrozenBeta4EditableCohort.assertExact(rebuilt, root)
         assertTrue(rebuilt.identifiers.any { it.metadata["rediscoveryStatus"] == "PRESERVED" })
         assertTrue(rebuilt.errors.isEmpty())
     }
