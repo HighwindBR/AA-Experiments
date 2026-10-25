@@ -10,6 +10,11 @@ on:
         required: true
         default: false
         type: boolean
+      build_signed_candidate:
+        description: Build a beta4 signed test APK only on trusted WSL runner (no public artifact, tag or release)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -100,6 +105,81 @@ jobs:
           if counts != {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}:
               raise SystemExit("Full-corpus gate must execute exactly one passing, non-skipped JUnit test")
           PY
+
+  signed-development-candidate:
+    # Manual-only, exact beta4 feature branch; NEVER on tag, PR or publication.
+    # Secrets never leave the trusted self-hosted runner. APK is kept locally,
+    # not in public GitHub Actions artifacts or Releases.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.build_signed_candidate &&
+      github.ref == 'refs/heads/feature/beta4-getter-probe-preflight'
+    needs: [release-unit-tests, release-lint]
+    runs-on: [self-hosted, linux, x64, aa-private-fixtures]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v4
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Build, verify and retain candidate only on WSL
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          AAXP_RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          AAXP_RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          AAXP_RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          : "${RUNNER_TEMP:?}"
+          : "${ANDROID_HOME:?}"
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          test -n "$AAXP_RELEASE_STORE_PASSWORD"
+          test -n "$AAXP_RELEASE_KEY_ALIAS"
+          test -n "$AAXP_RELEASE_KEY_PASSWORD"
+          KEYSTORE="$(mktemp "$RUNNER_TEMP/aaxp-candidate-XXXXXXXX.jks")"
+          BASE_DIR="$(mktemp -d "$RUNNER_TEMP/aaxp-beta3-XXXXXXXX")"
+          cleanup() { rm -f "$KEYSTORE"; rm -rf "$BASE_DIR"; }
+          trap cleanup EXIT
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          export AAXP_RELEASE_STORE_FILE="$KEYSTORE"
+          gradle --no-daemon --max-workers=1 :app:assembleRelease
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          "$TOOLS/apksigner" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          BADGING=$("$TOOLS/aapt" dump badging "$APK" | sed -n '1p')
+          [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
+          [[ "$BADGING" == *"versionName='1.0.0-beta4-preflight21'"* ]]
+          [[ "$BADGING" == *"versionCode='167'"* ]]
+          # Verify against the actual published beta3 binary, not a claimed
+          # hard-coded keystore identifier. Hash is pinned in release workflow.
+          BASE="$BASE_DIR/AAExperiments-1.0.0-beta3.apk"
+          curl --fail --location --silent --show-error --retry 2 \
+            --output "$BASE" \
+            "https://github.com/HighwindBR/AA-Experiments/releases/download/v1.0.0-beta3/AAExperiments-1.0.0-beta3.apk"
+          echo "6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e  $BASE" | sha256sum -c -
+          BASE_CERT=$("$TOOLS/apksigner" verify --print-certs "$BASE" | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
+          NEW_CERT=$("$TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
+          test -n "$BASE_CERT"
+          test "$BASE_CERT" = "$NEW_CERT"
+          test "$GITHUB_REF" = "refs/heads/feature/beta4-getter-probe-preflight"
+          DEST="$HOME/aaxp-private-candidates"
+          mkdir -p "$DEST"
+          chmod 700 "$DEST"
+          TARGET="$DEST/AAExperiments-1.0.0-beta4-preflight21-signed.apk"
+          cp "$APK" "$TARGET.new"
+          chmod 600 "$TARGET.new"
+          mv -f "$TARGET.new" "$TARGET"
+          (cd "$DEST" && sha256sum "$(basename "$TARGET")" > "$(basename "$TARGET").sha256")
+          echo "Verified signed candidate stored LOCALLY at $TARGET"
+          echo "Certificate SHA-256 matches official beta3: $NEW_CERT"
+          echo "No GitHub artifact uploaded, tag pushed or Release published."
 
   signed-release:
     # Publishing is tag-triggered ONLY, never by a dispatch on a feature/RC branch.
