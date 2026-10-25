@@ -80,10 +80,26 @@ jobs:
       - name: 256 MiB directed-resolve gate
         run: gradle --no-daemon --max-workers=1 -Daa.test.heap=256m :app:testDebugUnitTest --tests io.github.highwindbr.aaxp.discovery.DeepResolveHeapRegressionTest
       - name: Frozen 17.8 full-corpus release gate
-        run: >-
-          gradle --no-daemon --max-workers=1 -Daa.test.heap=256m -Daa.full.deep=true
-          :app:testDebugUnitTest
-          --tests io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --max-workers=1 -Daa.test.heap=256m -Daa.full.deep=true \
+            :app:testDebugUnitTest \
+            --tests io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest
+          # JUnit assumptions mark a test skipped but Gradle exits with success.
+          # A release gate must prove its selected test actually ran.
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          path = Path("app/build/test-results/testDebugUnitTest/TEST-io.github.highwindbr.aaxp.discovery.FullDeepResolveDistributionTest.xml")
+          if not path.is_file():
+              raise SystemExit("Full-corpus JUnit XML missing; gate did not run")
+          root = ET.parse(path).getroot()
+          counts = {name: int(root.attrib.get(name, "0")) for name in ("tests", "failures", "errors", "skipped")}
+          print("Full-corpus JUnit verification:", counts)
+          if counts != {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}:
+              raise SystemExit("Full-corpus gate must execute exactly one passing, non-skipped JUnit test")
+          PY
 
   signed-release:
     # Publishing is tag-triggered ONLY, never by a dispatch on a feature/RC branch.
