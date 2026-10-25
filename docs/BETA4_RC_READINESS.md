@@ -1,6 +1,6 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** development preflight21 compatibility-heap remediation; **not approved for an RC or a GitHub Release**.
+**Status:** preflight21 automated gates accepted at tested commit `86eadc4`; **not approved for an RC or a GitHub Release**.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
@@ -11,17 +11,35 @@ not merged to `main`.
 | --- | --- | --- |
 | Review all beta4 code against beta3 | 81 commits relative to main at beginning of Round D; review new Advanced/runtime/recovery/publication files | In progress |
 | Functional regression strategy | Representative hooks, not individual behavior of 900+ flags | Adopted |
-| Unit tests | Preflight18 passed [40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594); preflight19 active-only restore checks passed in [40117982320](https://github.com/HighwindBR/AA-Experiments/actions/runs/40117982320) | Passed for latest code |
-| Release lint | Preflight18 passed 40113675594; preflight19 passed 40117982320 | Passed for latest code |
-| Debug APK build | Preflight18 passed 40113675594; preflight19 debug APK build passed in 40117982320 | Passed for latest code |
-| Private 256 MiB gates | [Run 40182926717](https://github.com/HighwindBR/AA-Experiments/actions/runs/40182926717): fixture SHA256 + installed-scan + compatibility + directed-resolve all passed with 256 MiB following in-place list fix | **Passed (3/3)** |
-| Frozen 17.8 corpus gate | Run [40182926717](https://github.com/HighwindBR/AA-Experiments/actions/runs/40182926717) marked its step successful, but the JUnit test was silently skipped (untracked inventory path and missing forwarded aa.full.deep property); fixed in next preflight, **rerun required** | **Not verified** |
+| Unit tests | Branch commit `86eadc4` passed [public CI 40186619085](https://github.com/HighwindBR/AA-Experiments/actions/runs/40186619085) and [private release suite 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260) | **Passed** |
+| Release lint | Commit `86eadc4` passed public CI 40186619085 and private run 40189976260 | **Passed** |
+| Debug APK build | Commit `86eadc4` passed public CI 40186619085 | **Passed** |
+| Private 256 MiB gates | [Run 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260), commit `86eadc4`: fixture hashes verified and installed-scan, compatibility, directed-resolve completed under 256 MiB | **Passed (3/3)** |
+| Frozen 17.8 corpus gate | [Run 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260) enforced JUnit XML: `tests=1, failures=0, errors=0, skipped=0`, against frozen 919-key fixture with 256 MiB | **Passed / executed** |
 | Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
 | Signing continuity | Release workflow prepared to compare beta4 cert with official beta3 APK | Not yet run |
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
+
+## Verified automated gate sign-off (2026-10-25)
+
+- **Accepted tested source:** `86eadc4626250dbf37cd38f61f04745284b8b2a4`
+  on `feature/beta4-getter-probe-preflight`.
+- [Public run 40186619085](https://github.com/HighwindBR/AA-Experiments/actions/runs/40186619085):
+  unit tests, `lintRelease` and debug APK build succeeded.
+- [Private run 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260):
+  SHA-256 fixture verification, separate 256 MiB installed-scan,
+  compatibility and directed-resolve tests, plus activated
+  `FullDeepResolveDistributionTest` all succeeded.
+- The fourth gate's JUnit report was validated explicitly:
+  `{'tests': 1, 'failures': 0, 'errors': 0, 'skipped': 0}`.
+  Its assertions require completing all 919 frozen baseline keys
+  and no blocking UNKNOWN callsites. No silent-skip acceptance remains.
+- These successes **do not** establish a signed RC, production upgrade
+  certificate continuity, full recovery on isolated state, or final
+  user-device visual acceptance. No release tag was created.
 
 ## CI validation provenance
 
@@ -36,8 +54,10 @@ not merged to `main`.
   The debug APK job also completed successfully. This was a regular
   CI debug artifact, not a release-signed RC or an APK installed on
   the user's phone.
-- Public GitHub tests do not replace private corpus/memory gates or
-  signing-cert continuity, which have not run yet.
+- Public CI cannot replace private corpus/memory gates or signing-cert continuity.
+  The **private memory and full-corpus gates have now passed** at
+  commit `86eadc4` in run 40189976260; **certificate continuity
+  remains unverified for a final signed beta4 artifact**.
 
 - [Actions run 40113675594](https://github.com/HighwindBR/AA-Experiments/actions/runs/40113675594):
   final preflight18 branch commit `44413c1a` passed unit tests,
@@ -109,9 +129,13 @@ not merged to `main`.
   forwards `aa.full.deep` from Gradle to the forked test JVM.
   The test still requires all 919 keys to be processed without
   unknown blocking value-flow outcomes under the original 256 MiB.
-- Rerun the private workflow at the new branch head; observe the
-  result of the final `FullDeepResolveDistributionTest` directly.
-  Until then, full corpus and the RC gate remain **pending**.
+- **Resolved on 2026-10-25:** private run
+  [40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260)
+  at commit `86eadc4` passed the corrected full-corpus stage. Its
+  post-Gradle JUnit XML verifier printed `tests=1, failures=0,
+  errors=0, skipped=0`. The three separate 256 MiB gates also passed.
+  RC approval remains blocked only by the remaining *non-automated*
+  device, isolated restore, signing and final candidate gates.
 
 ## Compatibility 256 MiB heap failure and corrective strategy (preflight21)
 
