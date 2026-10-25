@@ -23,6 +23,32 @@ not merged to `main`.
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
 
+## Pending device acceptance and staged UI cleanup
+
+- The signed `1.0.0-beta4-preflight21` APK from private job
+  [40216832745](https://github.com/HighwindBR/AA-Experiments/actions/runs/40216832745)
+  used source `311e5dd`, verified APK Signature Scheme v2,
+  verified the official beta3 APK's pinned SHA-256, matched the
+  signing certificate, and saved the private APK locally on WSL.
+  The maintainer's screenshot confirms the About screen reports
+  `1.0.0-beta4-preflight21`.
+- Still require **device smoke evidence**: Status counts and LSPosed
+  connection, preservation of normal and Advanced/Experimental records,
+  Advanced candidate navigation, elevated `PARKED APPLY` editor dialog
+  (cancel rather than changing timing values), and safe recovery preview.
+  A non-destructive preview must not be mistaken for a full write/restore
+  round trip.
+- User-requested settings declutter is staged **for the next signed
+  candidate only**: one `Backup & recovery` entry at Settings root;
+  complete backup/export prominently available; normal-only legacy
+  actions and destructive reset each in separate expandable groups.
+  The existing data semantics and confirmations are unchanged.
+- **Do not identify the already-installed preflight21 APK with this
+  new UI commit.** Public CI on UI changes and any required private
+  gates must be reviewed for the final frozen executable source before
+  candidate approval. Do not build another signed development APK
+  solely for settings rearrangement.
+
 ## Verified automated gate sign-off (2026-10-25)
 
 - **Accepted tested source:** `86eadc4626250dbf37cd38f61f04745284b8b2a4`

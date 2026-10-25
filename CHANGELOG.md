@@ -1,5 +1,21 @@
 # Changelog
 
+## Beta4 UX staging — next signed candidate (not yet installed)
+
+- Consolidated five Data actions into one **Backup & recovery**
+  Settings entry. The new subpage prioritizes the full recovery
+  export/restore pair, retains both existing normal-only JSON
+  operations behind an expandable legacy group and isolates the
+  destructive reset behind an expandable Danger zone.
+- No changes to the backup data formats, full-recovery typed
+  acknowledgement, build/fingerprint validation, preference storage,
+  LSPosed hooks or runtime override profiles.
+- Navigation regression checks now cover BACKUPS returning to Settings.
+- The current **signed preflight21** was built and validated from
+  source `311e5dd`. This UI commit is **not included** in that
+  installed APK and will ship only in the next approved signed
+  candidate. No special APK was requested just for this change.
+
 ## beta4 full-corpus gate activation — post-preflight21 audit
 
 - Verified private run 40182926717 passes all **three real 256 MiB**
