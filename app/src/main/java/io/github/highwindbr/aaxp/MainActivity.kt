@@ -1001,6 +1001,13 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
     var advancedExpanded by remember(identifier.key) { mutableStateOf(false) }
     var rawResolverExpanded by remember(identifier.key) { mutableStateOf(false) }
     val details = loaded?.takeIf { it.key == identifier.key } ?: identifier
+    // A previously scanned inventory can retain the old substring-based
+    // "parked" prohibition after the app's exact-key safety policy changes.
+    // Preserve the historical evidence, but do not mislabel it as the
+    // current write decision (Advanced eligibility is checked separately).
+    val staleSafetyVerdict = isAdvanced &&
+        identifier.reason?.startsWith("Read-only safety policy:") == true &&
+        SafetyPolicy.blockedReason(identifier.key) == null
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to experiments", tint = MaterialTheme.colorScheme.onBackground) }
@@ -1105,7 +1112,16 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
             item { DetailDisclosure(Icons.Default.Code, "Raw identifiers", "Source and storage metadata", rawExpanded, { rawExpanded = !rawExpanded }) {
                 TechnicalBlock("Kind", identifier.kind.name); TechnicalBlock("Namespace", identifier.namespace.name); TechnicalBlock("Storage type", identifier.storageType.name); TechnicalBlock("Semantic type", identifier.semanticType.name); TechnicalBlock("Preference key", DynamicOverrideCodec.preferenceKey(identifier.key))
             } }
-            item { DetailDisclosure(Icons.Default.Tune, "Advanced information", identifier.reason ?: "Resolver evidence and activation", advancedExpanded, { advancedExpanded = !advancedExpanded }) {
+            item { DetailDisclosure(Icons.Default.Tune, "Advanced information",
+                if (staleSafetyVerdict) "Previous catalog classification · policy since updated"
+                else identifier.reason ?: "Resolver evidence and activation",
+                advancedExpanded, { advancedExpanded = !advancedExpanded }) {
+                if (staleSafetyVerdict) {
+                    Text("The stored catalog was classified under an older safety policy. The current Advanced eligibility and warning are evaluated separately. Rescanning Android Auto can refresh the normal editor classification.",
+                        style = MaterialTheme.typography.bodySmall)
+                    TechnicalBlock("Previous catalog reason", identifier.reason.orEmpty())
+                    HorizontalDivider()
+                }
                 DiagnosticSectionTitle("Value flow")
                 TechnicalBlock("Origin", readableMetadataValue(identifier.metadata["valueOrigin"] ?: "UNKNOWN"))
                 TechnicalBlock("Fallback", identifier.metadata["compiledFallback"]?.let { if (it.isEmpty()) "Compiled default: empty string" else "Compiled default: $it" } ?: "Not inferred")
