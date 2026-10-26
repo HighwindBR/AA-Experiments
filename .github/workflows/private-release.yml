@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       build_signed_candidate:
-        description: Build a beta4 signed test APK only on trusted WSL runner (no public artifact, tag or release)
+        description: Build a beta4 signed test APK after private gates on trusted WSL runner (no artifact, tag or release)
         required: false
         default: false
         type: boolean
@@ -113,8 +113,9 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.build_signed_candidate &&
+      inputs.run_private_gates &&
       github.ref == 'refs/heads/feature/beta4-getter-probe-preflight'
-    needs: [release-unit-tests, release-lint]
+    needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     permissions:
       contents: read
@@ -167,8 +168,8 @@ jobs:
           "$TOOLS/apksigner" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
           BADGING=$("$TOOLS/aapt" dump badging "$APK" | sed -n '1p')
           [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
-          [[ "$BADGING" == *"versionName='1.0.0-beta4-preflight21'"* ]]
-          [[ "$BADGING" == *"versionCode='167'"* ]]
+          [[ "$BADGING" == *"versionName='1.0.0-beta4-preflight22'"* ]]
+          [[ "$BADGING" == *"versionCode='168'"* ]]
           # Verify against the actual published beta3 binary, not a claimed
           # hard-coded keystore identifier. Hash is pinned in release workflow.
           BASE="$BASE_DIR/AAExperiments-1.0.0-beta3.apk"
@@ -184,7 +185,7 @@ jobs:
           DEST="$HOME/aaxp-private-candidates"
           mkdir -p "$DEST"
           chmod 700 "$DEST"
-          TARGET="$DEST/AAExperiments-1.0.0-beta4-preflight21-signed.apk"
+          TARGET="$DEST/AAExperiments-1.0.0-beta4-preflight22-signed.apk"
           cp "$APK" "$TARGET.new"
           chmod 600 "$TARGET.new"
           mv -f "$TARGET.new" "$TARGET"
