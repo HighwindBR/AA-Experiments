@@ -251,6 +251,7 @@ private val AaDarkScheme = darkColorScheme(
 
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel, onViewDelta: (ExperimentFilter) -> Unit) {
     var auditOpen by remember { mutableStateOf(false) }
+    val analyzing = state.scanProgress != null
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
     val activeAdvanced = state.advancedRecords.count {
         it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
@@ -262,8 +263,31 @@ private val AaDarkScheme = darkColorScheme(
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item { ScreenTitle("Status", "Environment, resolver and runtime readiness") }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { StatusDot(state.aa.installed); Spacer(Modifier.width(10.dp)); Column(Modifier.weight(1f)) { Text("Android Auto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold); Text(if (state.aa.installed) "Installed and ready" else state.aa.scanError ?: "Not found", color = if (state.aa.installed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }; Image(painterResource(R.drawable.app_icon), null, Modifier.size(42.dp)) }
-        Text(if (state.aa.installed) "${state.aa.versionName} (${state.aa.versionCode})" else "No compatible installation was detected", style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (analyzing) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+            else StatusDot(state.aa.installed)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Android Auto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        analyzing -> "Analyzing installation"
+                        state.aa.installed -> "Installed and ready"
+                        else -> state.aa.scanError ?: "Not found"
+                    },
+                    color = if (analyzing || state.aa.installed) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.error
+                )
+            }
+            Image(painterResource(R.drawable.app_icon), null, Modifier.size(42.dp))
+        }
+        Text(
+            when {
+                analyzing -> "Preparing the installed Android Auto catalog"
+                state.aa.installed -> "${state.aa.versionName} (${state.aa.versionCode})"
+                else -> "No compatible installation was detected"
+            }, style = MaterialTheme.typography.bodySmall
+        )
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MiniStatus(Modifier.weight(1f), Icons.Default.Extension, "LSPosed", if (state.framework.connected) "API ${state.framework.api}" else "Disconnected", state.framework.connected)
@@ -322,7 +346,11 @@ private val AaDarkScheme = darkColorScheme(
             }
         }
     } } }
-    item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(if (state.profilePublished) "Dynamic profile published" else "Profile not published"); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if (state.suspendedOverrides.isNotEmpty()) TextButton({ auditOpen = true }) { Icon(Icons.Default.Security, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.suspendedOverrides.size} suspended overrides · View details", color = MaterialTheme.colorScheme.error) } } } }
+    item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(when {
+            analyzing -> "Preparing catalog and runtime profile"
+            state.profilePublished -> "Dynamic profile published"
+            else -> "Profile not published"
+        }); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if (state.suspendedOverrides.isNotEmpty()) TextButton({ auditOpen = true }) { Icon(Icons.Default.Security, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.suspendedOverrides.size} suspended overrides · View details", color = MaterialTheme.colorScheme.error) } } } }
     item { OutlinedButton({ importer.launch(arrayOf("application/vnd.android.package-archive", "application/zip", "application/octet-stream")) }, Modifier.fillMaxWidth()) { Text("Import APK, APKM or APKS") } }
     }
     if (auditOpen) SuspendedAuditListDialog(
