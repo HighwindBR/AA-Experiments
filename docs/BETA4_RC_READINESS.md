@@ -16,12 +16,27 @@ not merged to `main`.
 | Debug APK build | Commit `86eadc4` passed public CI 40186619085 | **Passed** |
 | Private 256 MiB gates | [Run 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260), commit `86eadc4`: fixture hashes verified and installed-scan, compatibility, directed-resolve completed under 256 MiB | **Passed (3/3)** |
 | Frozen 17.8 corpus gate | [Run 40189976260](https://github.com/HighwindBR/AA-Experiments/actions/runs/40189976260) enforced JUnit XML: `tests=1, failures=0, errors=0, skipped=0`, against frozen 919-key fixture with 256 MiB | **Passed / executed** |
-| Physical integration | preflight14 accepted slot A and B; preflight13 typed values; preflight16 UI; preflight17 exports; preflight18 upgrade and preserved profile verified on device | Supported |
+| Physical integration | Signed preflight21 installed in-place; screenshots show 100 modified + 3 suspended normal entries, Advanced and Experimental state retained. LSPosed logs confirm normal/Advanced/Experimental getters and typed returns | **Passed representative smoke** |
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
-| Full recovery restore | Exact-build format and unit tests; isolated round-trip not performed. Static audit added active-only current-getter revalidation, retaining inactive and historical baseline metadata | Pending / no live-device destructive test |
-| Signing continuity | Release workflow prepared to compare beta4 cert with official beta3 APK | Not yet run |
+| Override import and full recovery restore | Maintainer reports both normal override restoration and complete recovery restoration **worked** on 2026-10-26. Test environment and exact post-restore counts were not specified; separate disposable-storage isolation is not independently evidenced | **Manual functional pass reported; isolation unverified** |
+| Signing continuity | [Signed private preflight21 job 40216832745](https://github.com/HighwindBR/AA-Experiments/actions/runs/40216832745): v2 signature and pinned official beta3 artifact verified, signing certificate SHA-256 matched; signed APK installed in-place on device. Final beta4 candidate still pending | **Passed for preflight21; final pending** |
 | RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
 | Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
+
+## Manual restore acceptance (2026-10-26)
+
+- The maintainer explicitly reported **successful restoration of normal
+  overrides and successful full recovery restore**. Record these as
+  functional manual passes rather than a merely opened preview.
+- The report did not specify whether the exercise used isolated
+  disposable storage, nor provide the exact post-restore 100/3/1/1
+  record breakdown. Thus, do not claim independent proof of isolated
+  destructive rollback or exact byte-for-byte restored state.
+- No new APK build is required solely for this confirmation.
+  Remaining device-facing changes staged on the development branch
+  are **Backup & recovery** settings decluttering and the Advanced
+  BOOLEAN review fix. Verify both in the next signed candidate,
+  then freeze final package metadata, source and signing.
 
 ## Physical preflight21 screenshot acceptance (2026-10-25)
 
@@ -48,10 +63,13 @@ not merged to `main`.
   appears below a currently approved Advanced eligibility.
   The next build distinguishes stale stored reason from current
   SafetyPolicy, without silently changing persisted catalog data.
-- Still pending: LSPosed getter-return observation during a
-  real/emulated Android Auto session; deliberate cancellation of
-  the updated Advanced review flow in the next candidate; isolated
-  full recovery write/restore; final release signing and code freeze.
+- Subsequently verified from 2026-10-25 LSPosed export: runtime
+  normal/Advanced/Experimental getter interception and typed returns.
+  On 2026-10-26 the maintainer additionally reported successful
+  normal override and complete recovery restoration. Isolation of
+  the write/restore environment was not specified. Remaining next-
+  candidate smoke includes updated Advanced review and backup UI,
+  followed by final release identity/code freeze.
 
 ## LSPosed runtime interception evidence (preflight21, 2026-10-25)
 
@@ -90,8 +108,10 @@ not merged to `main`.
   belong to an unrelated camera LSPosed module, not AA Experiments.
 - The edited backup UI and fixed Advanced BOOLEAN review button are
   **not present in signed preflight21** and require device smoke on
-  the next approved signed candidate. A full isolated destructive
-  recovery round-trip also remains open.
+  the next approved signed candidate. On 2026-10-26 the maintainer
+  reported that normal and complete recovery restoration both worked;
+  whether that occurred with disposable isolated preferences is not
+  yet evidenced.
 
 ## Pending device acceptance and staged UI cleanup
 
@@ -198,8 +218,9 @@ not merged to `main`.
   corresponding elevated-risk confirmation; preflight20 now requires
   typing `PARKED APPLY` before applying a value through that UI.
   The Advanced warning remains unchanged.
-- **Not yet verified**: public CI on the final preflight20 commit,
-  rerun of four WSL private gates, and signed-device visual smoke.
+- **Historical preflight20 note:** subsequent preflight21 private gates
+  and signed-device smoke passed; consult the gate table and latest
+  dated evidence above rather than this initial checkpoint.
 
 ## Private runner results and full-corpus skip guard
 
