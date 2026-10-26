@@ -1,9 +1,29 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** preflight21 automated gates accepted at tested commit `86eadc4`; **not approved for an RC or a GitHub Release**.
+**Status:** signed preflight21 verified; preflight22 UI candidate staged for validation, not yet RC-approved or published.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
+
+## Preflight22 acceptance plan
+
+- New development identity: `1.0.0-beta4-preflight22` /
+  `versionCode=168`. Original applicationId and signing certificate
+  are unchanged.
+- Bundled UI corrections: dedicated **Backup & recovery** settings,
+  Advanced BOOLEAN value confirmation fix, historical parked-policy
+  labeling, and compact scan-progress dialog. During scanning, Status
+  shows analysis in progress instead of transient **Not found**.
+- Dialog no longer pre-allocates 64/20/42 dp for missing detail,
+  count and cancel button. The determinate progress bar is continuous
+  and represents **the current stage only**.
+- **Pending on this exact executable ref**: public unit/lint/debug CI,
+  all four WSL fixture gates, signed candidate certificate verification
+  and device screenshots. The previous preflight21 pass cannot be
+  silently promoted to the changed executable.
+- The manual WSL signed-candidate job now depends on all private
+  gates; dispatch with `run_private_gates=true` **and**
+  `build_signed_candidate=true`. No tag, merge or GitHub Release.
 
 ## Gate status (update with verifiable run IDs)
 

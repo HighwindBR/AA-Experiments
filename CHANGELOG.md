@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.0.0-beta4-preflight22 — scan-dialog refinement and combined beta4 UI updates
+
+- Replaced fixed-height placeholders (64 dp detail, 20 dp count, 42 dp
+  optional cancel) in the **Analyzing Android Auto** dialog with a
+  compact progress track and a single detail/count row. Optional
+  controls only occupy space when visible.
+- Determinate stage progress uses one continuous rounded track rather
+  than the visually detached Material3 stop indicator; unknown work
+  remains indeterminate and no false overall percentage is shown.
+- Temporary **Not found** and **Profile not published** messages are
+  replaced with scanning-state wording while analysis is active.
+- Includes already staged **Backup & recovery** UI, Advanced BOOLEAN
+  explicit selection fix, and historical parked-policy labeling.
+  Existing catalog/override runtime algorithms and backup formats
+  remain unchanged.
+- `versionCode=168`, `versionName=1.0.0-beta4-preflight22`.
+  Signing is gated on the three 256 MiB fixture tests plus frozen
+  full-corpus gate; no tag or public release.
+- Candidate validation remains pending until CI, signed WSL build
+  and device screenshots are accepted.
+
 ## Beta4 Advanced BOOLEAN and legacy-verdict UI fix — next signed candidate
 
 - Fixed an Elvis/null validation bug in `AdvancedOverrideEditor`:
