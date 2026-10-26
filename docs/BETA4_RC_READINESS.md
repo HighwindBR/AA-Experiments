@@ -53,6 +53,45 @@ not merged to `main`.
   the updated Advanced review flow in the next candidate; isolated
   full recovery write/restore; final release signing and code freeze.
 
+## LSPosed runtime interception evidence (preflight21, 2026-10-25)
+
+- User-provided export `LSPosed_20261025_223623.zip` reports LSPosed
+  release 2.2.1 (7912) and contains current `modules_` logs spanning
+  the signed preflight21 device installation. Count **modules only**;
+  corresponding `verbose_` streams mirror those events.
+- From **2026-10-25 14:50 to 22:06:48** (device-local log time):
+  **100 `PROFILE_ACCEPTED`** events, consistently
+  `mappings=100, probes=0, experimental=1, advanced=1`, and
+  100 distinct `HOOK_INSTALLED` normal keys per accepted profile.
+  They are process initializations, **not** 100 user sessions.
+- **263 `OVERRIDE_RETURNED` callbacks across 72 distinct normal keys**,
+  observed from **17:00:54 to 20:30:34** in AA `:car` and
+  `:projection` processes. These establish active runtime returns,
+  not just profile publication.
+- In the AA `:projection` process,
+  `PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch`
+  emitted **3 `EXPERIMENT_GETTER_INVOKED` +
+  3 `EXPERIMENT_OVERRIDE_RETURNED(false)`** pairs at
+  **17:25:59, 18:00:32 and 20:14:47**. Likewise
+  `AceFeature__mode` emitted **3 `ADVANCED_GETTER_INVOKED` +
+  3 `ADVANCED_OVERRIDE_RETURNED(LONG:0)`** pairs at
+  **17:26:05, 18:00:35 and 20:14:51**.
+- **Accepted**: representative normal, Experimental and Advanced
+  getter interception and typed runtime return on signed preflight21.
+  This does not establish behavioral/visual effect of every override.
+- **Boundary:** from **21:11:26 to 22:06:48** the newest rotated
+  `modules_` stream shows **38 profile acceptances/hook setups**
+  but **zero getter-return events** and no `:projection` process.
+  That time window alone is only startup evidence; if it was intended
+  as a projection session, investigate why projection was not reached.
+- No AA Experiments errors were found in the inspected current
+  `modules_` logs. Separately observed ClassNotFound exceptions
+  belong to an unrelated camera LSPosed module, not AA Experiments.
+- The edited backup UI and fixed Advanced BOOLEAN review button are
+  **not present in signed preflight21** and require device smoke on
+  the next approved signed candidate. A full isolated destructive
+  recovery round-trip also remains open.
+
 ## Pending device acceptance and staged UI cleanup
 
 - The signed `1.0.0-beta4-preflight21` APK from private job
