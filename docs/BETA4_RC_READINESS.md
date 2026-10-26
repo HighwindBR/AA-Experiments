@@ -79,11 +79,12 @@ not merged to `main`.
 - **Accepted**: representative normal, Experimental and Advanced
   getter interception and typed runtime return on signed preflight21.
   This does not establish behavioral/visual effect of every override.
-- **Boundary:** from **21:11:26 to 22:06:48** the newest rotated
-  `modules_` stream shows **38 profile acceptances/hook setups**
-  but **zero getter-return events** and no `:projection` process.
-  That time window alone is only startup evidence; if it was intended
-  as a projection session, investigate why projection was not reached.
+- **Clarified with the maintainer (2026-10-26):** Android Auto
+  was **not used after 21:11**. The 21:11:26–22:06:48 rotated
+  `modules_` stream contains 38 profile acceptances/hook setups
+  without getter-return events or a `:projection` process, which is
+  consistent with no projection session during that interval.
+  **No follow-up investigation is required for that absence.**
 - No AA Experiments errors were found in the inspected current
   `modules_` logs. Separately observed ClassNotFound exceptions
   belong to an unrelated camera LSPosed module, not AA Experiments.
