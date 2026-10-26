@@ -57,6 +57,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
@@ -70,6 +71,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -330,7 +332,7 @@ private val AaDarkScheme = darkColorScheme(
 }
 
 @Composable private fun ScanProgressDialog(progress: AnalysisProgress, onCancel: (() -> Unit)? = null) {
-    val title = when (progress.stage) {
+    val stageLabel = when (progress.stage) {
         AnalysisStage.PREPARING_ARCHIVE -> "Preparing archive"
         AnalysisStage.READING_DEX -> "Reading DEX files"
         AnalysisStage.RESOLVING_IDENTIFIERS -> "Resolving identifiers"
@@ -341,25 +343,72 @@ private val AaDarkScheme = darkColorScheme(
         AnalysisStage.SAVING_CATALOG -> "Saving catalog"
         AnalysisStage.LOADING_EXPERIMENTS -> "Loading experiments"
     }
+    // Stage-specific progress. Never imply a percentage of the complete analysis
+    // when different phases do not have measured, comparable work sizes.
+    val fraction = progress.fraction
+    val detail = progress.detail?.takeIf { it.isNotBlank() }?.let(::technicalDisplay)
+    val count = if (progress.current != null && progress.total != null && progress.total > 0)
+        "${progress.current} of ${progress.total}" else null
+
     Dialog(onDismissRequest = {}) {
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Analyzing Android Auto", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
-                progress.fraction?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
-                    ?: LinearProgressIndicator(Modifier.fillMaxWidth())
-                // Reserve exactly three text lines: short and long identifiers cannot resize this dialog.
-                Box(Modifier.fillMaxWidth().height(64.dp), contentAlignment = Alignment.TopStart) {
-                    Text(technicalDisplay(progress.detail.orEmpty()), maxLines = 3, overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Analyzing Android Auto",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(stageLabel, style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface)
+
+                if (fraction != null) {
+                    // A single filled track avoids Material3's visually detached
+                    // terminal stop-dot for determinate progress.
+                    Box(
+                        Modifier.fillMaxWidth().height(7.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .semantics {
+                                progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(
+                                    fraction.coerceIn(0f, 1f), 0f..1f
+                                )
+                            }
+                    ) {
+                        Box(
+                            Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).fillMaxHeight()
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                } else {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
-                Box(Modifier.fillMaxWidth().height(20.dp), contentAlignment = Alignment.CenterStart) {
-                    if (progress.current != null && progress.total != null)
-                        Text("${progress.current} of ${progress.total}", style = MaterialTheme.typography.labelMedium)
+
+                // Details and item counter share one row, rather than occupying
+                // dedicated empty 64dp/20dp boxes. Saving may have no detail.
+                if (detail != null || count != null) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (detail != null) Text(detail, Modifier.weight(1f),
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        else Spacer(Modifier.weight(1f))
+                        if (count != null) Text(count,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold)
+                    }
                 }
-                Text("Keep AA Experiments open while the catalog is being prepared.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Box(Modifier.fillMaxWidth().height(42.dp), contentAlignment = Alignment.CenterEnd) {
-                    onCancel?.let { TextButton(it) { Text("Cancel after current") } }
+
+                Text("Keep AA Experiments open while the catalog is being prepared.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                if (onCancel != null) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onCancel) { Text("Cancel after current") }
+                    }
                 }
             }
         }
