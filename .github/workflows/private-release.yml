@@ -32,6 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Require gates and signing when private delivery is requested
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deliver_private_candidate && (!inputs.run_private_gates || !inputs.build_signed_candidate) }}
+        run: |
+          echo "::error::Private delivery requires BOTH run_private_gates and build_signed_candidate."
+          exit 1
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

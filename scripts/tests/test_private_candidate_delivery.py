@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from scripts.private_candidate_delivery import (
-    APK_NAME, draft_tag, require_private_destination, verify_apk_checksum,
+    APK_NAME, draft_tag, github, require_private_destination, verify_apk_checksum,
 )
 
 
@@ -40,6 +40,13 @@ class PrivateDeliveryTest(unittest.TestCase):
             sidecar.write_text(f"{checksum}  wrong.apk\n")
             with self.assertRaises(ValueError):
                 verify_apk_checksum(apk)
+
+    def test_credentials_never_sent_to_unknown_host(self):
+        for url in ("http://api.github.com/repos/org/repo",
+                    "https://attacker.example/repos/org/repo"):
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    github("GET", url, "placeholder")
 
     def test_unique_run_attempt_draft_name(self):
         self.assertEqual(draft_tag("40431677743", "2"),
