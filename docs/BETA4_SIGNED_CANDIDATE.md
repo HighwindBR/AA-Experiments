@@ -1,15 +1,16 @@
 # Beta4 — signed device candidate, without publication
 
-**Scope:** manually triggered, locally retained and non-publishing test of
-`1.0.0-beta4-preflight22` (`versionCode=168`). This is **not RC1** and
-does not prepare the official `1.0.0-beta4` release tag.
+**Scope:** manually triggered and non-publishing validation of the final
+installed identity `1.0.0-beta4` (`versionCode=169`). The signed test
+file is `AAExperiments-1.0.0-beta4-candidate.apk`, without an RC1
+suffix. No tag, merge or official release is authorized.
 The APK remains locally on WSL; an **opt-in** delivery to a separate
 private repository is also supported for downloading on the phone.
 
 ## Before building
 
 1. Make and safely retain a **complete recovery bundle** exported from
-   the installed signed preflight21; store a second copy off
+   the installed signed preflight22; store a second copy off
    the phone. Do not clear the active profile.
 2. Do not uninstall the current manager. Its active normal, Advanced
    and Experimental records must remain untouched.
@@ -38,8 +39,8 @@ runner** after unit, lint and private-fixture gates have all passed. It:
 - reconstructs the release keystore from existing GitHub Secrets in a
   temporary file, runs `assembleRelease` and deletes that file on exit;
 - verifies the APK v2 signature, exact applicationId
-  `io.github.highwindbr.aaxp`, `versionCode=168`, and
-  `versionName=1.0.0-beta4-preflight22`;
+  `io.github.highwindbr.aaxp`, `versionCode=169`, and
+  `versionName=1.0.0-beta4`;
 - downloads the public official beta3 APK, checks its pinned SHA-256,
   and requires the **same signing certificate SHA-256 digest**;
 - keeps the candidate **on the local WSL filesystem** by default;
@@ -51,15 +52,15 @@ runner** after unit, lint and private-fixture gates have all passed. It:
 Output (permissions: private to the WSL runner account):
 
 ```text
-~/aaxp-private-candidates/AAExperiments-1.0.0-beta4-preflight22-signed.apk
-~/aaxp-private-candidates/AAExperiments-1.0.0-beta4-preflight22-signed.apk.sha256
+~/aaxp-private-candidates/AAExperiments-1.0.0-beta4-candidate.apk
+~/aaxp-private-candidates/AAExperiments-1.0.0-beta4-candidate.apk.sha256
 ```
 
 To verify manually in WSL:
 
 ```bash
 cd ~/aaxp-private-candidates
-sha256sum -c AAExperiments-1.0.0-beta4-preflight22-signed.apk.sha256
+sha256sum -c AAExperiments-1.0.0-beta4-candidate.apk.sha256
 ```
 
 Copy the verified APK to the phone via a trusted local connection,
@@ -99,7 +100,7 @@ and does **not** create any draft, tag or release on `AA-Experiments`.
    before any signed APK is delivered.
 5. In the **private** repository, open **Releases** while signed in
    with write access. Select the most recent **Draft** named
-   `AA Experiments 1.0.0-beta4-preflight22 · private build ...`,
+   `AA Experiments 1.0.0-beta4 · private candidate build ...`,
    then download the APK and the accompanying `.sha256` directly
    on Android. Never click **Publish release** on that draft.
    Its filename and digest must match the signed candidate.
@@ -130,9 +131,9 @@ gh workflow run private-release.yml --repo HighwindBR/AA-Experiments \
 
 ## Safe device smoke test (parked, no active projection)
 
-1. Install the verified APK **as an update** over preflight21.
+1. Install the verified APK **as an update** over signed preflight22.
    Never uninstall, clear app data, or choose a reset option.
-2. Open About: verify **preflight22**, application connected to LSPosed
+2. Open About: verify **1.0.0-beta4** (169), application connected to LSPosed
    and the expected Android Auto build. Verify existing overrides remain
    present (last reference: 100 active normal, three suspended,
    one Advanced and one Experimental; actual counts may legitimately
@@ -156,14 +157,14 @@ gh workflow run private-release.yml --repo HighwindBR/AA-Experiments \
    are prominent, normal-only legacy actions and Danger zone start
    collapsed, and full restore still requires the existing confirmation.
    Avoid repeating a destructive restore on the live profile.
-7. If the updated manager behaves incorrectly, collect diagnostic logs
+8. If the updated manager behaves incorrectly, collect diagnostic logs
    and avoid repeated uninstall/reinstall. Do not attempt a versionCode
    downgrade without a planned, data-preserving recovery strategy.
 
-## Still open for beta4 RC
+## Still open for official beta4 release
 
 Normal and complete write-side restore were reported successful by
 the maintainer, but isolated disposable-storage verification was not
 independently documented. Freeze final identity and verify the official
-signed `1.0.0-beta4` candidate before publication. This preflight22
-candidate is not an RC or public release.
+signed `1.0.0-beta4` candidate before publication. This final-metadata candidate is not a public release; the official tag
+and release require separate explicit authorization.

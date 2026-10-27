@@ -50,7 +50,7 @@ class PrivateDeliveryTest(unittest.TestCase):
 
     def test_unique_run_attempt_draft_name(self):
         self.assertEqual(draft_tag("40431677743", "2"),
-                         "aaxp-private-preflight22-run-40431677743-attempt-2")
+                         "aaxp-private-beta4-candidate-run-40431677743-attempt-2")
         for bad in ("", "1/2", "oops", "-1"):
             with self.assertRaises(ValueError):
                 draft_tag(bad, "1")

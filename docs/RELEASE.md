@@ -61,8 +61,10 @@ After all gates, prepare a **signed** candidate using the existing
 upgrade-compatible release signing key. To minimize
 differences between a tested candidate and the eventual official
 APK, the final `1.0.0-beta4` package metadata should be set *before*
-candidate testing. The candidate may be identified externally as
-`rc1` without using a different final package name/version.
+candidate testing. The unpublished signed test file is named
+`AAExperiments-1.0.0-beta4-candidate.apk`, not RC1, with final
+`versionName=1.0.0-beta4` and `versionCode=169`. The future official
+asset is `AAExperiments-1.0.0-beta4.apk`.
 Freeze code, dependency versions and signing settings.
 
 The repository is **public**. GitHub Actions build artifacts are not
@@ -88,8 +90,8 @@ explicit reproducible-build comparison.
 
 **Only after explicit user authorization:**
 
-1. Confirm the exact approved commit and expected final
-   `versionName=1.0.0-beta4` with increasing versionCode.
+1. Confirm the exact approved commit and final
+   `versionName=1.0.0-beta4` / `versionCode=169`.
 2. Review [draft beta4 release notes](RELEASE_NOTES_1.0.0-beta4.md).
 3. Merge approved changes to `main`, or tag an explicitly approved
    commit following the repository's branch policy.

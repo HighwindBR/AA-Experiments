@@ -193,8 +193,8 @@ jobs:
           "$TOOLS/apksigner" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
           BADGING=$("$TOOLS/aapt" dump badging "$APK" | sed -n '1p')
           [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
-          [[ "$BADGING" == *"versionName='1.0.0-beta4-preflight22'"* ]]
-          [[ "$BADGING" == *"versionCode='168'"* ]]
+          [[ "$BADGING" == *"versionName='1.0.0-beta4'"* ]]
+          [[ "$BADGING" == *"versionCode='169'"* ]]
           # Verify against the actual published beta3 binary, not a claimed
           # hard-coded keystore identifier. Hash is pinned in release workflow.
           BASE="$BASE_DIR/AAExperiments-1.0.0-beta3.apk"
@@ -210,7 +210,7 @@ jobs:
           DEST="$HOME/aaxp-private-candidates"
           mkdir -p "$DEST"
           chmod 700 "$DEST"
-          TARGET="$DEST/AAExperiments-1.0.0-beta4-preflight22-signed.apk"
+          TARGET="$DEST/AAExperiments-1.0.0-beta4-candidate.apk"
           cp "$APK" "$TARGET.new"
           chmod 600 "$TARGET.new"
           mv -f "$TARGET.new" "$TARGET"
@@ -276,7 +276,11 @@ jobs:
           [[ "$BADGING" == *"versionName='${GITHUB_REF_NAME#v}'"* ]]
           VERSION_CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")
           test -n "$VERSION_CODE"
-          test "$VERSION_CODE" -gt 143
+          if [ "$GITHUB_REF" = "refs/tags/v1.0.0-beta4" ]; then
+            test "$VERSION_CODE" -eq 169
+          else
+            test "$VERSION_CODE" -gt 143
+          fi
 
       - name: Verify upgrade signing certificate against official beta3
         if: github.ref == 'refs/tags/v1.0.0-beta4'

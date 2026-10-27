@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0-beta4 — final candidate prepared (not published)
+
+- Freeze final metadata as `1.0.0-beta4` / versionCode 169,
+  retaining application ID `io.github.highwindbr.aaxp`. Private
+  candidate filename is `AAExperiments-1.0.0-beta4-candidate.apk`;
+  official release asset will be `AAExperiments-1.0.0-beta4.apk`.
+- Consolidate beta4 Advanced BOOLEAN review, parked-mode risk
+  confirmation, compact scanning UX, consolidated Backup & recovery,
+  exact-build full recovery, paging exports, safe runtime profiles
+  and frozen 17.8 corpus corrections.
+- Preflight22 passed public/private signed gates and visual UI
+  acceptance. Actual normal, Advanced and Experimental runtime
+  getter-return evidence comes from signed preflight21 logs.
+- The maintainer accepted override preservation and waived additional
+  Status screenshots and exports; normal and complete restore were
+  reported successful, without separately proven isolated/byte-for-byte
+  restoration.
+- **Final code/metadata candidate gates and signing still pending.**
+  No merge, tag, public APK, official Release or LSPosed catalog
+  submission is authorized. Older preflight entries below are
+  historical snapshots and may retain their contemporaneous
+  "pending" wording.
+
 ## Beta4 — optional private GitHub delivery for signed preflight22 (CI only)
 
 - Added `deliver_private_candidate` opt-in to the manually invoked

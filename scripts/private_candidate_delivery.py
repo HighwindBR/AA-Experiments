@@ -19,7 +19,7 @@ from urllib.request import Request, urlopen
 API = "https://api.github.com"
 SOURCE_REPO = "HighwindBR/AA-Experiments"
 SOURCE_BRANCH = "refs/heads/feature/beta4-getter-probe-preflight"
-APK_NAME = "AAExperiments-1.0.0-beta4-preflight22-signed.apk"
+APK_NAME = "AAExperiments-1.0.0-beta4-candidate.apk"
 
 
 def require_private_destination(info: dict, desired: str) -> None:
@@ -53,7 +53,7 @@ def verify_apk_checksum(apk: Path) -> str:
 def draft_tag(run_id: str, attempt: str) -> str:
     if not run_id.isdecimal() or not attempt.isdecimal():
         raise ValueError("GitHub Actions run identity is required.")
-    return f"aaxp-private-preflight22-run-{run_id}-attempt-{attempt}"
+    return f"aaxp-private-beta4-candidate-run-{run_id}-attempt-{attempt}"
 
 
 def github(method: str, url: str, token: str, payload=None, content_type=None) -> dict:
@@ -110,7 +110,7 @@ def run() -> None:
     release = github("POST", f"{API}/repos/{destination}/releases", token, {
         "tag_name": tag,
         "target_commitish": default_branch,
-        "name": f"AA Experiments 1.0.0-beta4-preflight22 · private build {run_id}/{attempt}",
+        "name": f"AA Experiments 1.0.0-beta4 · private candidate build {run_id}/{attempt}",
         "body": (
             "UNPUBLISHED PRIVATE TEST DOWNLOAD. Never publish this draft.\n\n"
             f"Source: {SOURCE_REPO}@{sha}\n"

@@ -53,9 +53,11 @@ includes normal, Advanced and Experimental records and saved baselines;
 it is unencrypted and restores only to the exact matching installed
 Android Auto build. See [Known limitations](docs/KNOWN_LIMITATIONS.md).
 
-The beta4 release candidate has **not** been published. Development
-preflight APKs and GitHub Actions artifacts should not be mistaken for
-official GitHub Releases. A valid getter override does not guarantee
+The beta4 final-metadata candidate is prepared as `1.0.0-beta4`
+(versionCode 169), but has **not** been published. The private
+signed test file will be named `AAExperiments-1.0.0-beta4-candidate.apk`.
+Development preflight APKs and GitHub Actions artifacts should not
+be mistaken for official GitHub Releases. A valid getter override does not guarantee
 a downstream vehicle, server or head-unit feature is enabled.
 
 ## Documentation

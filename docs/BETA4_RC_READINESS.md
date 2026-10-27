@@ -1,9 +1,39 @@
 # Beta4 — RC readiness and Round D sign-off
 
-**Status:** signed preflight21 verified; preflight22 UI candidate staged for validation, not yet RC-approved or published.
+**Status:** signed preflight22 and UI acceptance passed; maintainer accepted override preservation and waived further screenshots/exports. Final beta4 169 candidate pending signed gates; no publication.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
+
+## Final beta4 freeze — 2026-10-27
+
+- **Approved:** preservation of configured overrides after the signed
+  preflight22 update. The maintainer expressly dispensed with additional
+  Status screenshots and normal override re-export. Earlier preflight21
+  counts (100 modified normal, 3 suspended, 1 Advanced, 1 Experimental)
+  remain historical evidence and are not a new exact recount.
+- Signed preflight22 passed [public CI 40325455245](https://github.com/HighwindBR/AA-Experiments/actions/runs/40325455245) and [private gates 40431677743](https://github.com/HighwindBR/AA-Experiments/actions/runs/40431677743):
+  all three real 256 MiB fixture tests, the non-skipped frozen 17.8
+  corpus, v2 signing and the official beta3 certificate comparison.
+  Subsequent delivery tooling and documentation passed
+  [public CI 40524090180](https://github.com/HighwindBR/AA-Experiments/actions/runs/40524090180).
+- Preflight22 screenshots verify the compact scan progress, consolidated
+  Backup & recovery UI, Advanced BOOLEAN True selection and typed
+  elevated-risk confirmation. Actual normal, Advanced and Experimental
+  getter interceptions/returns were demonstrated separately on signed
+  preflight21. Do not conflate UI evidence with fresh runtime events.
+- Normal and complete restore functionality were reported successful
+  on 2026-10-26; disposable-storage isolation and byte-for-byte
+  post-restore equivalence were not independently verified.
+- **Final metadata:** `io.github.highwindbr.aaxp`,
+  `versionName=1.0.0-beta4`, `versionCode=169`; unsigned/not-yet
+  produced test artifact label
+  `AAExperiments-1.0.0-beta4-candidate.apk` (no RC1).
+- **Pending:** new public CI, 256 MiB private fixture tests and
+  non-skipped corpus gate, signed candidate package/cert validation
+  on this final commit and tagged release gates. Documentation and
+  candidate preparation are authorized; merge, tag and publication
+  still require **separate explicit maintainer authorization**.
 
 ## Signed preflight22 screenshot acceptance — Android 17 / S24+ (2026-10-27)
 
@@ -44,10 +74,9 @@ following UI and state transitions, **not** new getter-return evidence:
   `Previous catalog classification · policy since updated`,
   distinguishing historical stored safety reasons from current
   Advanced eligibility.
-- **Remaining beta4 freeze checks**: verify updated Status overview
-  counts and applicable runtime smoke after the upgrade if needed;
-  preserve the report of manual recovery testing; review final notes
-  and sign/tag only on explicit authorization. A tall first-review
+- **Resolved by maintainer approval:** no additional Status screenshot
+  or override export is required; final signed candidate verification
+  and publication authorization remain separate. A tall first-review
   dialog wraps its long key and buttons; cosmetic only, not currently
   a release blocker.
 
@@ -63,10 +92,9 @@ following UI and state transitions, **not** new getter-return evidence:
 - Dialog no longer pre-allocates 64/20/42 dp for missing detail,
   count and cancel button. The determinate progress bar is continuous
   and represents **the current stage only**.
-- **Pending on this exact executable ref**: public unit/lint/debug CI,
-  all four WSL fixture gates, signed candidate certificate verification
-  and device screenshots. The previous preflight21 pass cannot be
-  silently promoted to the changed executable.
+- **Completed for functional preflight22 source**: public CI, all four
+  real WSL fixture gates, signed-certificate verification and phone UI
+  acceptance. The final beta4/169 commit requires fresh checks.
 - The manual WSL signed-candidate job now depends on all private
   gates; dispatch with `run_private_gates=true` **and**
   `build_signed_candidate=true`. No tag, merge or GitHub Release.
@@ -83,8 +111,8 @@ following UI and state transitions, **not** new getter-return evidence:
   is uploaded to the public AA-Experiments Actions run.**
 - This change is to build/delivery tooling only. Source functional
   preflight22 tests and signing from run 40431677743 remain valid for
-  that SHA, but CI has not yet validated the added delivery script and
-  no private download has been attempted.
+  that SHA, and the added delivery script subsequently passed offline tests
+  and public CI 40524090180. No private download has been evidenced.
 - Until configured and executed, the existing verified preflight22 APK
   remains on WSL as before. No beta4 tag or public publication.
 
@@ -103,8 +131,8 @@ following UI and state transitions, **not** new getter-return evidence:
 | Complete recovery bundle export | Created 20,147-byte file on preflight17; preflight18 opened and validated it in the restore preview, showing 103 normal + 1 Advanced + 1 Experimental, 2 active special overrides | Export and safe preview verified |
 | Override import and full recovery restore | Maintainer reports both normal override restoration and complete recovery restoration **worked** on 2026-10-26. Test environment and exact post-restore counts were not specified; separate disposable-storage isolation is not independently evidenced | **Manual functional pass reported; isolation unverified** |
 | Signing continuity | [Signed private preflight21 job 40216832745](https://github.com/HighwindBR/AA-Experiments/actions/runs/40216832745): v2 signature and pinned official beta3 artifact verified, signing certificate SHA-256 matched; signed APK installed in-place on device. Final beta4 candidate still pending | **Passed for preflight21; final pending** |
-| RC identity | Final package ID/name/code, approved commit, private delivery | Not prepared |
-| Release notes | `docs/RELEASE_NOTES_1.0.0-beta4.md` draft | Maintainer review pending |
+| Final candidate identity | `1.0.0-beta4` / 169 / `io.github.highwindbr.aaxp` and external candidate filename | Metadata prepared; final signing pending |
+| Release notes | Consolidated beta4 final candidate notes | Prepared; publication pending |
 
 ## Manual restore acceptance (2026-10-26)
 
