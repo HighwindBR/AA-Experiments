@@ -5,6 +5,52 @@ Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
 not merged to `main`.
 
+## Signed preflight22 screenshot acceptance — Android 17 / S24+ (2026-10-27)
+
+User-provided screenshots show the release-signed `1.0.0-beta4-preflight22`
+running on the target phone (Settings/About). They establish the
+following UI and state transitions, **not** new getter-return evidence:
+
+- **Analysis dialog**: DEX pass presents `classes.dex` and `1 of 5`
+  in the same row; known-progress catalog saves show bounded continuous
+  bars and `3501 of 50675` → `30751 of 50675` without reserved blank
+  detail slots. Other phases (Resolving identifiers, Classifying
+  experiments, Loading experiments) correctly display indeterminate
+  Material3 animation. During the analysis, Status says `Preparing
+  the installed Android Auto catalog` and `Preparing catalog and
+  runtime profile`, rather than transient `Not found`.
+- **Backup & recovery**: Settings contains one consolidated entry;
+  complete export/import are primary actions; legacy normal-only and
+  Danger zone sections initially collapse, and both expand to the
+  expected individual actions. No destructive reset was evidenced by
+  these screenshots.
+- **Advanced BOOLEAN**: Screenshots of
+  `VideoTimingControllerFeature__enable_video_timing_controller_parked_exp`
+  show that explicit True selection enables `Review Advanced value`,
+  and that the initial **Elevated-risk override — review** dialog
+  displays getter key, BOOLEAN type, compiled default true, proposed
+  true, and elevated risk warning. The separate **Final confirmation**
+  screen displays `Type PARKED APPLY` and keeps the apply action
+  disabled while the field is empty. No evidence of typing the
+  expression, or applying that particular screenshot's value, is
+  needed to accept the non-destructive protection UI.
+- Other Advanced editor screenshots from the same device show
+  `Experimental value: true · ACTIVE`, then `PAUSED` with
+  `Resume`, then `Advanced baseline restored, including previous
+  absence` with an unselected BOOLEAN and disabled review action.
+  This supports save/pause/restore UI state, but alone does not prove
+  that a runtime getter returned a changed value.
+- The **Advanced information** collapsed section now states
+  `Previous catalog classification · policy since updated`,
+  distinguishing historical stored safety reasons from current
+  Advanced eligibility.
+- **Remaining beta4 freeze checks**: verify updated Status overview
+  counts and applicable runtime smoke after the upgrade if needed;
+  preserve the report of manual recovery testing; review final notes
+  and sign/tag only on explicit authorization. A tall first-review
+  dialog wraps its long key and buttons; cosmetic only, not currently
+  a release blocker.
+
 ## Preflight22 acceptance plan
 
 - New development identity: `1.0.0-beta4-preflight22` /
