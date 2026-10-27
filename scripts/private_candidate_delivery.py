@@ -43,7 +43,8 @@ def verify_apk_checksum(apk: Path) -> str:
         raise ValueError("Malformed APK checksum sidecar.")
     if parts[1].strip().lstrip("*") != apk.name:
         raise ValueError("Checksum sidecar names another file.")
-    computed = hashlib.file_digest(apk.open("rb"), "sha256").hexdigest()
+    with apk.open("rb") as source:
+        computed = hashlib.file_digest(source, "sha256").hexdigest()
     if computed.lower() != parts[0].lower():
         raise ValueError("APK checksum differs from verified signed candidate.")
     return computed

@@ -129,6 +129,18 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Require private delivery settings when explicitly requested
+        if: ${{ inputs.deliver_private_candidate }}
+        env:
+          AAXP_PRIVATE_DELIVERY_TOKEN: ${{ secrets.AAXP_PRIVATE_DELIVERY_TOKEN }}
+          AAXP_PRIVATE_DELIVERY_REPO: ${{ vars.AAXP_PRIVATE_DELIVERY_REPO }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$AAXP_PRIVATE_DELIVERY_TOKEN" ] || [ -z "$AAXP_PRIVATE_DELIVERY_REPO" ]; then
+            echo "::error::Set the private repository variable and restricted token secret before opting into device delivery."
+            exit 1
+          fi
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       # The trusted WSL host already holds the SDK. setup-android contacts
