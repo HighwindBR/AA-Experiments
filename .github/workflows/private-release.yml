@@ -11,7 +11,12 @@ on:
         default: false
         type: boolean
       build_signed_candidate:
-        description: Build a beta4 signed test APK after private gates on trusted WSL runner (no artifact, tag or release)
+        description: Build a signed beta4 test APK after private gates on trusted WSL runner
+        required: false
+        default: false
+        type: boolean
+      deliver_private_candidate:
+        description: Also upload the signed APK to an unpublished draft in a separate PRIVATE repository (requires setup)
         required: false
         default: false
         type: boolean
@@ -36,6 +41,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
       - run: gradle --no-daemon --max-workers=1 :app:testDebugUnitTest
+      - name: Verify private delivery guardrails (no network)
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
   release-lint:
     runs-on: ubuntu-latest
@@ -108,8 +115,9 @@ jobs:
 
   signed-development-candidate:
     # Manual-only, exact beta4 feature branch; NEVER on tag, PR or publication.
-    # Secrets never leave the trusted self-hosted runner. APK is kept locally,
-    # not in public GitHub Actions artifacts or Releases.
+    # Keystore stays on the trusted runner. Candidate APK stays local unless
+    # the maintainer explicitly requests a draft in a SEPARATE PRIVATE repo.
+    # Never use Actions artifacts or Releases in the PUBLIC source repository.
     if: >-
       github.event_name == 'workflow_dispatch' &&
       inputs.build_signed_candidate &&
@@ -192,7 +200,19 @@ jobs:
           (cd "$DEST" && sha256sum "$(basename "$TARGET")" > "$(basename "$TARGET").sha256")
           echo "Verified signed candidate stored LOCALLY at $TARGET"
           echo "Certificate SHA-256 matches official beta3: $NEW_CERT"
-          echo "No GitHub artifact uploaded, tag pushed or Release published."
+          echo "No public GitHub artifact uploaded, official tag pushed or Release published."
+
+      - name: Upload candidate to a private draft for phone download
+        if: ${{ inputs.deliver_private_candidate }}
+        env:
+          AAXP_PRIVATE_DELIVERY_TOKEN: ${{ secrets.AAXP_PRIVATE_DELIVERY_TOKEN }}
+          AAXP_PRIVATE_DELIVERY_REPO: ${{ vars.AAXP_PRIVATE_DELIVERY_REPO }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Signed in the prior step, pinned to the beta4 branch and already
+          # checked against the published beta3 signing certificate.
+          python3 scripts/private_candidate_delivery.py
 
   signed-release:
     # Publishing is tag-triggered ONLY, never by a dispatch on a feature/RC branch.

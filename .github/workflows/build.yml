@@ -27,6 +27,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
       - run: gradle --no-daemon --max-workers=1 :app:testDebugUnitTest
+      - name: Verify private candidate delivery guards (offline)
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
   lint-release:
     runs-on: ubuntu-latest
