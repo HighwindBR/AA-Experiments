@@ -1,11 +1,7 @@
 # AA Experiments 1.0.0-beta4
 
-> **Release notes for final-candidate review — NOT YET PUBLISHED.**
-> Application ID: `io.github.highwindbr.aaxp`.
-> Installed version: `1.0.0-beta4` / versionCode `169`.
-> Unpublished signed test file: `AAExperiments-1.0.0-beta4-candidate.apk`.
-> Approved official release asset, when published:
-> `AAExperiments-1.0.0-beta4.apk`.
+> Application ID: `io.github.highwindbr.aaxp`. Installed version: `1.0.0-beta4` (`versionCode=169`).
+> Official release APK: `AAExperiments-1.0.0-beta4.apk` with a corresponding SHA-256 checksum.
 
 This beta improves reliability and ergonomics of Android Auto experiment
 inspection, configuration and recovery. It does not unlock every
@@ -77,10 +73,13 @@ Android Auto, server or vehicle capability.
   independently verified**.
 - Additional test evidence includes a 50,675-item full-catalog
   JSON/CSV comparison and a 20,147-byte recovery-bundle export.
-- **Still required before publication:** execute public and private
-  regression gates and verify v2 signing/metadata/certificate on the
-  final `1.0.0-beta4` / 169 commit; obtain explicit approval to
-  merge/tag/publish; ensure the tag's own gates pass.
+- The final `1.0.0-beta4` / 169 candidate passed [public CI 40528898122](https://github.com/HighwindBR/AA-Experiments/actions/runs/40528898122)
+  and [private signed gates 40532709266](https://github.com/HighwindBR/AA-Experiments/actions/runs/40532709266),
+  including full-corpus and fixture regression, v2 signature, package
+  metadata, and matching beta3 signing certificate. The maintainer
+  installed this candidate and reported correct operation on
+  2026-10-27. The official tagged-release workflow independently
+  rechecks its own gates before publishing its built APK.
 
 ## Compatibility and limitations
 

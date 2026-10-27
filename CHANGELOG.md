@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-beta4 — final candidate prepared (not published)
+## 1.0.0-beta4 — release
 
 - Freeze final metadata as `1.0.0-beta4` / versionCode 169,
   retaining application ID `io.github.highwindbr.aaxp`. Private
@@ -17,11 +17,13 @@
   Status screenshots and exports; normal and complete restore were
   reported successful, without separately proven isolated/byte-for-byte
   restoration.
-- **Final code/metadata candidate gates and signing still pending.**
-  No merge, tag, public APK, official Release or LSPosed catalog
-  submission is authorized. Older preflight entries below are
-  historical snapshots and may retain their contemporaneous
-  "pending" wording.
+- Final code/metadata candidate passed [public CI 40528898122](https://github.com/HighwindBR/AA-Experiments/actions/runs/40528898122)
+  and [private signed gates 40532709266](https://github.com/HighwindBR/AA-Experiments/actions/runs/40532709266).
+  On 2026-10-27 the maintainer confirmed successful installation
+  and operation and authorized official GitHub publication. Tagged
+  release checks must independently pass before APK publication.
+  LSPosed catalog submission remains separate. Older preflight
+  entries below preserve their point-in-time "pending" language.
 
 ## Beta4 — optional private GitHub delivery for signed preflight22 (CI only)
 
