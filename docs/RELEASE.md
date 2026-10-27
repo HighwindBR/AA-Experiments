@@ -24,7 +24,10 @@ A public beta requires:
 The existing publication workflow is `.github/workflows/private-release.yml`.
 It is **not** triggered by a feature-branch commit. Only an explicit
 tag push for `v1.0.0-beta3` or `v1.0.0-beta4` can publish.
-A manual `workflow_dispatch` runs checks but never publishes an APK.
+A manual `workflow_dispatch` runs checks but never publishes an APK
+in the public source repository. An explicitly opted-in signed-candidate
+job may instead attach the signed test APK to an **unpublished draft**
+inside a **separate private repository**, never to public Actions artifacts.
 
 The signed tag job uses the repository's existing release keystore
 secrets. For beta4, it also downloads the official beta3 APK from
@@ -65,7 +68,13 @@ Freeze code, dependency versions and signing settings.
 The repository is **public**. GitHub Actions build artifacts are not
 a confidentiality boundary. A genuinely private candidate needs a
 restricted delivery channel or a private test environment; merely
-skipping GitHub Release does not ensure secrecy.
+skipping GitHub Release does not ensure secrecy. The manual-only
+`deliver_private_candidate` workflow option requires a separate
+**private** repository and restricted fine-grained credential, verifies
+private visibility and the SHA-256 of the signed APK, and creates only
+an unpublished private-repo draft. See
+[Signed candidate device test](BETA4_SIGNED_CANDIDATE.md).
+The public signed-probe upload workflow was disabled for beta4.
 
 A candidate is for the maintainer's approval only. A fixed defect can
 require a new candidate. Do not publish on the basis of the candidate

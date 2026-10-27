@@ -1,5 +1,24 @@
 # Changelog
 
+## Beta4 — optional private GitHub delivery for signed preflight22 (CI only)
+
+- Added `deliver_private_candidate` opt-in to the manually invoked
+  private-gated signing workflow. A signed APK may be uploaded as an
+  **unpublished draft** in a **separate PRIVATE repo** for phone
+  download. The public source repository receives no APK artifact,
+  release, tag or merge; default behavior still keeps the APK on WSL.
+- Restricted delivery to the exact beta4 branch and source identity;
+  verifies SHA-256 sidecar and destination `private=true` from GitHub.
+  Private destination credential is short-lived and limited to that repo.
+  Upload aborts on errors and tries to remove partial drafts.
+- Offline Python tests verify private-repo filtering, exact APK name
+  and checksum, and run-specific draft identity. These tests run in
+  both normal and private release unit-test jobs.
+- Disabled the legacy manual signed-probe APK upload to **public**
+  GitHub Actions artifacts in `debug-apk.yml`.
+- No Android application, versionCode, hook logic or backup-format
+  change; this is **not** a new beta4 signed build or official release.
+
 ## 1.0.0-beta4-preflight22 — scan-dialog refinement and combined beta4 UI updates
 
 - Replaced fixed-height placeholders (64 dp detail, 20 dp count, 42 dp

@@ -3,6 +3,8 @@
 **Scope:** manually triggered, locally retained and non-publishing test of
 `1.0.0-beta4-preflight22` (`versionCode=168`). This is **not RC1** and
 does not prepare the official `1.0.0-beta4` release tag.
+The APK remains locally on WSL; an **opt-in** delivery to a separate
+private repository is also supported for downloading on the phone.
 
 ## Before building
 
@@ -40,8 +42,11 @@ runner** after unit, lint and private-fixture gates have all passed. It:
   `versionName=1.0.0-beta4-preflight22`;
 - downloads the public official beta3 APK, checks its pinned SHA-256,
   and requires the **same signing certificate SHA-256 digest**;
-- keeps the candidate **only on the local WSL filesystem** (no
-  `upload-artifact`, GitHub Release, tag or merge).
+- keeps the candidate **on the local WSL filesystem** by default;
+- optionally uploads the verified APK and SHA-256 to an **unpublished
+  draft in a SEPARATE PRIVATE repo** only when specifically requested.
+  There is no public artifact, official AA-Experiments release/tag,
+  or merge.
 
 Output (permissions: private to the WSL runner account):
 
@@ -57,10 +62,71 @@ cd ~/aaxp-private-candidates
 sha256sum -c AAExperiments-1.0.0-beta4-preflight22-signed.apk.sha256
 ```
 
-Copy the verified APK to the phone via a trusted local connection.
-Do not share it as a public Actions artifact. Do not use the
-`app-debug.apk` published by public CI: its signing key is disposable
-and cannot upgrade the release-signed manager.
+Copy the verified APK to the phone via a trusted local connection,
+or configure **private delivery** below. Do not share the signed APK
+as a public Actions artifact. Do not use the `app-debug.apk` from
+public CI: it cannot upgrade the release-signed manager.
+
+## Phone download through a separate private repository (one-time setup)
+
+This option does **not** use the public repository's Actions artifacts
+and does **not** create any draft, tag or release on `AA-Experiments`.
+
+1. While signed into your GitHub account, create a new repository,
+   for example `HighwindBR/aaxp-private-candidates`, with
+   **Private** visibility. Initialize it with a README so it has a
+   default branch. Do not repurpose unrelated private repositories.
+2. Under GitHub Settings → Developer settings → Personal access tokens
+   → Fine-grained tokens, create a **short-lived** token restricted to
+   **only that private repository**. Set Repository permissions →
+   **Contents: Read and write**; do not grant organization-wide or
+   workflow access. Never paste this token in chat, issues, files,
+   job output or code.
+3. In the PUBLIC source repository `HighwindBR/AA-Experiments`,
+   open Settings → Secrets and variables → Actions.
+   Add **New repository secret**:
+   `AAXP_PRIVATE_DELIVERY_TOKEN` = that token.
+   Under **Variables**, create:
+   `AAXP_PRIVATE_DELIVERY_REPO` =
+   `HighwindBR/aaxp-private-candidates`.
+4. On [Private release gates](https://github.com/HighwindBR/AA-Experiments/actions/workflows/private-release.yml),
+   select `feature/beta4-getter-probe-preflight` and choose:
+   `run_private_gates=true`,
+   `build_signed_candidate=true`, and
+   `deliver_private_candidate=true`.
+   The WSL private runner must be **online**. All public checks,
+   three 256 MiB gates, and the frozen 17.8 corpus test must pass
+   before any signed APK is delivered.
+5. In the **private** repository, open **Releases** while signed in
+   with write access. Select the most recent **Draft** named
+   `AA Experiments 1.0.0-beta4-preflight22 · private build ...`,
+   then download the APK and the accompanying `.sha256` directly
+   on Android. Never click **Publish release** on that draft.
+   Its filename and digest must match the signed candidate.
+   If the mobile app hides drafts, use the logged-in GitHub website
+   in a browser.
+
+The private-delivery script refuses a public or unexpected destination,
+an APK version mismatch, or a checksum mismatch. It first checks the
+private repository's actual GitHub visibility, then creates the
+**unpublished** draft, uploads only the signed APK and checksum, and
+rechecks draft status. An interrupted upload attempts to delete the
+incomplete draft. No release signing key, fixture or private token is
+included in the downloadable files.
+
+If `deliver_private_candidate` is **false** (default), no network
+delivery is attempted: the candidate remains only on WSL.
+
+CLI alternative after the private destination is configured:
+
+```bash
+gh workflow run private-release.yml --repo HighwindBR/AA-Experiments \
+  --ref feature/beta4-getter-probe-preflight \
+  -f run_private_gates=true \
+  -f build_signed_candidate=true \
+  -f deliver_private_candidate=true
+```
+
 
 ## Safe device smoke test (parked, no active projection)
 

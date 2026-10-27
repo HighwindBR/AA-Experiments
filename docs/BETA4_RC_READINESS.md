@@ -25,6 +25,23 @@ not merged to `main`.
   gates; dispatch with `run_private_gates=true` **and**
   `build_signed_candidate=true`. No tag, merge or GitHub Release.
 
+## Opt-in private device delivery (2026-10-26)
+
+- Added `deliver_private_candidate` in the signing workflow for
+  download on Android. User must create a **separate private GitHub
+  repository** and configure a repository-restricted Contents write
+  token as a secret and destination as an Actions variable.
+- Private visibility, candidate SHA-256/name, source ref and workflow
+  inputs are checked before creating any draft. Downloads are attached
+  only to unpublished drafts in the private repository. **No artifact
+  is uploaded to the public AA-Experiments Actions run.**
+- This change is to build/delivery tooling only. Source functional
+  preflight22 tests and signing from run 40431677743 remain valid for
+  that SHA, but CI has not yet validated the added delivery script and
+  no private download has been attempted.
+- Until configured and executed, the existing verified preflight22 APK
+  remains on WSL as before. No beta4 tag or public publication.
+
 ## Gate status (update with verifiable run IDs)
 
 | Gate | Current evidence / action | Status |
