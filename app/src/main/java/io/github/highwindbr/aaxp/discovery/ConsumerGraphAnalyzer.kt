@@ -31,8 +31,15 @@ object ConsumerGraphAnalyzer {
         shouldContinue: () -> Boolean = { true },
         onIdentifier: (DiscoveredIdentifier) -> Unit = {},
         retainResults: Boolean = true,
-        targetedTraversal: Boolean = false
+        targetedTraversal: Boolean = false,
+        // Compatibility scans already own a fresh mutable rediscovery list.
+        // Replace its elements as analysis proceeds instead of retaining a
+        // second 54k-item generation beside the reverse graph under 256 MiB.
+        reuseInputStorage: Boolean = false
     ): List<DiscoveredIdentifier> {
+        require(!reuseInputStorage || (retainResults && !targetedTraversal && identifiers is MutableList<*>)) {
+            "In-place consumer enrichment requires retained, non-targeted mutable input"
+        }
         val reverseCalls = mutableMapOf<String, MutableList<MethodFingerprint>>()
         records.forEach { record -> record.method.invokedMethods.forEach { invoked ->
             reverseCalls.getOrPut(invoked) { mutableListOf() } += record.method
@@ -71,7 +78,11 @@ object ConsumerGraphAnalyzer {
             // Consumer analysis is intentionally a cold diagnostic for hookable entries only.
             // Catalog-only literals must not multiply the reverse-graph working set.
             val reviewed = ManualReferenceLayer.find(baseSha256, identifier.key)
-            if (getters.isEmpty() || (!identifier.editable && reviewed == null)) return@map identifier.also(onIdentifier)
+            // Full catalog: keep the cheap shortcut for read-only, unreviewed
+            // symbols. Explicit one-key Deep Resolve: trace them anyway, since
+            // Advanced Overrides deliberately operates on this exact cohort.
+            if (getters.isEmpty() || (!targetedTraversal && !identifier.editable && reviewed == null))
+                return@map identifier.also(onIdentifier)
             val normalWouldExhaust = directedRetryVisitedNodes != null && directedRetryVisitedNodes > maxVisitedNodes &&
                 wouldExhaust(getters, maxVisitedNodes, reverseCalls, interfaceDispatch, superclassByClass, maxDepth)
             val directedRetry = directedRetries < maxDirectedRetries && normalWouldExhaust
@@ -394,6 +405,18 @@ object ConsumerGraphAnalyzer {
                     }
                 }
             ).also(onIdentifier)
+        }
+        if (reuseInputStorage) {
+            // ArrayList.set does not structurally modify the iterator owned by
+            // identifiers.asSequence(). Each original entry becomes collectible
+            // immediately after its enriched replacement is stored. Do not use
+            // this for cancelled/directed streaming sessions.
+            @Suppress("UNCHECKED_CAST")
+            val target = identifiers as MutableList<DiscoveredIdentifier>
+            var index = 0
+            enriched.forEach { replacement -> target[index++] = replacement }
+            check(index == target.size) { "In-place enrichment was interrupted" }
+            return target
         }
         return if (retainResults) enriched.toList() else {
             // Directed sessions persist through onIdentifier. Consuming the lazy sequence without

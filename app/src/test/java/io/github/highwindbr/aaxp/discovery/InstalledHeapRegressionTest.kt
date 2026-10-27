@@ -14,8 +14,9 @@ class InstalledHeapRegressionTest {
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
         val resolved = ArchiveInputResolver.resolve(archive, File(root, "app/build/tmp/installed-heap-regression"))
         val inventory = DexCatalogAnalyzer().analyze(resolved.base, resolved.splits)
-        // Alpha23 demotes 21 textual/library artifacts that used to pass as editable.
-        assertEquals(919, inventory.identifiers.count { it.editable })
+        // Frozen 919 baseline + exactly 23 reviewed, explainable beta4 changes.
+        // A new or lost mapping still fails with the exact differing key names.
+        FrozenBeta4EditableCohort.assertExact(inventory, root)
         assertTrue(inventory.identifiers.size >= 54_000)
         assertTrue(inventory.errors.isEmpty())
         val earthStatus = inventory.identifiers.single { it.key == "CieloFeature__earth_status" }

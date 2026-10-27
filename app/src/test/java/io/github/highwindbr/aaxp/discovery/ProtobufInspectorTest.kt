@@ -45,6 +45,40 @@ class ProtobufInspectorTest {
         assertEquals(ProtobufResolutionLevel.PROTOBUF_WIRE_PARSED, ProtobufInspector.inspect(bytes, singular)?.level)
     }
 
+    @Test fun booleanGettersAreNotReclassifiedAsProtobuf() {
+        val identifiers = listOf(
+            "CarAppLibrary__recreate_map_view_context_on_config_change_kill_switch",
+            "ConnectivityLogging__disable_usb_trigger_configured_accessory_event",
+            "ConnectivityLogging__disable_usb_trigger_configured_event",
+            "FrameworkGalFeature__video_defer_early_ui_config_request_kill_switch",
+            "GearheadCarService__ignore_density_config_change_kill_switch",
+            "PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch"
+        )
+        identifiers.forEach { key ->
+            val getter = MethodFingerprint("classes.dex", "La;", "a", "()Z", DiscoveredType.BOOLEAN,
+                emptyList(), 3, "hash", false, emptyList(), emptyList())
+            val candidate = DiscoveredIdentifier(key, IdentifierNamespace.FENOTYPE_FLAG, DiscoveredType.BOOLEAN,
+                "true", emptyList(), listOf(getter), ResolutionConfidence.UNIQUE_GETTER, null, true)
+            val result = SemanticClassifier.normalize(candidate)
+            assertEquals(key, IdentifierKind.FENOTYPE_FLAG, result.kind)
+            assertEquals(key, SemanticValueType.BOOLEAN, result.semanticType)
+            assertEquals(key, MappingResolution.DIRECT, result.resolution)
+            assertTrue(key, result.editable)
+            assertNull(key, result.metadata["protobufResolution"])
+        }
+    }
+
+    @Test fun booleanFalseAndLongDefaultsNeverBecomeProtobufRegardlessOfNames() {
+        for ((type, value) in listOf(DiscoveredType.BOOLEAN to "false", DiscoveredType.LONG to "300")) {
+            val raw = DiscoveredIdentifier("Feature__manufacturer_config", IdentifierNamespace.FENOTYPE_FLAG,
+                type, value, emptyList(), emptyList(), ResolutionConfidence.CATALOGUED, null, false)
+            val decoded = ProtobufSemanticAnalyzer.enrich(raw)
+            assertEquals(type, decoded.inferredType)
+            assertEquals(IdentifierKind.FENOTYPE_FLAG, decoded.kind)
+            assertNull(decoded.metadata["protobufResolution"])
+        }
+    }
+
     @Test fun wireParsedProtoRemainsNonEditableWithoutSchema() {
         val original = DiscoveredIdentifier(
             "PhoneThemeFeature__manufacturer_uses_dynamic_icon_shape", IdentifierNamespace.FENOTYPE_FLAG,

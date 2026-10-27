@@ -1,7 +1,7 @@
 package io.github.highwindbr.aaxp.discovery
 
 object SemanticClassifier {
-    const val SCHEMA_VERSION = 15
+    const val SCHEMA_VERSION = 16
 
     private val configurableKinds = setOf(
         IdentifierKind.FENOTYPE_FLAG,

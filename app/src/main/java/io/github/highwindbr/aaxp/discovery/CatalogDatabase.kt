@@ -296,6 +296,26 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         return CatalogChangeSummary(added, removed, changed)
     }
 
+    /**
+     * This is a small, build-scoped prefilter for Advanced eligibility. SQL
+     * excludes the 50k unrelated symbols before any getter objects are read.
+     * The policy is applied to *full* records by the manager afterwards.
+     */
+    fun advancedCandidateKeys(baseSha256: String): List<String> = readableDatabase.rawQuery(
+        """
+        SELECT i.key FROM identifiers i
+        INNER JOIN getters g ON g.identifier_id=i.id
+        WHERE i.base_sha=? AND i.editable=0 AND i.kind='FENOTYPE_FLAG'
+          AND i.value_type IN ('BOOLEAN','LONG','DOUBLE','STRING')
+          AND i.resolution IN ('DIRECT','STRUCTURAL')
+        GROUP BY i.id
+        HAVING COUNT(g.ordinal)=1
+        ORDER BY i.key
+        LIMIT 1000
+        """.trimIndent(),
+        arrayOf(baseSha256)
+    ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+
     fun editablePage(baseSha256: String, limit: Int, offset: Int): List<DiscoveredIdentifier> = readableDatabase.rawQuery(
         "$ROW_COLUMNS FROM identifiers WHERE base_sha=? AND editable=1 ORDER BY key LIMIT ? OFFSET ?",
         arrayOf(baseSha256, limit.toString(), offset.toString())
@@ -326,16 +346,51 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         "$ROW_COLUMNS FROM identifiers WHERE base_sha=? AND key=? LIMIT 1", arrayOf(baseSha256, key)
     ).use { c -> if (!c.moveToFirst()) null else row(c, true) }
 
+    /** Prevalidate MODIFIED keys so a missing historical flag cannot skip a page. */
+    fun existingKeys(baseSha256: String, keys: Set<String>): List<String> =
+        keys.chunked(400).flatMap { chunk ->
+            val placeholders = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT key FROM identifiers WHERE base_sha=? AND key IN ($placeholders)",
+                arrayOf(baseSha256, *chunk.toTypedArray())
+            ).use { c -> buildList { while (c.moveToNext()) add(c.getString(0)) } }
+        }.distinct().sorted()
+
+    /** Export at most 250 identifiers at a time, never a full 50k corpus. */
+    fun exportPage(baseSha256: String, query: CatalogQuery, offset: Int, limit: Int,
+        includeMethods: Boolean, modifiedKeys: List<String>? = null): List<DiscoveredIdentifier> {
+        require(limit in 1..250)
+        val page = if (modifiedKeys == null) {
+            // Export only uses editable and unknown-type predicates. Avoid
+            // SELECT COUNT(*) for every 250 rows of a ~50k-identifier corpus.
+            val clause = buildString {
+                append("base_sha=?")
+                if (query.editableOnly) append(" AND editable=1")
+                if (!query.includeUnknown) append(" AND value_type<>'UNKNOWN'")
+            }
+            readableDatabase.rawQuery(
+                "$ROW_COLUMNS FROM identifiers WHERE $clause ORDER BY key LIMIT ? OFFSET ?",
+                arrayOf(baseSha256, limit.toString(), offset.toString())
+            ).use { cursor -> buildList { while (cursor.moveToNext()) add(row(cursor, false)) } }
+        } else {
+            val keys = modifiedKeys.drop(offset).take(limit).toSet()
+            identifiersByKeys(baseSha256, keys).values.sortedBy { it.key }
+        }
+        return if (includeMethods) attachDetails(baseSha256, page) else page
+    }
+
     /** Bulk attachment avoids one getters query plus one consumers query per exported row. */
     fun attachDetails(baseSha256: String, rows: List<DiscoveredIdentifier>): List<DiscoveredIdentifier> {
         if (rows.isEmpty()) return rows
         val wanted = rows.asSequence().map { it.key }.toHashSet()
+        val clause = rows.joinToString(",") { "?" }
+        val args = arrayOf(baseSha256, *rows.map { it.key }.toTypedArray())
         val getterMap = mutableMapOf<String, MutableList<MethodFingerprint>>()
-        readableDatabase.rawQuery("SELECT i.key,g.dex,g.class_name,g.method_name,g.descriptor,g.return_type,g.parameter_types,g.instruction_count,g.opcode_sha,g.is_clinit,g.referenced_fields,g.invoked_methods FROM identifiers i JOIN getters g ON g.identifier_id=i.id WHERE i.base_sha=? ORDER BY i.key,g.ordinal", arrayOf(baseSha256)).use { c ->
+        readableDatabase.rawQuery("SELECT i.key,g.dex,g.class_name,g.method_name,g.descriptor,g.return_type,g.parameter_types,g.instruction_count,g.opcode_sha,g.is_clinit,g.referenced_fields,g.invoked_methods FROM identifiers i JOIN getters g ON g.identifier_id=i.id WHERE i.base_sha=? AND i.key IN ($clause) ORDER BY i.key,g.ordinal", args).use { c ->
             while (c.moveToNext()) if (c.getString(0) in wanted) getterMap.getOrPut(c.getString(0)) { mutableListOf() } += method(c, 1)
         }
         val consumerMap = mutableMapOf<String, MutableList<ConsumerEvidence>>()
-        readableDatabase.rawQuery("SELECT i.key,c.dex,c.class_name,c.method_name,c.descriptor,c.return_type,c.parameter_types,c.instruction_count,c.opcode_sha,c.is_clinit,c.referenced_fields,c.invoked_methods,c.depth,c.link_kind,c.path,c.semantic_summary FROM identifiers i JOIN consumers c ON c.identifier_id=i.id WHERE i.base_sha=? ORDER BY i.key,c.ordinal", arrayOf(baseSha256)).use { c ->
+        readableDatabase.rawQuery("SELECT i.key,c.dex,c.class_name,c.method_name,c.descriptor,c.return_type,c.parameter_types,c.instruction_count,c.opcode_sha,c.is_clinit,c.referenced_fields,c.invoked_methods,c.depth,c.link_kind,c.path,c.semantic_summary FROM identifiers i JOIN consumers c ON c.identifier_id=i.id WHERE i.base_sha=? AND i.key IN ($clause) ORDER BY i.key,c.ordinal", args).use { c ->
             while (c.moveToNext()) if (c.getString(0) in wanted) consumerMap.getOrPut(c.getString(0)) { mutableListOf() } += ConsumerEvidence(method(c, 1), c.getInt(12), ConsumerLinkKind.valueOf(c.getString(13)), decodeList(c.getString(14)), c.getStringOrNull(15))
         }
         return rows.map { it.copy(getterCandidates = getterMap[it.key].orEmpty(), consumers = consumerMap[it.key].orEmpty()) }
@@ -412,14 +467,28 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         return found
     }
 
-    private fun row(c: android.database.Cursor, details: Boolean) = DiscoveredIdentifier(
-        c.getString(1), IdentifierNamespace.valueOf(c.getString(2)), DiscoveredType.valueOf(c.getString(3)), c.getStringOrNull(4),
-        List(c.getInt(7)) { IdentifierOccurrence(emptyMethod(), it) }, if (details) getters(c.getLong(0)) else emptyList(), ResolutionConfidence.valueOf(c.getString(5)), c.getStringOrNull(6), c.getInt(14) != 0, decodeMap(c.getString(13)),
-        kind = identifierKind(c.getString(8)), resolution = MappingResolution.valueOf(c.getString(9)),
-        runtimeConsumerStatus = RuntimeConsumerStatus.valueOf(c.getString(10)), semanticsReviewed = c.getInt(11) != 0,
-        editabilityReason = c.getStringOrNull(12)?.let(EditabilityReason::valueOf), consumers = if (details) consumers(c.getLong(0)) else emptyList(),
-        storageType = enumOr(c.getString(15), StorageValueType.UNKNOWN), semanticType = enumOr(c.getString(16), SemanticValueType.UNKNOWN),
-        evidenceConfidence = decodeConfidence(c.getString(17)), semanticsProvenance = enumOr(c.getString(18), SemanticsProvenance.NONE))
+    private fun row(c: android.database.Cursor, details: Boolean): DiscoveredIdentifier {
+        val type = DiscoveredType.valueOf(c.getString(3))
+        val metadata = decodeMap(c.getString(13))
+        // Normalize cached catalogs from preflight12a without rescanning Android Auto.
+        // The original, unmodified DEX occurrence evidence is retained separately.
+        return DiscoveredIdentifier(
+            c.getString(1), IdentifierNamespace.valueOf(c.getString(2)), type,
+            CompiledDefaultCodec.normalize(c.getStringOrNull(4), type, metadata["defaultSource"]),
+            List(c.getInt(7)) { IdentifierOccurrence(emptyMethod(), it) },
+            if (details) getters(c.getLong(0)) else emptyList(),
+            ResolutionConfidence.valueOf(c.getString(5)), c.getStringOrNull(6),
+            c.getInt(14) != 0, metadata,
+            kind = identifierKind(c.getString(8)), resolution = MappingResolution.valueOf(c.getString(9)),
+            runtimeConsumerStatus = RuntimeConsumerStatus.valueOf(c.getString(10)),
+            semanticsReviewed = c.getInt(11) != 0,
+            editabilityReason = c.getStringOrNull(12)?.let(EditabilityReason::valueOf),
+            consumers = if (details) consumers(c.getLong(0)) else emptyList(),
+            storageType = enumOr(c.getString(15), StorageValueType.UNKNOWN),
+            semanticType = enumOr(c.getString(16), SemanticValueType.UNKNOWN),
+            evidenceConfidence = decodeConfidence(c.getString(17)),
+            semanticsProvenance = enumOr(c.getString(18), SemanticsProvenance.NONE))
+    }
 
     private fun getters(identifierId: Long): List<MethodFingerprint> = readableDatabase.rawQuery(
         "SELECT dex,class_name,method_name,descriptor,return_type,parameter_types,instruction_count,opcode_sha,is_clinit,referenced_fields,invoked_methods FROM getters WHERE identifier_id=? ORDER BY ordinal", arrayOf(identifierId.toString())

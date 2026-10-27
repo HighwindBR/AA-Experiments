@@ -16,5 +16,10 @@ class RuntimeOverrideCodecTest {
         assertEquals(1.25, RuntimeOverrideCodec.decode("DOUBLE:1.25", Double::class.javaPrimitiveType))
         assertEquals("value", RuntimeOverrideCodec.decode("STRING:value", String::class.java))
         assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("FLOAT:1.25", Double::class.javaPrimitiveType) }
+        assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("BOOLEAN:maybe", Boolean::class.javaPrimitiveType) }
+        assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("FLOAT:NaN", Float::class.javaPrimitiveType) }
+        assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("DOUBLE:Infinity", Double::class.javaPrimitiveType) }
+        assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("INT:-1", Char::class.javaPrimitiveType) }
+        assertThrows(IllegalArgumentException::class.java) { RuntimeOverrideCodec.decode("INT:65536", Char::class.javaPrimitiveType) }
     }
 }

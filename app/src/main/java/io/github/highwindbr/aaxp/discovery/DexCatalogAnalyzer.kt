@@ -108,7 +108,14 @@ class DexCatalogAnalyzer {
         val resolvedIdentifiers = identifiers.values.map { resolve(it, provenFieldReaders) }.toMutableList()
         identifiers.clear()
         onProgress(AnalysisProgress(AnalysisStage.REDISCOVERING_MAPPINGS, detail = if (previousMappings.isEmpty()) "No compatible previous catalog" else "Comparing ${previousMappings.size} previous mappings"))
-        val rediscoveredIdentifiers = CompatibilityRediscovery.apply(previousMappings, resolvedIdentifiers, previousBaseSha256)
+        // A compatibility rebuild owns a separate rediscovered list. Make its
+        // pointer array mutable so ConsumerGraphAnalyzer can replace entries in
+        // place and avoid holding two complete 54k-item result generations.
+        // The empty-baseline path MUST retain the original reference: clearing
+        // resolvedIdentifiers after analysis must not erase the output.
+        val rediscoveredIdentifiers = CompatibilityRediscovery.apply(
+            previousMappings, resolvedIdentifiers, previousBaseSha256
+        )
         // Compatibility rediscovery decorates the complete current catalog and therefore creates
         // a second generation of identifier objects. Once that generation exists, retaining the
         // undecorated 54k-item list through consumer classification needlessly overlaps two large
@@ -141,9 +148,13 @@ class DexCatalogAnalyzer {
                 onProgress(AnalysisProgress(AnalysisStage.DEEP_RESOLVING, deepCompleted, analysisInput.size, finalized.key))
             }),
             retainResults = !(deepResolveKeys.isNotEmpty() && streamDeepResolveResults),
-            targetedTraversal = deepResolveKeys.isNotEmpty()
-        ).map { identifier ->
-            if (deepResolveKeys.isEmpty()) identifier else withDeepResolveResult(identifier)
+            targetedTraversal = deepResolveKeys.isNotEmpty(),
+            reuseInputStorage = deepResolveKeys.isEmpty() &&
+                previousMappings.isNotEmpty() && rediscoveredIdentifiers !== resolvedIdentifiers
+        ).let { result ->
+            // Avoid another full List.map allocation for the normal catalog.
+            if (deepResolveKeys.isEmpty()) result
+            else result.map(::withDeepResolveResult)
         }
         resolvedIdentifiers.clear()
         if (deepResolveKeys.isNotEmpty()) onProgress(AnalysisProgress(AnalysisStage.DEEP_RESOLVING, deepCompleted, analysisInput.size, "Directed reanalysis complete"))
@@ -394,7 +405,10 @@ class DexCatalogAnalyzer {
             occurrence.method in directGetters && occurrence.defaultSource == "INVOKE_ARGUMENT"
         }
         val defaultOccurrences = getterRegistrations.ifEmpty { item.occurrences }
-        val defaults = defaultOccurrences.mapNotNull { normalizeDefault(it.candidateDefault, inferred, item.key) }.distinct()
+        val defaults = defaultOccurrences.mapNotNull { occurrence ->
+            CompiledDefaultCodec.normalize(normalizeDefault(occurrence.candidateDefault, inferred, item.key),
+                inferred, occurrence.defaultSource)
+        }.distinct()
         val configurableNamespace = item.namespace !in setOf(IdentifierNamespace.STRING_LITERAL, IdentifierNamespace.RESOURCE_NAME, IdentifierNamespace.MANIFEST_COMPONENT, IdentifierNamespace.NATIVE_REFERENCE)
         val metadata = buildMap {
             if (safetyReason != null) put("risk", "BLOCKED_BY_SAFETY_POLICY")

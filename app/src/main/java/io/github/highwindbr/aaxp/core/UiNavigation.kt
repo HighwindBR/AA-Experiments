@@ -1,6 +1,6 @@
 package io.github.highwindbr.aaxp.core
 
-enum class SettingsPage { ROOT, DIAGNOSTICS, CATALOG, ABOUT }
+enum class SettingsPage { ROOT, BACKUPS, DIAGNOSTICS, CATALOG, ABOUT }
 
 enum class BackAction {
     CLOSE_EXPERIMENT,

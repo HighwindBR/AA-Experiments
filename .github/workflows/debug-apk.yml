@@ -11,6 +11,7 @@ env:
 
 jobs:
   debug-apk:
+    if: github.ref != 'refs/heads/feature/beta4-getter-probe-preflight'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,3 +31,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 1
+
+# The historical public signed-probe artifact path was removed for beta4.
+# Signed candidate delivery requires fully gated private-release.yml and a
+# verified PRIVATE destination. Never expose a release-signed test APK here.

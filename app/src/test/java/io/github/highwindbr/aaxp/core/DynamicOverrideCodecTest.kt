@@ -9,7 +9,7 @@ class DynamicOverrideCodecTest {
         listOf(
             TypedOverride(DiscoveredType.BOOLEAN, "false"), TypedOverride(DiscoveredType.INT, "-2"),
             TypedOverride(DiscoveredType.LONG, "42"), TypedOverride(DiscoveredType.FLOAT, "1.25"),
-            TypedOverride(DiscoveredType.STRING, "")
+            TypedOverride(DiscoveredType.DOUBLE, "1.67"), TypedOverride(DiscoveredType.STRING, "")
         ).forEach { assertEquals(it, DynamicOverrideCodec.deserialize(DynamicOverrideCodec.serialize(it))) }
     }
     @Test fun nullAndEmptyStringRemainDifferent() {
@@ -26,5 +26,9 @@ class DynamicOverrideCodecTest {
     @Test fun invalidTypedValuesAreRejected() {
         assertNull(DynamicOverrideCodec.deserialize("BOOLEAN:yes"))
         assertNull(DynamicOverrideCodec.deserialize("INT:1.5"))
+        assertNull(DynamicOverrideCodec.deserialize("FLOAT:NaN"))
+        assertNull(DynamicOverrideCodec.deserialize("DOUBLE:NaN"))
+        assertNull(DynamicOverrideCodec.deserialize("DOUBLE:Infinity"))
+        assertNull(DynamicOverrideCodec.deserialize("DOUBLE:not-a-number"))
     }
 }
