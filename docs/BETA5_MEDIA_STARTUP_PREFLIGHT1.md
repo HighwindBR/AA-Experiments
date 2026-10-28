@@ -25,3 +25,16 @@ This preflight records two observed internal Android Auto 18.1 methods. It does 
 Observe manual Spotify opening in each vehicle, find a verifiable actual projected UI readiness transition and safe media launch controller. Do not conflate playback, connection, startup nav callback, and host-screen readiness. A missing or incompatible trace fails open.
 
 Keep the beta4 public release and signing certificate unchanged. This diagnostic is intentionally excluded from full recovery backups, consistent with other developer probes.
+
+## Signed private preflight package
+
+- Application package: `io.github.highwindbr.aaxp` (same applicationId as beta4).
+- Candidate metadata: `versionCode=170`, `versionName=1.0.0-beta5-preflight1`.
+- Expected filename: `AAExperiments-1.0.0-beta5-preflight1-candidate.apk`.
+- GitHub **Actions → Private release gates → Run workflow** on branch `feature/beta5-media-startup-preflight1`; enable `run_private_gates`, `build_signed_candidate`, and `deliver_private_candidate`.
+- Trusted self-hosted runner with labels `self-hosted,linux,x64,aa-private-fixtures` must be online; private fixture location, release-signing secrets and private delivery destination must remain configured.
+- All three 256 MiB gates, the frozen 17.8 corpus (must not skip), unit tests and release lint must pass before signing.
+- The signed APK's v2 signature, package metadata and certificate are verified against **official beta4**, downloaded and SHA-256-pinned to `c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43`.
+- Candidate delivery uses an **unpublished draft only in a separate private repository**; no signed APK is published as a public artifact, and no public beta5 tag is created.
+- Debug-signed APKs cannot be installed as an upgrade over the release-signed beta4.
+- The beta5 trace is opt-in, read-only, limited to the inspected Android Auto 18.1 base APK and does not open Spotify yet.
