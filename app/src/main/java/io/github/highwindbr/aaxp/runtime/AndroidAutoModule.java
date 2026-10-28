@@ -35,11 +35,13 @@ public final class AndroidAutoModule extends XposedModule {
     private final Map<String, Boolean> probedCalls = new ConcurrentHashMap<>();
     private final ExperimentalEventLimiter experimentalEvents = new ExperimentalEventLimiter();
     private SharedPreferences remotePreferences;
+    private volatile String moduleProcessName;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
             (preferences, key) -> refreshSnapshot(preferences);
 
     @Override public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
-        event(Log.INFO, "MODULE_LOADED", null, "process", param.getProcessName(), "api", String.valueOf(getApiVersion()));
+        moduleProcessName = param.getProcessName();
+        event(Log.INFO, "MODULE_LOADED", null, "process", moduleProcessName, "api", String.valueOf(getApiVersion()));
         try {
             remotePreferences = getRemotePreferences(PREF_GROUP);
             refreshSnapshot(remotePreferences);
@@ -98,11 +100,9 @@ public final class AndroidAutoModule extends XposedModule {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
             }
             if (profile.optBoolean("mediaStartupTrace", false)) {
-                // Application.getProcessName() requires API 28. On older Android,
-                // skip the optional probe rather than changing the module minSdk.
-                String process = android.os.Build.VERSION.SDK_INT >= 28
-                        ? android.app.Application.getProcessName() : null;
-                if (MediaStartupTrace2.isProjectionProcess(process)) {
+                // Use the process identity already provided by LibXposed rather
+                // than an Android API-level-dependent process lookup.
+                if (MediaStartupTrace2.isProjectionProcess(moduleProcessName)) {
                     installMediaStartupTrace2(param.getClassLoader(), identity.getBaseSha256());
                 }
             }
