@@ -44,21 +44,6 @@ part of the distributed application. AI-assisted changes were reviewed before in
 physical-device, LSPosed/Android Auto, and vehicle head-unit testing were performed manually by the
 developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 
-## Beta4
-
-Beta4 adds typed Advanced Overrides for eligible getters behind explicit
-consent, optional read-only diagnostics, build-scoped profile recovery
-and bounded JSON/CSV catalog exports. The separate full-recovery bundle
-includes normal, Advanced and Experimental records and saved baselines;
-it is unencrypted and restores only to the exact matching installed
-Android Auto build. See [Known limitations](docs/KNOWN_LIMITATIONS.md).
-
-The beta4 identity is `1.0.0-beta4` (versionCode 169).
-The maintainer accepted the signed final candidate. Download
-published versions only from the [official GitHub Releases](https://github.com/HighwindBR/AA-Experiments/releases);
-development preflight APKs and Actions artifacts are not official releases. A valid getter override does not guarantee
-a downstream vehicle, server or head-unit feature is enabled.
-
 ## Documentation
 
 For a practical overview of the breadth of Android Auto behavior that can be customized by modifying experiment flags, see the [**Feature Catalog**](FEATURE_CATALOG.md).
