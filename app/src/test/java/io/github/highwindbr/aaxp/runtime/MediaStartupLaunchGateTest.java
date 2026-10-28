@@ -57,7 +57,7 @@ public class MediaStartupLaunchGateTest {
         assertEquals(MediaStartupLaunchGate.Decision.INVALID, gate.consider("v1|0|wrong", 1000));
         assertEquals(MediaStartupLaunchGate.Decision.INVALID,
                 gate.consider("v2|1000|" + ID, 1001));
-        assertEquals(MediaStartupLaunchGate.Decision.INVALID,
+        assertEquals(MediaStartupLaunchGate.Decision.EXPIRED,
                 gate.consider("v1|9999999999999999|" + ID, 1000));
         assertEquals(MediaStartupLaunchGate.Decision.ACCEPTED,
                 gate.consider(MediaStartupLaunchGate.makeRequest(1100, ID), 1101));
