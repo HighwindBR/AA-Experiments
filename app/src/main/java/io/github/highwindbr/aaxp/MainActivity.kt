@@ -1733,7 +1733,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
     when(page){
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
-            model::setVideoTimingProtocolTrace, advancedAccess, onAdvancedAccess,
+            model::setVideoTimingProtocolTrace, model::setMediaStartupTrace, advancedAccess, onAdvancedAccess,
             model::pauseAllAdvanced, model::restoreAllAdvanced,
             model::setDoubleGetterProbe)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
@@ -1979,6 +1979,7 @@ private class TouchMenuPositionProvider(
     onCatalog: () -> Unit,
     onDeepResolve: () -> Unit,
     onVideoTimingTrace: (Boolean) -> Unit,
+    onMediaStartupTrace: (Boolean) -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
@@ -1989,8 +1990,8 @@ private class TouchMenuPositionProvider(
     var expanded by remember { mutableStateOf<String?>(null) }
     var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
     // An armed diagnostic is revealed on entry, but can still be collapsed.
-    LaunchedEffect(state.videoTimingTraceEnabled, state.probeTargetKey) {
-        if (state.videoTimingTraceEnabled || state.probeTargetKey != null)
+    LaunchedEffect(state.videoTimingTraceEnabled, state.mediaStartupTraceEnabled, state.probeTargetKey) {
+        if (state.videoTimingTraceEnabled || state.mediaStartupTraceEnabled || state.probeTargetKey != null)
             developerToolsExpanded = true
     }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
@@ -2040,7 +2041,7 @@ private class TouchMenuPositionProvider(
             }
         }
         item {
-            val traceArmed = state.videoTimingTraceEnabled || state.probeTargetKey != null
+            val traceArmed = state.videoTimingTraceEnabled || state.mediaStartupTraceEnabled || state.probeTargetKey != null
             OutlinedButton(
                 onClick = { developerToolsExpanded = !developerToolsExpanded },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -2092,6 +2093,31 @@ private class TouchMenuPositionProvider(
                     Text("LSPosed events: VTC_TRACE_INSTALLED, VTC_HU_PROTOCOL_OBSERVED, VTC_SELECTOR_INVOKED, VTC_BRANCH_SELECTED. Disable after testing; restart Android Auto to remove hooks.",
                         style = MaterialTheme.typography.labelSmall)
                 }
+            }
+        }
+        item {
+            val supported = state.aa.runtimeTarget &&
+                io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
+            DiagnosticSection("Media Startup observation",
+                when {
+                    state.mediaStartupTraceEnabled -> "Armed · restart Android Auto"
+                    supported -> "Read-only · inspected Android Auto 18.1"
+                    else -> "Unavailable for this AA build"
+                },
+                Icons.Default.BugReport, expanded == "mediaStartupTrace",
+                { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
+                Text("Observe internal startup navigation and media target resolution. These callbacks do NOT prove the projected interface is ready and will NOT open Spotify.",
+                    style = MaterialTheme.typography.bodySmall)
+                Text("Compare the automatic VW splash with the manually opened GM interface, while parked. Logs contain no package names, intent extras or media data.",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
+                    enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
+                        else "Enable Media Startup trace")
+                }
+                Text("Events: MEDIA_STARTUP_TRACE_INSTALLED, MEDIA_STARTUP_NAV_ROUTE_INVOKED, MEDIA_STARTUP_MEDIA_ROUTE_INVOKED. Restart AA after enabling; disable after testing.",
+                    style = MaterialTheme.typography.labelSmall)
             }
         }
         item {

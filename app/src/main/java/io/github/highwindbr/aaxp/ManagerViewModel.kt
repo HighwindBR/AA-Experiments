@@ -56,6 +56,7 @@ data class ManagerUiState(
     val deepResolveRunning: Boolean = false,
     val consumerTraceKey: String? = null,
     val videoTimingTraceEnabled: Boolean = false,
+    val mediaStartupTraceEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -68,7 +69,7 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
     val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -392,6 +393,32 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(message = if (enabled)
             "VTC read-only trace enabled. Restart Android Auto, then inspect LSPosed module logs."
         else "VTC trace disabled. Existing hooks fail open; restart AA to unload them.")
+    }
+
+
+    /** Media Startup preflight1: only observe internal routing, never launch an app. */
+    fun setMediaStartupTrace(enabled: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        if (!aa.runtimeTarget ||
+            !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256)) {
+            mutable.value = mutable.value.copy(message =
+                "Media Startup observation requires the exact inspected Android Auto 18.1 base APK.")
+            return@launch
+        }
+        val ok = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY,
+                    enabled.toString())?.commit() == true
+        }
+        if (!ok) {
+            mutable.value = mutable.value.copy(message =
+                "Cannot update Media Startup trace: LSPosed preferences unavailable.")
+            return@launch
+        }
+        refreshOverridesAndProfile()
+        mutable.value = mutable.value.copy(message = if (enabled)
+            "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
+        else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
     }
 
     fun deepResolveInconclusive() = viewModelScope.launch {
@@ -1117,6 +1144,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY] as? String)
+            val mediaStartupTraceOn =
+                io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256) &&
+                io.github.highwindbr.aaxp.runtime.MediaStartupTrace.enabled(
+                    allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY] as? String)
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()
@@ -1235,11 +1266,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
                 aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes,
-                experimentalMappings, advancedMappings, protocolTraceOn)
+                experimentalMappings, advancedMappings, protocolTraceOn, mediaStartupTraceOn)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
-                protocolTraceOn)
+                protocolTraceOn, mediaStartupTraceOn)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1250,6 +1281,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
             advancedRecords=outcome.advanced, advancedPublishedCount=outcome.advancedPublishedCount,
             videoTimingTraceEnabled=outcome.videoTimingTraceEnabled,
+            mediaStartupTraceEnabled=outcome.mediaStartupTraceEnabled,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }
