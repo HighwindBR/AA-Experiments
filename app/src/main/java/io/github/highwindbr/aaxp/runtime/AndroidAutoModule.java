@@ -574,7 +574,14 @@ public final class AndroidAutoModule extends XposedModule {
 
     private void startMediaPolling() {
         Handler handler = mediaLaunchHandler;
-        if (handler == null || mediaPollScheduled) return;
+        if (handler == null) return;
+        // The lifecycle hook can arrive on a binder thread. Serialize the
+        // poll scheduler on the AA main thread to avoid duplicate timers.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post(this::startMediaPolling);
+            return;
+        }
+        if (mediaPollScheduled) return;
         mediaPollScheduled = true;
         handler.postDelayed(mediaCommandPoll, 1000);
     }
