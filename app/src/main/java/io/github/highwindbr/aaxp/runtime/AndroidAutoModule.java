@@ -34,6 +34,7 @@ public final class AndroidAutoModule extends XposedModule {
     private final Map<String, String> lastReturnEvent = new ConcurrentHashMap<>();
     private final Map<String, Boolean> probedCalls = new ConcurrentHashMap<>();
     private final ExperimentalEventLimiter experimentalEvents = new ExperimentalEventLimiter();
+    private final MediaStartupTrace.Budget mediaStartupBudget = new MediaStartupTrace.Budget();
     private SharedPreferences remotePreferences;
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
             (preferences, key) -> refreshSnapshot(preferences);
@@ -96,6 +97,9 @@ public final class AndroidAutoModule extends XposedModule {
             }
             if (profile.optBoolean("videoTimingTrace", false)) {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
+            }
+            if (profile.optBoolean("mediaStartupTrace", false)) {
+                installMediaStartupTrace(param.getClassLoader(), identity.getBaseSha256());
             }
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
@@ -375,6 +379,54 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable failure) {
             event(Log.ERROR, "VTC_TRACE_HOOK_FAILED", null, "reason", failure.getClass().getSimpleName());
             log(Log.ERROR, TAG, "VideoTiming protocol observation hook failed", failure);
+        }
+    }
+
+
+    /** Preflight1: observation only. Neither callback proves visible UI readiness. */
+    private void installMediaStartupTrace(ClassLoader loader, String baseSha256) {
+        if (!MediaStartupTrace.isSupported(baseSha256)) {
+            event(Log.WARN, "MEDIA_STARTUP_TRACE_NOT_INSTALLED", null, "reason", "base_sha_mismatch");
+            return;
+        }
+        try {
+            Class<?> navOwner = Class.forName(MediaStartupTrace.NAV_CLASS, false, loader);
+            Class<?> navArg = Class.forName(MediaStartupTrace.NAV_ARG_CLASS, false, loader);
+            Method nav = navOwner.getDeclaredMethod(MediaStartupTrace.NAV_METHOD,
+                    android.content.ComponentName.class, navArg, boolean.class);
+            Class<?> mediaOwner = Class.forName(MediaStartupTrace.MEDIA_CLASS, false, loader);
+            Method media = mediaOwner.getDeclaredMethod(MediaStartupTrace.MEDIA_METHOD,
+                    android.content.Intent.class);
+            // Validate BOTH signatures before installing EITHER hook.
+            if (!MediaStartupTrace.NAV_DESCRIPTOR.equals(descriptor(nav)) ||
+                    !MediaStartupTrace.MEDIA_DESCRIPTOR.equals(descriptor(media))) {
+                event(Log.WARN, "MEDIA_STARTUP_TRACE_NOT_INSTALLED", null,
+                        "reason", "signature_mismatch");
+                return;
+            }
+            hook(nav).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                if (MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY))
+                        && mediaStartupBudget.navigation()) {
+                    event(Log.INFO, "MEDIA_STARTUP_NAV_ROUTE_INVOKED", null, "mode", "READ_ONLY");
+                }
+                return chain.proceed();
+            });
+            hook(media).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(chain -> {
+                if (MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY))
+                        && mediaStartupBudget.media()) {
+                    event(Log.INFO, "MEDIA_STARTUP_MEDIA_ROUTE_INVOKED", null, "mode", "READ_ONLY");
+                }
+                return chain.proceed();
+            });
+            event(Log.INFO, "MEDIA_STARTUP_TRACE_INSTALLED", null, "mode", "READ_ONLY",
+                    "base", baseSha256.substring(0, 16));
+        } catch (ClassNotFoundException | NoSuchMethodException | LinkageError unavailable) {
+            event(Log.WARN, "MEDIA_STARTUP_TRACE_NOT_INSTALLED", null,
+                    "reason", unavailable.getClass().getSimpleName());
+        } catch (Throwable failure) {
+            event(Log.ERROR, "MEDIA_STARTUP_TRACE_FAILED", null,
+                    "reason", failure.getClass().getSimpleName());
+            log(Log.ERROR, TAG, "Media Startup read-only trace failed", failure);
         }
     }
 
