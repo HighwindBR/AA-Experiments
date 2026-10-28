@@ -4,11 +4,36 @@ import tempfile
 import unittest
 
 from scripts.private_candidate_delivery import (
-    APK_NAME, draft_tag, github, require_private_destination, verify_apk_checksum,
+    APK_NAME, BETA5_BRANCH, BETA5_APK_NAME, candidate_for_ref,
+    draft_tag, github, require_private_destination, verify_apk_checksum,
 )
 
 
 class PrivateDeliveryTest(unittest.TestCase):
+    def test_exact_beta5_ref_and_checksum_guard(self):
+        expected = (BETA5_APK_NAME, "aaxp-private-beta5-preflight1", "1.0.0-beta5-preflight1")
+        self.assertEqual(candidate_for_ref(BETA5_BRANCH), expected)
+        self.assertEqual(draft_tag("2048", "3", BETA5_BRANCH),
+                         "aaxp-private-beta5-preflight1-run-2048-attempt-3")
+        for invalid in ("", "refs/heads/main", "refs/tags/v1.0.0-beta5",
+                        BETA5_BRANCH + "-test", "refs/heads/feature/beta5-media-startup"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    candidate_for_ref(invalid)
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / BETA5_APK_NAME
+            payload = b"dummy unsigned fixture, checksum only"
+            apk.write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+            sidecar = Path(str(apk) + ".sha256")
+            sidecar.write_text(f"{digest}  {BETA5_APK_NAME}\n")
+            self.assertEqual(verify_apk_checksum(apk, BETA5_APK_NAME), digest)
+            with self.assertRaises(ValueError):
+                verify_apk_checksum(apk)
+            sidecar.write_text(f"{digest}  {APK_NAME}\n")
+            with self.assertRaises(ValueError):
+                verify_apk_checksum(apk, BETA5_APK_NAME)
+
     def test_destination_must_be_separate_and_private(self):
         require_private_destination(
             {"full_name": "HighwindBR/aaxp-private-candidates", "private": True},
