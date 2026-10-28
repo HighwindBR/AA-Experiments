@@ -1733,7 +1733,8 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
     when(page){
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
-            model::setVideoTimingProtocolTrace, model::setMediaStartupTrace, advancedAccess, onAdvancedAccess,
+            model::setVideoTimingProtocolTrace, model::setMediaStartupTrace,
+            model::requestSpotifyManualLaunch, advancedAccess, onAdvancedAccess,
             model::pauseAllAdvanced, model::restoreAllAdvanced,
             model::setDoubleGetterProbe)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
@@ -1980,6 +1981,7 @@ private class TouchMenuPositionProvider(
     onDeepResolve: () -> Unit,
     onVideoTimingTrace: (Boolean) -> Unit,
     onMediaStartupTrace: (Boolean) -> Unit,
+    onMediaSpotifyLaunchTest: () -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
@@ -1995,6 +1997,23 @@ private class TouchMenuPositionProvider(
             developerToolsExpanded = true
     }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
+    var spotifyPf3Confirmation by remember { mutableStateOf(false) }
+    if (spotifyPf3Confirmation) {
+        AlertDialog(
+            onDismissRequest = { spotifyPf3Confirmation = false },
+            title = { Text("PF3 · Open Spotify once?") },
+            text = { Text("Only test while the vehicle is parked and Android Auto is already visible on the head unit. This sends ONE manual request to the internal Android Auto media controller. No autoplay or startup automation is enabled. Check LSPosed logs to confirm the result.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    spotifyPf3Confirmation = false
+                    onMediaSpotifyLaunchTest()
+                }) { Text("Open once (test)") }
+            },
+            dismissButton = {
+                TextButton(onClick = { spotifyPf3Confirmation = false }) { Text("Cancel") }
+            }
+        )
+    }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2098,17 +2117,17 @@ private class TouchMenuPositionProvider(
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup · preflight2",
+            DiagnosticSection("Media Startup · preflight3",
                 when {
                     state.mediaStartupTraceEnabled -> "Armed · restart Android Auto"
-                    supported -> "Read-only PF2 · inspected AA 18.1"
+                    supported -> "Manual PF3 · inspected AA 18.1"
                     else -> "Unavailable for this AA build"
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
-                Text("Read-only preflight2: observe projection readiness, Intent processing, projected activity requests and media app changes. No Spotify launch or playback changes are performed.",
+                Text("Preflight3: observation plus an explicitly confirmed ONE-SHOT Spotify launch request. It never launches automatically and does not alter playback.",
                     style = MaterialTheme.typography.bodySmall)
-                Text("While parked: open Android Auto, select Spotify, return to Maps or Waze, then select Spotify again. Hooks run only in the AA :projection process and log no package names or Intent contents.",
+                Text("With vehicle parked: enable the trace, restart Android Auto, then use the test button while projected Maps/Waze is already visible. The internal controller decides how to route Spotify; success is not assumed.",
                     style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
                     enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
@@ -2116,7 +2135,13 @@ private class TouchMenuPositionProvider(
                     Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
                         else "Enable Media Startup trace")
                 }
-                Text("LSPosed events: MEDIA_PF2_INSTALLATION_COMPLETE, MEDIA_PF2_STAGE_ENTER, MEDIA_PF2_STAGE_RETURN. Restart Android Auto after enabling; disable after testing.",
+                OutlinedButton(
+                    onClick = { spotifyPf3Confirmation = true },
+                    enabled = supported && state.framework.connected &&
+                        state.mediaStartupTraceEnabled && state.profilePublished,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Open Spotify once (test)") }
+                Text("PF3 events: MEDIA_PF3_PROOF_ARMED, MEDIA_PF3_REQUEST_ACCEPTED, MEDIA_PF3_REQUEST_DISPATCHED, MEDIA_PF3_LAUNCH_FAILED or MEDIA_PF3_REQUEST_REJECTED. One attempt per session; repeat only after a new projection session. No foreground/display success is implied.",
                     style = MaterialTheme.typography.labelSmall)
             }
         }

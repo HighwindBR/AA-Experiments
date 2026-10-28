@@ -2,6 +2,13 @@ package io.github.highwindbr.aaxp.runtime;
 
 import android.content.SharedPreferences;
 import android.os.ParcelFileDescriptor;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.content.Intent;
+import android.content.ComponentName;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import io.github.highwindbr.aaxp.core.ExperimentalBooleanPolicy;
 import android.util.Log;
 
@@ -36,8 +43,28 @@ public final class AndroidAutoModule extends XposedModule {
     private final ExperimentalEventLimiter experimentalEvents = new ExperimentalEventLimiter();
     private SharedPreferences remotePreferences;
     private volatile String moduleProcessName;
+    private volatile MediaStartupLaunchGate mediaLaunchGate;
+    private volatile Handler mediaLaunchHandler;
+    private volatile Method mediaControllerFactory;
+    private volatile Method mediaControllerStart;
+    private volatile Constructor<?> mediaActivityOptionsConstructor;
+    private volatile boolean mediaLaunchAvailable;
+    private boolean mediaPollScheduled;
+    private final Runnable mediaCommandPoll = new Runnable() {
+        @Override public void run() {
+            mediaPollScheduled = false;
+            if (mediaLaunchGate == null || !mediaLaunchGate.isReady() ||
+                    !MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY)))
+                return;
+            checkMediaLaunchRequest();
+            startMediaPolling();
+        }
+    };
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
-            (preferences, key) -> refreshSnapshot(preferences);
+            (preferences, key) -> {
+                refreshSnapshot(preferences);
+                if (MediaStartupLaunchGate.REQUEST_KEY.equals(key)) requestMediaLaunchCheck();
+            };
 
     @Override public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
         moduleProcessName = param.getProcessName();
@@ -399,7 +426,16 @@ public final class AndroidAutoModule extends XposedModule {
             return;
         }
         final MediaStartupTrace2.Budget budget = new MediaStartupTrace2.Budget();
+        final MediaStartupLaunchGate gate = MediaStartupLaunchGate.create(
+                overrideSnapshot.get(MediaStartupLaunchGate.REQUEST_KEY));
+        mediaLaunchGate = gate;
+        mediaLaunchHandler = new Handler(Looper.getMainLooper());
         int installed = 0;
+        boolean readinessInstalled = false;
+        boolean endInstalled = false;
+        boolean teardownInstalled = false;
+        boolean activityInstalled = false;
+        boolean launchRouteInstalled = false;
         for (MediaStartupTrace2.Target target : MediaStartupTrace2.TARGETS) {
             try {
                 Class<?> owner = Class.forName(target.owner, false, loader);
@@ -438,10 +474,23 @@ public final class AndroidAutoModule extends XposedModule {
                                             "mode", "READ_ONLY");
                                 }
                             }
+                            // Teardown invalidates all outstanding requests before
+                            // Android Auto starts shutting down its own session.
+                            if ("PROJECTION_END".equals(target.stage) ||
+                                    "PROJECTION_TEARDOWN".equals(target.stage))
+                                gate.onEnded();
                             Object original = chain.proceed();
-                            // A successful return from the readiness method
-                            // is stronger evidence than merely entering it,
-                            // but still does not prove physical HU visibility.
+                            if ("PROJECTION_READY".equals(target.stage) &&
+                                    MediaStartupTrace.enabled(
+                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                                gate.onReady();
+                                startMediaPolling();
+                            } else if ("ACTIVITY_START_REQUESTED".equals(target.stage) &&
+                                    MediaStartupTrace.enabled(
+                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                                gate.onActivityStart();
+                            }
+                            // Callback return is not proof of physical HU visibility.
                             if ("PROJECTION_READY".equals(target.stage) &&
                                     MediaStartupTrace.enabled(
                                             overrideSnapshot.get(MediaStartupTrace.KEY))) {
@@ -454,6 +503,11 @@ public final class AndroidAutoModule extends XposedModule {
                             return original;
                         });
                 installed++;
+                if ("PROJECTION_READY".equals(target.stage)) readinessInstalled = true;
+                if ("PROJECTION_END".equals(target.stage)) endInstalled = true;
+                if ("PROJECTION_TEARDOWN".equals(target.stage)) teardownInstalled = true;
+                if ("ACTIVITY_START_REQUESTED".equals(target.stage)) activityInstalled = true;
+                if ("START_CAR_ACTIVITY".equals(target.stage)) launchRouteInstalled = true;
                 event(Log.INFO, "MEDIA_PF2_HOOK_INSTALLED", null,
                         "stage", target.stage, "mode", "READ_ONLY");
             } catch (ClassNotFoundException | NoSuchMethodException | LinkageError incompatible) {
@@ -468,6 +522,115 @@ public final class AndroidAutoModule extends XposedModule {
                 "installed", String.valueOf(installed),
                 "expected", String.valueOf(MediaStartupTrace2.TARGETS.length),
                 "base", baseSha256.substring(0, 16));
+        if (readinessInstalled && endInstalled && teardownInstalled &&
+                activityInstalled && launchRouteInstalled) {
+            installMediaLaunchProof(loader);
+        } else {
+            event(Log.WARN, "MEDIA_PF3_DISABLED", null, "reason", "required_hook_missing");
+        }
+    }
+
+    /**
+     * Resolve all required ABI before allowing any request. The DI singleton
+     * nfh.a() and no-options rgi() constructor were inspected in AA 18.1 DEX.
+     * No invocation occurs during installation; no automatic launch path exists.
+     */
+    private void installMediaLaunchProof(ClassLoader loader) {
+        try {
+            Class<?> owner = Class.forName("nfh", false, loader);
+            Class<?> options = Class.forName("rgi", false, loader);
+            Method factory = owner.getDeclaredMethod("a");
+            Method launch = owner.getDeclaredMethod("k", Intent.class, options);
+            Constructor<?> ctor = options.getDeclaredConstructor();
+            if (!Modifier.isStatic(factory.getModifiers()) ||
+                    !owner.equals(factory.getReturnType()) ||
+                    !"()Lnfh;".equals(descriptor(factory)) ||
+                    !"(Landroid/content/Intent;Lrgi;)V".equals(descriptor(launch)) ||
+                    ctor.getParameterCount() != 0) {
+                event(Log.WARN, "MEDIA_PF3_DISABLED", null, "reason", "abi_mismatch");
+                return;
+            }
+            mediaControllerFactory = factory;
+            mediaControllerStart = launch;
+            mediaActivityOptionsConstructor = ctor;
+            mediaLaunchAvailable = true;
+            event(Log.INFO, "MEDIA_PF3_PROOF_ARMED", null, "mode", "MANUAL_ONLY",
+                    "target", "SPOTIFY", "ttlMs",
+                    String.valueOf(MediaStartupLaunchGate.TTL_MILLIS));
+        } catch (ReflectiveOperationException | LinkageError missing) {
+            event(Log.WARN, "MEDIA_PF3_DISABLED", null,
+                    "reason", missing.getClass().getSimpleName());
+        } catch (Throwable unexpected) {
+            event(Log.ERROR, "MEDIA_PF3_DISABLED", null,
+                    "reason", unexpected.getClass().getSimpleName());
+        }
+    }
+
+    /** Called by remote-preference listener; never execute car activity on binder threads. */
+    private void requestMediaLaunchCheck() {
+        Handler handler = mediaLaunchHandler;
+        if (handler != null) handler.post(this::checkMediaLaunchRequest);
+    }
+
+    private void startMediaPolling() {
+        Handler handler = mediaLaunchHandler;
+        if (handler == null || mediaPollScheduled) return;
+        mediaPollScheduled = true;
+        handler.postDelayed(mediaCommandPoll, 1000);
+    }
+
+    /** Fallback polling covers LSPosed implementations without remote change broadcasts. */
+    private void checkMediaLaunchRequest() {
+        if (!mediaLaunchAvailable || mediaLaunchGate == null ||
+                !MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY)))
+            return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            requestMediaLaunchCheck();
+            return;
+        }
+        try {
+            SharedPreferences prefs = remotePreferences;
+            if (prefs == null) return;
+            String request = prefs.getString(MediaStartupLaunchGate.REQUEST_KEY, null);
+            MediaStartupLaunchGate.Decision decision =
+                    mediaLaunchGate.consider(request, SystemClock.elapsedRealtime());
+            if (decision == MediaStartupLaunchGate.Decision.NO_CHANGE) return;
+            if (decision != MediaStartupLaunchGate.Decision.ACCEPTED) {
+                event(Log.WARN, "MEDIA_PF3_REQUEST_REJECTED", null, "reason", decision.name());
+                return;
+            }
+            final int activeSession = mediaLaunchGate.session();
+            if (!mediaLaunchGate.stillReadyInSession(activeSession)) {
+                event(Log.WARN, "MEDIA_PF3_REQUEST_REJECTED", null, "reason", "session_ended");
+                return;
+            }
+            event(Log.INFO, "MEDIA_PF3_REQUEST_ACCEPTED", null,
+                    "mode", "MANUAL_ONESHOT", "target", "SPOTIFY");
+            try {
+                Object controller = mediaControllerFactory.invoke(null);
+                if (controller == null || !mediaLaunchGate.stillReadyInSession(activeSession))
+                    throw new IllegalStateException("Controller or session unavailable");
+                Object options = mediaActivityOptionsConstructor.newInstance();
+                Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+                intent.setComponent(new ComponentName(
+                        MediaStartupLaunchGate.SPOTIFY_PACKAGE,
+                        MediaStartupLaunchGate.SPOTIFY_SERVICE));
+                // This is the same internal controller used by the normal
+                // launcher; restrictions and downstream dispatch remain intact.
+                mediaControllerStart.invoke(controller, intent, options);
+                // A successful method return is NOT proof the HU displayed Spotify.
+                event(Log.INFO, "MEDIA_PF3_REQUEST_DISPATCHED", null,
+                        "result", "RETURNED", "visible", "UNVERIFIED");
+            } catch (Throwable error) {
+                Throwable cause = error instanceof InvocationTargetException &&
+                        error.getCause() != null ? error.getCause() : error;
+                event(Log.ERROR, "MEDIA_PF3_LAUNCH_FAILED", null,
+                        "reason", cause.getClass().getSimpleName());
+            }
+        } catch (Throwable error) {
+            event(Log.ERROR, "MEDIA_PF3_REQUEST_FAILED", null,
+                    "reason", error.getClass().getSimpleName());
+        }
     }
 
     private void installProbe(ClassLoader loader, JSONObject mapping, String baseSha256) {

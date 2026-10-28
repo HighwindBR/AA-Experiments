@@ -396,7 +396,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
-    /** Media Startup preflight1: only observe internal routing, never launch an app. */
+    /** Media Startup diagnostic opt-in; profile scope and pinned SHA stay unchanged. */
     fun setMediaStartupTrace(enabled: Boolean) = viewModelScope.launch {
         val aa = mutable.value.aa
         if (!aa.runtimeTarget ||
@@ -419,6 +419,29 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(message = if (enabled)
             "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
         else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
+    }
+
+    /** Experimental PF3: one manually confirmed, short-lived Spotify request. */
+    fun requestSpotifyManualLaunch() = viewModelScope.launch {
+        val value = mutable.value
+        if (!value.framework.connected || !value.profilePublished ||
+                !value.mediaStartupTraceEnabled || !value.aa.runtimeTarget ||
+                !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(
+                    value.aa.baseSha256)) {
+            mutable.value = mutable.value.copy(message =
+                "PF3 unavailable. Arm Media Startup, publish the profile and restart Android Auto.")
+            return@launch
+        }
+        val request = io.github.highwindbr.aaxp.runtime.MediaStartupLaunchGate.makeRequest(
+            android.os.SystemClock.elapsedRealtime(), java.util.UUID.randomUUID().toString())
+        val committed = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLaunchGate.REQUEST_KEY,
+                    request)?.commit() == true
+        }
+        mutable.value = mutable.value.copy(message = if (committed)
+            "PF3 request saved. This does not prove launch: check LSPosed MEDIA_PF3_* events. Once per active projection session."
+        else "PF3 request failed: LSPosed remote preferences unavailable.")
     }
 
     fun deepResolveInconclusive() = viewModelScope.launch {

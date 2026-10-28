@@ -18,7 +18,7 @@ public class MediaStartupTrace2Test {
 
     @Test public void exactObservedPrototypesAreReviewableAndUnique() {
         Set<String> stages = new HashSet<>();
-        assertEquals(6, MediaStartupTrace2.TARGETS.length);
+        assertEquals(8, MediaStartupTrace2.TARGETS.length);
         for (MediaStartupTrace2.Target t : MediaStartupTrace2.TARGETS) {
             assertTrue(stages.add(t.stage));
             assertFalse(t.owner.isEmpty());
