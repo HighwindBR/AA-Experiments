@@ -98,7 +98,10 @@ public final class AndroidAutoModule extends XposedModule {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
             }
             if (profile.optBoolean("mediaStartupTrace", false)) {
-                String process = android.app.Application.getProcessName();
+                // Application.getProcessName() requires API 28. On older Android,
+                // skip the optional probe rather than changing the module minSdk.
+                String process = android.os.Build.VERSION.SDK_INT >= 28
+                        ? android.app.Application.getProcessName() : null;
                 if (MediaStartupTrace2.isProjectionProcess(process)) {
                     installMediaStartupTrace2(param.getClassLoader(), identity.getBaseSha256());
                 }
