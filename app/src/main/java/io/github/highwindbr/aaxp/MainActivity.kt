@@ -2098,17 +2098,17 @@ private class TouchMenuPositionProvider(
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup observation",
+            DiagnosticSection("Media Startup · preflight2",
                 when {
                     state.mediaStartupTraceEnabled -> "Armed · restart Android Auto"
-                    supported -> "Read-only · inspected Android Auto 18.1"
+                    supported -> "Read-only PF2 · inspected AA 18.1"
                     else -> "Unavailable for this AA build"
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
-                Text("Observe internal startup navigation and media target resolution. These callbacks do NOT prove the projected interface is ready and will NOT open Spotify.",
+                Text("Read-only preflight2: observe projection readiness, Intent processing, projected activity requests and media app changes. No Spotify launch or playback changes are performed.",
                     style = MaterialTheme.typography.bodySmall)
-                Text("Compare the automatic VW splash with the manually opened GM interface, while parked. Logs contain no package names, intent extras or media data.",
+                Text("While parked: open Android Auto, select Spotify, return to Maps or Waze, then select Spotify again. Hooks run only in the AA :projection process and log no package names or Intent contents.",
                     style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
                     enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
@@ -2116,7 +2116,7 @@ private class TouchMenuPositionProvider(
                     Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
                         else "Enable Media Startup trace")
                 }
-                Text("Events: MEDIA_STARTUP_TRACE_INSTALLED, MEDIA_STARTUP_NAV_ROUTE_INVOKED, MEDIA_STARTUP_MEDIA_ROUTE_INVOKED. Restart AA after enabling; disable after testing.",
+                Text("LSPosed events: MEDIA_PF2_INSTALLATION_COMPLETE, MEDIA_PF2_STAGE_ENTER, MEDIA_PF2_STAGE_RETURN. Restart Android Auto after enabling; disable after testing.",
                     style = MaterialTheme.typography.labelSmall)
             }
         }

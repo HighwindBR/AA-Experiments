@@ -99,7 +99,10 @@ public final class AndroidAutoModule extends XposedModule {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
             }
             if (profile.optBoolean("mediaStartupTrace", false)) {
-                installMediaStartupTrace(param.getClassLoader(), identity.getBaseSha256());
+                String process = android.app.Application.getProcessName();
+                if (MediaStartupTrace2.isProjectionProcess(process)) {
+                    installMediaStartupTrace2(param.getClassLoader(), identity.getBaseSha256());
+                }
             }
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
@@ -428,6 +431,88 @@ public final class AndroidAutoModule extends XposedModule {
                     "reason", failure.getClass().getSimpleName());
             log(Log.ERROR, TAG, "Media Startup read-only trace failed", failure);
         }
+    }
+
+    /**
+     * Beta5 preflight2: inspect precisely identified callbacks observed in
+     * real projection logs. No arguments or return values are accessed or
+     * changed. The original method is always called once via chain.proceed().
+     */
+    private void installMediaStartupTrace2(ClassLoader loader, String baseSha256) {
+        if (!MediaStartupTrace.isSupported(baseSha256)) {
+            event(Log.WARN, "MEDIA_PF2_NOT_INSTALLED", null, "reason", "base_sha_mismatch");
+            return;
+        }
+        final MediaStartupTrace2.Budget budget = new MediaStartupTrace2.Budget();
+        int installed = 0;
+        for (MediaStartupTrace2.Target target : MediaStartupTrace2.TARGETS) {
+            try {
+                Class<?> owner = Class.forName(target.owner, false, loader);
+                Class<?>[] parameters;
+                switch (target.stage) {
+                    case "INTENT_PROCESSED":
+                    case "START_CAR_ACTIVITY":
+                        parameters = new Class<?>[]{android.content.Intent.class,
+                                Class.forName("rgi", false, loader)};
+                        break;
+                    case "INTENT_TARGET_STORED":
+                        parameters = new Class<?>[]{android.content.Intent.class};
+                        break;
+                    case "MEDIA_APP_CHANGED":
+                        parameters = new Class<?>[]{android.content.ComponentName.class};
+                        break;
+                    default:
+                        parameters = new Class<?>[0];
+                        break;
+                }
+                Method method = owner.getDeclaredMethod(target.method, parameters);
+                if (!target.descriptor.equals(descriptor(method))) {
+                    event(Log.WARN, "MEDIA_PF2_TARGET_REJECTED", null,
+                            "stage", target.stage, "reason", "signature_mismatch");
+                    continue;
+                }
+                hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            boolean armed = MediaStartupTrace.enabled(
+                                    overrideSnapshot.get(MediaStartupTrace.KEY));
+                            if (armed) {
+                                int number = budget.take(target.stage);
+                                if (number > 0) {
+                                    event(Log.INFO, "MEDIA_PF2_STAGE_ENTER", null,
+                                            "stage", target.stage, "ordinal", String.valueOf(number),
+                                            "mode", "READ_ONLY");
+                                }
+                            }
+                            Object original = chain.proceed();
+                            // A successful return from the readiness method
+                            // is stronger evidence than merely entering it,
+                            // but still does not prove physical HU visibility.
+                            if ("PROJECTION_READY".equals(target.stage) &&
+                                    MediaStartupTrace.enabled(
+                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                                int number = budget.take("PROJECTION_READY_RETURN");
+                                if (number > 0) {
+                                    event(Log.INFO, "MEDIA_PF2_STAGE_RETURN", null,
+                                            "stage", target.stage, "ordinal", String.valueOf(number));
+                                }
+                            }
+                            return original;
+                        });
+                installed++;
+                event(Log.INFO, "MEDIA_PF2_HOOK_INSTALLED", null,
+                        "stage", target.stage, "mode", "READ_ONLY");
+            } catch (ClassNotFoundException | NoSuchMethodException | LinkageError incompatible) {
+                event(Log.WARN, "MEDIA_PF2_TARGET_REJECTED", null,
+                        "stage", target.stage, "reason", incompatible.getClass().getSimpleName());
+            } catch (Throwable failure) {
+                event(Log.ERROR, "MEDIA_PF2_TARGET_FAILED", null,
+                        "stage", target.stage, "reason", failure.getClass().getSimpleName());
+            }
+        }
+        event(Log.INFO, "MEDIA_PF2_INSTALLATION_COMPLETE", null,
+                "installed", String.valueOf(installed),
+                "expected", String.valueOf(MediaStartupTrace2.TARGETS.length),
+                "base", baseSha256.substring(0, 16));
     }
 
     private void installProbe(ClassLoader loader, JSONObject mapping, String baseSha256) {
