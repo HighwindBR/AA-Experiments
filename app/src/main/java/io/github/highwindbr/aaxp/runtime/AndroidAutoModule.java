@@ -45,6 +45,12 @@ public final class AndroidAutoModule extends XposedModule {
     private volatile String moduleProcessName;
     private volatile MediaStartupLaunchGate mediaLaunchGate;
     private volatile MediaStartupAutoGate mediaAutoGate;
+    private volatile MediaStartupLabGate mediaLabGate;
+    private volatile Method mediaLabFactory;
+    private volatile Method mediaLabHelper;
+    private volatile Method mediaLabDirect;
+    private volatile Constructor<?> mediaLabOptions;
+    private volatile ComponentName mediaLabComponent;
     private volatile Handler mediaLaunchHandler;
     private volatile Method mediaControllerFactory;
     private volatile Method mediaControllerStart;
@@ -54,6 +60,12 @@ public final class AndroidAutoModule extends XposedModule {
     private final Runnable mediaCommandPoll = new Runnable() {
         @Override public void run() {
             mediaPollScheduled = false;
+            if (mediaLabGate != null) {
+                if (!mediaLabGate.isReady()) return;
+                checkMediaLabRequest();
+                startMediaPolling();
+                return;
+            }
             if (mediaLaunchGate == null || !mediaLaunchGate.isReady() ||
                     !MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY)))
                 return;
@@ -64,7 +76,8 @@ public final class AndroidAutoModule extends XposedModule {
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
             (preferences, key) -> {
                 refreshSnapshot(preferences);
-                if (MediaStartupLaunchGate.REQUEST_KEY.equals(key)) requestMediaLaunchCheck();
+                if (MediaStartupLaunchGate.REQUEST_KEY.equals(key) ||
+                        MediaStartupLabGate.REQUEST_KEY.equals(key)) requestMediaLaunchCheck();
             };
 
     @Override public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
@@ -127,10 +140,14 @@ public final class AndroidAutoModule extends XposedModule {
             if (profile.optBoolean("videoTimingTrace", false)) {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
             }
-            if (profile.optBoolean("mediaStartupTrace", false)) {
-                // Use the process identity already provided by LibXposed rather
-                // than an Android API-level-dependent process lookup.
-                if (MediaStartupTrace2.isProjectionProcess(moduleProcessName)) {
+            if (MediaStartupTrace2.isProjectionProcess(moduleProcessName)) {
+                // PF6.1 lab is an explicit manually armed alternative to
+                // legacy PF2-PF4 hooks, never a second overlapping hook set.
+                JSONObject lab = profile.optJSONObject("mediaStartupLab");
+                if (lab != null) {
+                    installMediaStartupLab(param.getClassLoader(), lab,
+                            identity.getBaseSha256(), identity.getFingerprintSha256());
+                } else if (profile.optBoolean("mediaStartupTrace", false)) {
                     installMediaStartupTrace2(param.getClassLoader(), identity.getBaseSha256());
                 }
             }
@@ -415,6 +432,168 @@ public final class AndroidAutoModule extends XposedModule {
         }
     }
 
+
+    /**
+     * PF6.1 dynamic Media Startup hook experiment. In this preflight only
+     * the manual path is installed, once per session, in the AA projection
+     * process. Failure to validate ANY role disables the complete lab.
+     */
+    private void installMediaStartupLab(ClassLoader loader, JSONObject raw,
+                                         String baseSha, String fingerprint) {
+        try {
+            MediaStartupLabProfile lab = MediaStartupLabProfile.parse(raw, baseSha, fingerprint);
+            Method ready = resolveLabMethod(loader, lab.role("projection.ready"));
+            Method end = resolveLabMethod(loader, lab.role("projection.end"));
+            Method teardown = resolveLabMethod(loader, lab.role("projection.teardown"));
+            Method media = resolveLabMethod(loader, lab.role("media.selectedApp"));
+            Method factory = resolveLabMethod(loader, lab.role("launch.controllerFactory"));
+            Method auxiliary = resolveLabMethod(loader, lab.role("launch.auxiliary"));
+            Method direct = resolveLabMethod(loader, lab.role("launch.startCarActivity"));
+            MediaStartupLabProfile.Target ctorTarget = lab.role("launch.optionsNoArgConstructor");
+            Class<?> optionsType = Class.forName(ctorTarget.javaOwner(), false, loader);
+            Constructor<?> options = optionsType.getDeclaredConstructor();
+            if (!Modifier.isStatic(factory.getModifiers()) ||
+                    !factory.getReturnType().equals(direct.getDeclaringClass()) ||
+                    Modifier.isStatic(direct.getModifiers()) ||
+                    Modifier.isStatic(auxiliary.getModifiers()) ||
+                    !direct.getParameterTypes()[1].equals(optionsType) ||
+                    options.getParameterCount() != 0 ||
+                    factory.getDeclaringClass() != direct.getDeclaringClass() ||
+                    auxiliary.getDeclaringClass() != direct.getDeclaringClass()) {
+                throw new IllegalArgumentException("PF6 cross-role reflection mismatch");
+            }
+            // Keep private members accessible without changing runtime hooks.
+            factory.setAccessible(true); auxiliary.setAccessible(true);
+            direct.setAccessible(true); options.setAccessible(true);
+            MediaStartupLabGate gate = new MediaStartupLabGate(
+                    overrideSnapshot.get(MediaStartupLabGate.REQUEST_KEY));
+            Handler handler = new Handler(Looper.getMainLooper());
+            mediaLaunchHandler = handler;
+            mediaLabFactory = factory; mediaLabHelper = auxiliary;
+            mediaLabDirect = direct; mediaLabOptions = options;
+            // Always hook the essential observer set together; if one fails,
+            // leave the AA originals callable and suppress any PF6 dispatch.
+            Method[] observed = {ready, end, teardown, media};
+            String[] stages = {"READY", "END", "TEARDOWN", "MEDIA"};
+            int installed = 0;
+            for (int i = 0; i < observed.length; i++) {
+                final String stage = stages[i];
+                hook(observed[i]).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            if ("END".equals(stage) || "TEARDOWN".equals(stage)) {
+                                gate.ended(); mediaLabComponent = null;
+                            }
+                            Object result = chain.proceed();
+                            if ("READY".equals(stage)) {
+                                gate.ready();
+                                startMediaPolling();
+                            } else if ("MEDIA".equals(stage)) {
+                                Object arg = chain.getArg(0);
+                                ComponentName target = arg instanceof ComponentName ?
+                                        (ComponentName) arg : null;
+                                mediaLabComponent = target;
+                                gate.media(target == null ? null : target.getPackageName(),
+                                        target == null ? null : target.getClassName());
+                                event(Log.INFO, "MEDIA_PF6_MEDIA_OBSERVED", null,
+                                        "spotify", String.valueOf(target != null &&
+                                                MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
+                                                        target.getPackageName())));
+                            }
+                            return result;
+                        });
+                installed++;
+                event(Log.INFO, "MEDIA_PF6_HOOK_INSTALLED", null, "stage", stage);
+            }
+            if (installed == observed.length) {
+                mediaLabGate = gate;
+                event(Log.INFO, "MEDIA_PF6_LAB_ARMED", null,
+                        "hooks", String.valueOf(installed), "routes", "A_B",
+                        "mode", "MANUAL_ONLY");
+            }
+        } catch (Throwable failure) {
+            mediaLabGate = null;
+            event(Log.WARN, "MEDIA_PF6_LAB_DISABLED", null,
+                    "reason", failure.getClass().getSimpleName());
+        }
+    }
+
+    private Method resolveLabMethod(ClassLoader loader, MediaStartupLabProfile.Target target)
+            throws ReflectiveOperationException {
+        Class<?> owner = Class.forName(target.javaOwner(), false, loader);
+        Method match = null;
+        for (Method method : owner.getDeclaredMethods()) {
+            if (method.getName().equals(target.name) &&
+                    descriptor(method).equals(target.descriptor)) {
+                if (match != null) throw new IllegalArgumentException("Ambiguous lab ABI");
+                match = method;
+            }
+        }
+        if (match == null) throw new NoSuchMethodException(target.reference());
+        match.setAccessible(true);
+        return match;
+    }
+
+    private void checkMediaLabRequest() {
+        MediaStartupLabGate gate = mediaLabGate;
+        if (gate == null || !gate.isReady()) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            requestMediaLaunchCheck();
+            return;
+        }
+        try {
+            SharedPreferences prefs = remotePreferences;
+            if (prefs == null) return;
+            String preferred = prefs.getString(MediaStartupLabGate.ROUTE_KEY, "A");
+            if (!"A".equals(preferred) && !"B".equals(preferred)) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
+                        "reason", "invalid_route_preference");
+                return;
+            }
+            MediaStartupLabGate.Route route = MediaStartupLabGate.Route.valueOf(preferred);
+            MediaStartupLabGate.Result result = gate.consider(
+                    prefs.getString(MediaStartupLabGate.REQUEST_KEY, null),
+                    SystemClock.elapsedRealtime(), route);
+            if (result == MediaStartupLabGate.Result.REPLAY) return;
+            if (result != MediaStartupLabGate.Result.ACCEPTED) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null, "reason", result.name());
+                return;
+            }
+            long sessionId = gate.session();
+            ComponentName component = mediaLabComponent;
+            if (component == null || !gate.isCurrent(sessionId) ||
+                    !MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(component.getPackageName())) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
+                        "reason", "media_or_session_changed");
+                return;
+            }
+            event(Log.INFO, "MEDIA_PF6_REQUEST_ACCEPTED", null, "route", route.name());
+            try {
+                Object controller = mediaLabFactory.invoke(null);
+                if (controller == null || !gate.isCurrent(sessionId))
+                    throw new IllegalStateException("Controller unavailable or session ended");
+                // PF6.1 keeps the already proven PF4 Intent action so the
+                // manual comparison isolates route A vs B, not Intent policy.
+                Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+                intent.setComponent(component);
+                if (route == MediaStartupLabGate.Route.A) {
+                    mediaLabHelper.invoke(controller, intent);
+                } else {
+                    Object options = mediaLabOptions.newInstance();
+                    mediaLabDirect.invoke(controller, intent, options);
+                }
+                event(Log.INFO, "MEDIA_PF6_REQUEST_DISPATCHED", null,
+                        "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
+            } catch (Throwable problem) {
+                Throwable reason = problem instanceof InvocationTargetException &&
+                        problem.getCause() != null ? problem.getCause() : problem;
+                event(Log.ERROR, "MEDIA_PF6_REQUEST_FAILED", null,
+                        "route", route.name(), "reason", reason.getClass().getSimpleName());
+            }
+        } catch (Throwable error) {
+            event(Log.WARN, "MEDIA_PF6_REQUEST_FAILED", null,
+                    "reason", error.getClass().getSimpleName());
+        }
+    }
 
     /**
      * Beta5 preflight2: inspect precisely identified callbacks observed in
