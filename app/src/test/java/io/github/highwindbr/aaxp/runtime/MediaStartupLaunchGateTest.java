@@ -63,6 +63,19 @@ public class MediaStartupLaunchGateTest {
                 gate.consider(MediaStartupLaunchGate.makeRequest(1100, ID), 1101));
     }
 
+    @Test public void automaticLaunchUsesAndConsumesSameBudgetAsManual() {
+        MediaStartupLaunchGate gate = MediaStartupLaunchGate.create(null);
+        gate.onReady();
+        gate.onActivityStart();
+        assertTrue(gate.reserveForAutomatic());
+        assertFalse(gate.reserveForAutomatic());
+        assertEquals(MediaStartupLaunchGate.Decision.ALREADY_ATTEMPTED,
+                gate.consider(MediaStartupLaunchGate.makeRequest(300, ID), 301));
+        gate.onEnded();
+        gate.onReady(); gate.onActivityStart();
+        assertTrue(gate.reserveForAutomatic());
+    }
+
     @Test public void sessionEndRevokesPreviouslyValidatedSession() {
         MediaStartupLaunchGate gate = MediaStartupLaunchGate.create(null);
         gate.onReady(); gate.onActivityStart();

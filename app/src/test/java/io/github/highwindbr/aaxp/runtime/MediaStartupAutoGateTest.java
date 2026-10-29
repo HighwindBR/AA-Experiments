@@ -24,13 +24,22 @@ public class MediaStartupAutoGateTest {
         gate.onMediaChanged(true);
         int session = gate.onFirstActivity(2000);
         assertEquals(session, 1);
-        assertEquals(-1, gate.onFirstActivity(2050));
         assertEquals(MediaStartupAutoGate.Decision.WAIT,
                 gate.consume(session, 4799, true));
         assertEquals(MediaStartupAutoGate.Decision.DISPATCH,
                 gate.consume(session, 4800, true));
         assertEquals(MediaStartupAutoGate.Decision.ALREADY_ATTEMPTED,
                 gate.consume(session, 4900, true));
+    }
+
+    @Test public void secondProjectedActivitySuppressesAutomaticFocus() {
+        MediaStartupAutoGate gate = new MediaStartupAutoGate();
+        gate.onReady(true, 100);
+        gate.onMediaChanged(true);
+        int id = gate.onFirstActivity(1000);
+        assertEquals(-1, gate.onFirstActivity(1400));
+        assertEquals(MediaStartupAutoGate.Decision.NAVIGATION_OBSERVED,
+                gate.consume(id, 3800, true));
     }
 
     @Test public void userNavigationWinsOverAutomaticFocus() {

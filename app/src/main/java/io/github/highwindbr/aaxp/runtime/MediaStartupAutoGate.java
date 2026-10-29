@@ -48,7 +48,13 @@ public final class MediaStartupAutoGate {
 
     /** Session ID to schedule once; -1 means disabled/duplicate/not ready. */
     public synchronized int onFirstActivity(long now) {
-        if (!ready || firstActivity) return -1;
+        if (!ready) return -1;
+        // A SECOND projected activity before the timer may be user-initiated;
+        // conservatively suppress auto-focus even if the nfh route is missed.
+        if (firstActivity) {
+            if (!attempted) explicitNavigation = true;
+            return -1;
+        }
         firstActivity = true;
         firstAt = now;
         return optedInAtReady ? session : -1;
