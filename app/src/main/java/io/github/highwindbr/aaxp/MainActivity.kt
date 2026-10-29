@@ -2144,7 +2144,8 @@ private class TouchMenuPositionProvider(
                     state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
                     state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
                     supported -> "Manual PF3 · PF4 opt-in OFF"
-                    else -> "Unavailable for this AA build"
+                    state.aa.runtimeTarget -> "PF5 inspection available · launch disabled"
+                    else -> "No installed Android Auto available"
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {

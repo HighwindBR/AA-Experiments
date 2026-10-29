@@ -104,7 +104,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
         try {
             keepAnalysisAlive(true)
-            mutable.value = mutable.value.copy(loading = true, scanProgress = null, message = "Loading installed Android Auto catalog…")
+            mutable.value = mutable.value.copy(loading = true, scanProgress = null, mediaSemanticReport = null,
+                message = "Loading installed Android Auto catalog…")
             val aa = withContext(Dispatchers.IO) {
                 File(getApplication<Application>().filesDir, "imports").deleteRecursively()
                 InstalledAaScanner(getApplication()).scan(::reportScanProgress).also { installation ->
