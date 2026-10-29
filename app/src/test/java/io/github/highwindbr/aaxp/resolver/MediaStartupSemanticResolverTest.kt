@@ -20,6 +20,10 @@ class MediaStartupSemanticResolverTest {
         method(route, "z", listOf("Landroid/content/Intent;", options),
             anchors = *arrayOf("startCarActivity(intent:%s, activityOptions:%s)")),
         method(route, "o", ret = route, stat = true),
+        method(route, "i", listOf("Landroid/content/Intent;"),
+            anchors = *emptyArray<String>()).copy(invoked = setOf(
+                "$route->z(Landroid/content/Intent;$options)V",
+                "$options-><init>()V")),
         method("Lm;", "d", listOf("Landroid/content/ComponentName;"),
             anchors = *arrayOf("onMediaAppChanged %s"))
     ), setOf(options))
@@ -29,7 +33,7 @@ class MediaStartupSemanticResolverTest {
         val result = S.resolve(inv, "unreviewed-APK-hash")
         assertEquals(S.Status.REVIEW_ONLY, result.status)
         assertEquals(false, result.autoLaunchAllowed)
-        assertEquals(7, result.roles.size)
+        assertEquals(8, result.roles.size)
         assertTrue(result.roles["launch.startCarActivity"]!!.contains("->z("))
     }
 
@@ -86,13 +90,30 @@ class MediaStartupSemanticResolverTest {
         assertTrue(result.roles.isEmpty())
     }
 
+    @Test fun auxiliaryMustActuallyDelegateToControllerAndConstructOptions() {
+        val original = fixture()
+        val helper = original.methods.first { it.name == "i" }
+        val broken = original.copy(methods = original.methods.map {
+            if (it === helper) it.copy(invoked = setOf("$options-><init>()V"))
+            else it
+        })
+        assertEquals(S.Status.UNSUPPORTED, S.resolve(broken, "new").status)
+        val twoHelpers = original.copy(methods = original.methods +
+            helper.copy(name = "another"))
+        assertEquals(S.Status.AMBIGUOUS, S.resolve(twoHelpers, "new").status)
+    }
+
     @Test fun resolverDoesNotUseObfuscatedNames() {
         val old = fixture()
         val changed = old.copy(methods = old.methods.map {
-            it.copy(name = when (it.name) {
+            val renamed = when (it.name) {
                 "a" -> "zz1"; "b" -> "zz2"; "c" -> "zz3"
-                "z" -> "ff"; "o" -> "gg"; "d" -> "hh"; else -> it.name
-            })
+                "z" -> "ff"; "o" -> "gg"; "d" -> "hh"; "i" -> "ii"; else -> it.name
+            }
+            it.copy(name = renamed, invoked = it.invoked.map { call ->
+                if (call.startsWith("$route->z(")) call.replace("$route->z(", "$route->ff(")
+                else call
+            }.toSet())
         })
         assertEquals(S.Status.REVIEW_ONLY, S.resolve(changed, "new").status)
     }

@@ -35,7 +35,8 @@ object MediaStartupSemanticResolver {
         val parameters: List<String>,
         val returns: String,
         val static: Boolean,
-        val strings: Set<String> = emptySet()
+        val strings: Set<String> = emptySet(),
+        val invoked: Set<String> = emptySet()
     ) {
         fun prototype(): String = "(${parameters.joinToString("")})$returns"
         fun reference(): String = "$owner->$name${prototype()}"
@@ -104,6 +105,15 @@ object MediaStartupSemanticResolver {
         }
         val options = route?.parameters?.getOrNull(1)
         val ctorProven = options != null && options in inventory.noArgConstructors
+        val auxiliaries = route?.let { start ->
+            methods.filter { candidate ->
+                candidate.owner == start.owner && !candidate.static &&
+                    candidate.parameters == listOf(INTENT) && candidate.returns == VOID &&
+                    start.reference() in candidate.invoked &&
+                    "$options-><init>()V" in candidate.invoked
+            }
+        }.orEmpty()
+        val auxiliary = auxiliaries.singleOrNull()
 
         val media = byAnchor("onMediaAppChanged") {
             it.parameters == listOf(COMPONENT) && it.returns == VOID
@@ -114,6 +124,7 @@ object MediaStartupSemanticResolver {
             end?.let { put("projection.end", it.reference()) }
             teardown?.let { put("projection.teardown", it.reference()) }
             route?.let { put("launch.startCarActivity", it.reference()) }
+            auxiliary?.let { put("launch.auxiliary", it.reference()) }
             factory?.let { put("launch.controllerFactory", it.reference()) }
             if (ctorProven) put("launch.optionsNoArgConstructor", "$options-><init>()V")
             media?.let { put("media.selectedApp", it.reference()) }
@@ -123,13 +134,14 @@ object MediaStartupSemanticResolver {
             if (route == null) add("unique Intent-based startCarActivity")
             if (factory == null) add("unique static controller factory")
             if (!ctorProven) add("launch options constructor")
+            if (auxiliary == null) add("unique auxiliary Intent launcher with verified delegation")
             if (media == null) add("unique media selected-app observer")
         }
         val proof = missing.isEmpty()
         val validated = MediaStartupTrace.isSupported(baseHash)
         val status = when {
             !proof -> if (lifecycle.values.any { it.size > 1 } ||
-                routes.size > 1 ||
+                routes.size > 1 || auxiliaries.size > 1 ||
                 (route != null && methods.count { it.owner == route.owner && it.static &&
                     it.parameters.isEmpty() && it.returns == route.owner } > 1))
                     Status.AMBIGUOUS else Status.UNSUPPORTED
@@ -209,15 +221,26 @@ object MediaStartupSemanticResolver {
                         anchored.forEach { selected[it.reference()] = it }
                         if (relevantController) {
                             rows.forEach { method ->
-                                // Retain only the potential singleton factory;
-                                // keeping every member of a giant obfuscated
-                                // controller would defeat the candidate bound.
+                                // Retain singleton factory plus one-Intent
+                                // wrappers. Examine only this already anchored
+                                // controller, not the entire APK call graph.
+                                val factoryLike = AccessFlags.STATIC.isSet(method.accessFlags) &&
+                                    method.parameterTypes.isEmpty() && method.returnType == cls.type
+                                val helperLike = !AccessFlags.STATIC.isSet(method.accessFlags) &&
+                                    method.parameterTypes.map { it.toString() } ==
+                                        listOf(INTENT) && method.returnType == VOID
                                 if (method.implementation == null ||
-                                    !AccessFlags.STATIC.isSet(method.accessFlags) ||
-                                    method.parameterTypes.isNotEmpty() ||
-                                    method.returnType != cls.type) return@forEach
+                                    (!factoryLike && !helperLike)) return@forEach
+                                val calls = if (!helperLike) emptySet() else
+                                    method.implementation!!.instructions.mapNotNull { ins ->
+                                        val ref = (ins as? ReferenceInstruction)?.reference
+                                            as? org.jf.dexlib2.iface.reference.MethodReference
+                                            ?: return@mapNotNull null
+                                        "${ref.definingClass}->${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
+                                    }.toSet()
                                 val item = Method(cls.type, method.name,
-                                    emptyList(), cls.type, true)
+                                    method.parameterTypes.map { it.toString() },
+                                    method.returnType, factoryLike, invoked = calls)
                                 selected.putIfAbsent(item.reference(), item)
                             }
                         }
