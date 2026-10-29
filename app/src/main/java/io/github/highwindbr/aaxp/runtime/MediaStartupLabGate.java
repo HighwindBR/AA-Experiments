@@ -13,9 +13,10 @@ public final class MediaStartupLabGate {
     private String componentPackage;
     private String componentClass;
     private long session;
+    private long readyAt;
     public MediaStartupLabGate(String previous) { this.previous = previous; }
-    public synchronized void ready() {
-        if (!ready) { ready = true; used = false; session++; }
+    public synchronized void ready(long now) {
+        if (!ready) { ready = true; used = false; readyAt = now; session++; }
     }
     public synchronized void ended() {
         ready = false; used = false; componentPackage = null; componentClass = null; session++;
@@ -46,6 +47,9 @@ public final class MediaStartupLabGate {
         catch (NumberFormatException malformed) { return Result.MALFORMED; }
         if (time > now || now - time > TTL_MILLIS) return Result.EXPIRED;
         if (!ready) return Result.NOT_READY;
+        // Do not dispatch commands issued before this projection began,
+        // even if a remote-preference notification was missed.
+        if (time < readyAt) return Result.EXPIRED;
         if (used) return Result.ALREADY_USED;
         if (!"com.spotify.music".equals(componentPackage) || componentClass == null)
             return Result.NO_MEDIA;

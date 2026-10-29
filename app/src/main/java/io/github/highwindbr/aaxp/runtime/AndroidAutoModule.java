@@ -485,7 +485,7 @@ public final class AndroidAutoModule extends XposedModule {
                             }
                             Object result = chain.proceed();
                             if ("READY".equals(stage)) {
-                                gate.ready();
+                                gate.ready(SystemClock.elapsedRealtime());
                                 startMediaPolling();
                             } else if ("MEDIA".equals(stage)) {
                                 Object arg = chain.getArg(0);

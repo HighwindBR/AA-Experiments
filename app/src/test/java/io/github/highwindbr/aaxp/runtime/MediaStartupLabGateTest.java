@@ -6,7 +6,7 @@ public class MediaStartupLabGateTest {
     @Test public void oneManualAttemptOnlyAfterReadinessAndKnownMedia() {
         MediaStartupLabGate gate = new MediaStartupLabGate(null);
         assertEquals(MediaStartupLabGate.Result.NOT_READY, gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
-        gate.ready();
+        gate.ready(1000);
         assertEquals(MediaStartupLabGate.Result.NO_MEDIA, gate.consider(
             "v1|1002|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A", 1003, MediaStartupLabGate.Route.A));
         gate.media("com.spotify.music","com.spotify.music.PlayerService");
@@ -17,7 +17,7 @@ public class MediaStartupLabGateTest {
     }
     @Test public void rejectsExpiredReplayAndForeignMedia() {
         MediaStartupLabGate gate = new MediaStartupLabGate(requestA);
-        gate.ready(); gate.media("com.google.android.apps.youtube.music","x");
+        gate.ready(1000); gate.media("com.google.android.apps.youtube.music","x");
         assertEquals(MediaStartupLabGate.Result.REPLAY,gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
         assertEquals(MediaStartupLabGate.Result.EXPIRED,gate.consider(
             "v1|1000|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|B",14000,MediaStartupLabGate.Route.B));
@@ -26,17 +26,29 @@ public class MediaStartupLabGateTest {
     }
     @Test public void sessionEndsInvalidateAndNextSessionCanRun() {
         MediaStartupLabGate gate = new MediaStartupLabGate(null);
-        gate.ready(); gate.media("com.spotify.music","test.Service");
+        gate.ready(1000); gate.media("com.spotify.music","test.Service");
         long id = gate.session(); gate.ended();
         assertFalse(gate.isCurrent(id));
-        gate.ready(); gate.media("com.spotify.music","test.Service");
+        gate.ready(1000); gate.media("com.spotify.music","test.Service");
         assertTrue(gate.isCurrent(gate.session()));
         assertEquals(MediaStartupLabGate.Result.ACCEPTED,
             gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
     }
+    @Test public void oldSessionRequestNeverLaunchesAfterReconnect() {
+        MediaStartupLabGate gate = new MediaStartupLabGate(null);
+        gate.ready(1000);
+        gate.ended();
+        gate.ready(4000);
+        gate.media("com.spotify.music", "com.spotify.music.Service");
+        assertEquals(MediaStartupLabGate.Result.EXPIRED,
+            gate.consider(requestA, 4002, MediaStartupLabGate.Route.A));
+        assertEquals(MediaStartupLabGate.Result.ACCEPTED,
+            gate.consider("v1|4003|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A",
+                4004, MediaStartupLabGate.Route.A));
+    }
     @Test public void mismatchedPreferenceOrMalformedNeverInvokes() {
         MediaStartupLabGate gate = new MediaStartupLabGate(null);
-        gate.ready(); gate.media("com.spotify.music","service");
+        gate.ready(1000); gate.media("com.spotify.music","service");
         assertEquals(MediaStartupLabGate.Result.MALFORMED,
             gate.consider(requestA,1001,MediaStartupLabGate.Route.B));
         assertEquals(MediaStartupLabGate.Result.MALFORMED,
