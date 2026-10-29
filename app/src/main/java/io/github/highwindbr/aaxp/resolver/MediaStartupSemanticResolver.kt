@@ -60,7 +60,7 @@ object MediaStartupSemanticResolver {
                 append("Unresolved: ").append(missing.joinToString(", ")).append('\n')
             }
             append(explanation).append('\n')
-            append("Active hooks on unreviewed builds: BLOCKED")
+            append("PF5 discovery grants no runtime permission by itself; PF6.1 manual lab is a separate explicit opt-in.")
         }
     }
 
