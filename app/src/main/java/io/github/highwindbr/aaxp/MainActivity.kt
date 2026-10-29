@@ -1735,7 +1735,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
             model::setVideoTimingProtocolTrace, model::setMediaStartupTrace,
             model::requestSpotifyManualLaunch, model::setMediaStartupAuto,
-            advancedAccess, onAdvancedAccess,
+            model::inspectMediaStartupSemantics, advancedAccess, onAdvancedAccess,
             model::pauseAllAdvanced, model::restoreAllAdvanced,
             model::setDoubleGetterProbe)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
@@ -1984,6 +1984,7 @@ private class TouchMenuPositionProvider(
     onMediaStartupTrace: (Boolean) -> Unit,
     onMediaSpotifyLaunchTest: () -> Unit,
     onMediaStartupAuto: (Boolean) -> Unit,
+    onMediaSemanticAnalysis: () -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
@@ -2136,7 +2137,7 @@ private class TouchMenuPositionProvider(
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup · preflight4",
+            DiagnosticSection("Media Startup · preflight5",
                 when {
                     state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
                     state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
@@ -2146,7 +2147,7 @@ private class TouchMenuPositionProvider(
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
-                Text("Preflight4: the PF3 one-shot manual button remains. An additional opt-in can automatically open the Spotify interface once per NEW projection session; audio playback is never changed.",
+                Text("Preflight5: the validated PF4 auto-open and PF3 manual button remain unchanged for AA 18.1. The new on-device semantic scan is read-only until cross-build proof is available.",
                     style = MaterialTheme.typography.bodySmall)
                 Text("With vehicle parked: enable the trace, restart Android Auto, then use the test button while projected Maps/Waze is already visible. The internal controller decides how to route Spotify; success is not assumed.",
                     style = MaterialTheme.typography.bodySmall)
@@ -2168,8 +2169,20 @@ private class TouchMenuPositionProvider(
                 ) { Text(if (state.mediaStartupAutoEnabled)
                     "Disable Spotify auto-open (PF4)"
                     else "Enable Spotify auto-open (PF4 test)") }
-                Text("PF4: OFF by default. Enable BEFORE connecting. Requires Spotify to be the active media app, a first projected activity, then a 2.8 s settling interval; subsequent explicit navigation suppresses the automatic attempt. Only for AA 18.1. Inspect MEDIA_PF4_* events; visual success is not assumed.",
+                Text("PF4 auto-launch remains pinned to the physically verified Android Auto 18.1. PF5 only discovers semantic candidates on the installed APK and NEVER enables live hooks on a new build by itself.",
                     style = MaterialTheme.typography.labelSmall)
+                OutlinedButton(onClick = onMediaSemanticAnalysis,
+                    enabled = state.aa.runtimeTarget && !state.mediaSemanticAnalysisRunning,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (state.mediaSemanticAnalysisRunning)
+                        "Inspecting DEX semantic anchors…" else "PF5 · Inspect Media Startup compatibility")
+                }
+                state.mediaSemanticReport?.let { report ->
+                    SelectionContainer {
+                        Text(report, fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
+                }
                 OutlinedButton(
                     onClick = { spotifyPf3Confirmation = true },
                     enabled = supported && state.framework.connected &&

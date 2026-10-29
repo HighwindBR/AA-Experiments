@@ -58,6 +58,8 @@ data class ManagerUiState(
     val videoTimingTraceEnabled: Boolean = false,
     val mediaStartupTraceEnabled: Boolean = false,
     val mediaStartupAutoEnabled: Boolean = false,
+    val mediaSemanticAnalysisRunning: Boolean = false,
+    val mediaSemanticReport: String? = null,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -424,6 +426,45 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(message = if (enabled)
             "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
         else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
+    }
+
+    /**
+     * PF5 discovery does NOT publish runtime hooks for an unknown build.
+     * Explicitly invoked, bounded scan on the installed AA base APK.
+     */
+    fun inspectMediaStartupSemantics() = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val base = aa.basePath
+        if (!aa.runtimeTarget || base == null) {
+            mutable.value = mutable.value.copy(message =
+                "PF5 requires an installed Android Auto base APK; imported archives are not executable.")
+            return@launch
+        }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another APK analysis is already running.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = true,
+            mediaSemanticReport = null)
+        try {
+            val outcome = withContext(Dispatchers.IO) {
+                io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.inspect(File(base))
+            }
+            if (mutable.value.aa.basePath == base &&
+                mutable.value.aa.buildFingerprintSha256 == aa.buildFingerprintSha256) {
+                mutable.value = mutable.value.copy(
+                    mediaSemanticReport = outcome.summary(),
+                    message = "PF5 offline Media Startup analysis: ${outcome.status}. Runtime mappings were not changed.")
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.value = mutable.value.copy(message =
+                "PF5 scan failed safely: ${failure.javaClass.simpleName}")
+        } finally {
+            mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
+            analysisOperationGate.finish()
+        }
     }
 
     /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */
