@@ -60,6 +60,8 @@ data class ManagerUiState(
     val mediaStartupAutoEnabled: Boolean = false,
     val mediaSemanticAnalysisRunning: Boolean = false,
     val mediaSemanticReport: String? = null,
+    val mediaLabArmed: Boolean = false,
+    val mediaLabRoute: String = "A",
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -72,13 +74,14 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
     val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean, val mediaLabArmed: Boolean, val mediaLabRoute: String)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
     private val database = CatalogDatabase(application)
     private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
     private val probePreferences = application.getSharedPreferences("read_only_getter_probe", Context.MODE_PRIVATE)
+    private val mediaLabPreferences = application.getSharedPreferences("media_startup_pf6_lab", Context.MODE_PRIVATE)
     // All profile computations, writes and build-state handoffs share one coordinator.
     private val profileRefreshMutex = ProfileRefreshGate()
     // Only one expensive catalog/DEX operation may own the foreground service.
@@ -468,13 +471,126 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * PF6.1: arm a build-bound, manually invokable lab profile. This does
+     * not enable automatic media opening, and a prior PF4 preference is
+     * disabled atomically. Runtime validates every reflected ABI again.
+     */
+    fun armMediaStartupLab() = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val base = aa.basePath
+        val fingerprint = aa.buildFingerprintSha256
+        val hash = aa.baseSha256
+        if (!aa.runtimeTarget || base == null || fingerprint == null || hash == null ||
+            !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "Install Android Auto and connect LSPosed first.")
+            return@launch
+        }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another APK analysis is already running.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = true)
+        try {
+            val evidence = withContext(Dispatchers.IO) {
+                io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.inspect(File(base))
+            }
+            val required = setOf("projection.ready", "projection.end",
+                "projection.teardown", "launch.controllerFactory", "launch.startCarActivity",
+                "launch.optionsNoArgConstructor", "launch.auxiliary", "media.selectedApp")
+            if (evidence.status !in setOf(
+                    io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.KNOWN_BUILD_VALIDATED,
+                    io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.REVIEW_ONLY) ||
+                evidence.baseSha256 != hash || !evidence.roles.keys.containsAll(required)) {
+                mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary(),
+                    message = "PF6.1 was not armed: incomplete, ambiguous or incompatible DEX proof.")
+                return@launch
+            }
+            if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
+                mutable.value.aa.baseSha256 != hash) {
+                mutable.value = mutable.value.copy(message = "Android Auto changed during analysis; restart the scan.")
+                return@launch
+            }
+            val lab = JSONObject().apply {
+                put("mode", "MANUAL_ONLY")
+                put("baseSha256", hash)
+                put("buildFingerprintSha256", fingerprint)
+                put("roles", JSONObject(evidence.roles))
+            }
+            val disabledAuto = withContext(Dispatchers.IO) {
+                ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                    ?.commit() == true
+            }
+            if (!disabledAuto || !mediaLabPreferences.edit()
+                .putString(fingerprint, lab.toString()).commit()) {
+                mutable.value = mutable.value.copy(message =
+                    "PF6.1 could not persist the verified profile; existing published profile is unchanged.")
+                return@launch
+            }
+            mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message =
+                "PF6.1 profile published for this build. Restart Android Auto, then test route A or B while parked. Auto-open stays OFF.")
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
+            mutable.value = mutable.value.copy(message =
+                "PF6.1 failed safely: ${e.javaClass.simpleName}")
+        } finally {
+            mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
+            analysisOperationGate.finish()
+        }
+    }
+
+    fun disarmMediaStartupLab() = viewModelScope.launch {
+        val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        if (!mediaLabPreferences.edit().remove(fingerprint).commit()) {
+            mutable.value = mutable.value.copy(message = "PF6.1 disable could not be saved.")
+            return@launch
+        }
+        refreshOverridesAndProfile()
+        mutable.value = mutable.value.copy(message = "PF6.1 disarmed. Restart Android Auto to unload the experimental hooks.")
+    }
+
+    fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
+        if (route != "A" && route != "B") return@launch
+        val saved = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
+                    route)?.commit() == true
+        }
+        mutable.value = mutable.value.copy(
+            mediaLabRoute = if (saved) route else mutable.value.mediaLabRoute,
+            message = if (saved) "PF6.1 preferred route: ${route}. Use manual test after connecting."
+                else "Could not save PF6.1 route.")
+    }
+
+    fun requestMediaLabManualTest() = viewModelScope.launch {
+        val ui = mutable.value
+        if (!ui.framework.connected || !ui.profilePublished || !ui.mediaLabArmed) {
+            mutable.value = ui.copy(message =
+                "PF6.1 is not armed. Resolve, publish profile and restart Android Auto.")
+            return@launch
+        }
+        val request = "v1|" + android.os.SystemClock.elapsedRealtime() + "|" +
+            java.util.UUID.randomUUID().toString() + "|" + ui.mediaLabRoute
+        val saved = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.REQUEST_KEY,
+                    request)?.commit() == true
+        }
+        mutable.value = mutable.value.copy(message = if (saved)
+            "PF6.1 request for route ${ui.mediaLabRoute} saved. Verify LSPosed MEDIA_PF6_* and the head unit. One attempt per projection session."
+        else "PF6.1 LSPosed request failed.")
+    }
+
     /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */
     fun setMediaStartupAuto(enabled: Boolean) = viewModelScope.launch {
         val current = mutable.value
         // Turning OFF must remain possible even after AA updates to an
         // uninspected build; only enabling requires a verified runtime.
         if (!current.framework.connected ||
-            (enabled && (!current.aa.runtimeTarget ||
+            (enabled && (current.mediaLabArmed || !current.aa.runtimeTarget ||
                 !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
                 !current.mediaStartupTraceEnabled || !current.profilePublished))) {
             mutable.value = mutable.value.copy(message =
@@ -1254,6 +1370,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val mediaStartupAutoOn =
                 io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY] as? String)
+            val savedLab = mediaLabPreferences.getString(aa.buildFingerprintSha256, null)
+                ?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.takeIf { it.optString("buildFingerprintSha256") == aa.buildFingerprintSha256 &&
+                    it.optString("baseSha256") == aa.baseSha256 &&
+                    it.optString("mode") == "MANUAL_ONLY" }
+            val selectedRoute = (allPrefs[
+                io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY] as? String)
+                ?.takeIf { it == "A" || it == "B" } ?: "A"
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()
@@ -1372,11 +1496,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
                 aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes,
-                experimentalMappings, advancedMappings, protocolTraceOn, mediaStartupTraceOn)
+                experimentalMappings, advancedMappings, protocolTraceOn, mediaStartupTraceOn, savedLab)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
-                protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn)
+                protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn,
+                savedLab != null, selectedRoute)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1389,6 +1514,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             videoTimingTraceEnabled=outcome.videoTimingTraceEnabled,
             mediaStartupTraceEnabled=outcome.mediaStartupTraceEnabled,
             mediaStartupAutoEnabled=outcome.mediaStartupAutoEnabled,
+            mediaLabArmed=outcome.mediaLabArmed,
+            mediaLabRoute=outcome.mediaLabRoute,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }

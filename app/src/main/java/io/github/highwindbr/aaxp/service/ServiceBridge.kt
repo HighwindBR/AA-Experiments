@@ -48,10 +48,10 @@ object ServiceBridge : XposedServiceHelper.OnServiceListener {
      * On a write failure the previously selected slot (or legacy file) remains intact.
      */
     @Synchronized
-    fun publishProfile(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, mappings: List<DynamicProfile.Mapping>, probes: List<DynamicProfile.Probe> = emptyList(), experimental: List<DynamicProfile.ExperimentalMapping> = emptyList(), advanced: List<DynamicProfile.AdvancedMapping> = emptyList(), videoTimingTrace: Boolean = false, mediaStartupTrace: Boolean = false): Result<Int> = runCatching {
+    fun publishProfile(buildFingerprintSha256: String, baseSha256: String, packageVersionCode: Long, packageArtifactSha256: Map<String, String>, dexSha256: Map<String, String>, mappings: List<DynamicProfile.Mapping>, probes: List<DynamicProfile.Probe> = emptyList(), experimental: List<DynamicProfile.ExperimentalMapping> = emptyList(), advanced: List<DynamicProfile.AdvancedMapping> = emptyList(), videoTimingTrace: Boolean = false, mediaStartupTrace: Boolean = false, mediaStartupLab: org.json.JSONObject? = null): Result<Int> = runCatching {
         val bound = checkNotNull(service) { "Xposed service is not connected" }
         val prefs = bound.getRemotePreferences(DYNAMIC_PREF_GROUP)
-        val bytes = DynamicProfile.create(buildFingerprintSha256, baseSha256, packageVersionCode, packageArtifactSha256, dexSha256, mappings, probes, experimental, advanced, videoTimingTrace, mediaStartupTrace).toByteArray(Charsets.UTF_8)
+        val bytes = DynamicProfile.create(buildFingerprintSha256, baseSha256, packageVersionCode, packageArtifactSha256, dexSha256, mappings, probes, experimental, advanced, videoTimingTrace, mediaStartupTrace, mediaStartupLab).toByteArray(Charsets.UTF_8)
         val storage = object : ProfileStorage {
             override fun activeSlot(): String? = prefs.getString(ProfileSlotPolicy.POINTER_KEY, null)
             override fun write(slot: String, content: ByteArray) {
