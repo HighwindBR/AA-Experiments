@@ -530,8 +530,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
             refreshOverridesAndProfile()
-            mutable.value = mutable.value.copy(message =
-                "PF6.1 profile published for this build. Restart Android Auto, then test route A or B while parked. Auto-open stays OFF.")
+            mutable.value = mutable.value.copy(message = if (
+                mutable.value.profilePublished && mutable.value.mediaLabArmed)
+                "PF6.1 profile published for this build. Restart Android Auto, then test route A or B while parked. Auto-open stays OFF."
+            else "PF6.1 proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {
             mutable.value = mutable.value.copy(message =
@@ -554,15 +556,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
         if (route != "A" && route != "B") return@launch
+        val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
         val saved = withContext(Dispatchers.IO) {
             ServiceBridge.dynamicPreferencesOrNull()?.edit()
                 ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
                     route)?.commit() == true
         }
+        val persisted = saved && mediaLabPreferences.edit().putString(
+            "route:$fingerprint", route).commit()
         mutable.value = mutable.value.copy(
-            mediaLabRoute = if (saved) route else mutable.value.mediaLabRoute,
-            message = if (saved) "PF6.1 preferred route: ${route}. Use manual test after connecting."
-                else "Could not save PF6.1 route.")
+            mediaLabRoute = if (persisted) route else mutable.value.mediaLabRoute,
+            message = if (persisted) "PF6.1 preferred route: ${route}. Use manual test after connecting."
+                else "Could not save PF6.1 route persistently.")
     }
 
     fun requestMediaLabManualTest() = viewModelScope.launch {
@@ -1375,9 +1380,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ?.takeIf { it.optString("buildFingerprintSha256") == aa.buildFingerprintSha256 &&
                     it.optString("baseSha256") == aa.baseSha256 &&
                     it.optString("mode") == "MANUAL_ONLY" }
-            val selectedRoute = (allPrefs[
-                io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY] as? String)
+            val selectedRoute = mediaLabPreferences.getString(
+                "route:${aa.buildFingerprintSha256}", "A")
                 ?.takeIf { it == "A" || it == "B" } ?: "A"
+            // Remote preference applies in :projection; restore each build's
+            // preferred route before publishing its verified profile.
+            if ((allPrefs[
+                io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY] as? String)
+                != selectedRoute && savedLab != null) {
+                check(prefs.edit().putString(
+                    io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
+                    selectedRoute).commit()) { "Unable to synchronize PF6 route" }
+            }
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()

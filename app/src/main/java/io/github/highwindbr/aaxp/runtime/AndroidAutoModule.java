@@ -811,7 +811,10 @@ public final class AndroidAutoModule extends XposedModule {
     /** Called by remote-preference listener; never execute car activity on binder threads. */
     private void requestMediaLaunchCheck() {
         Handler handler = mediaLaunchHandler;
-        if (handler != null) handler.post(this::checkMediaLaunchRequest);
+        if (handler != null) handler.post(() -> {
+            if (mediaLabGate != null) checkMediaLabRequest();
+            else checkMediaLaunchRequest();
+        });
     }
 
     private void startMediaPolling() {
