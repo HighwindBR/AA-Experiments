@@ -2138,7 +2138,8 @@ private class TouchMenuPositionProvider(
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
             DiagnosticSection("Media Startup · preflight4",
                 when {
-                    state.mediaStartupAutoEnabled -> "PF4 auto-open ON · next connection"
+                    state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
+                    state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
                     state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
                     supported -> "Manual PF3 · PF4 opt-in OFF"
                     else -> "Unavailable for this AA build"
@@ -2160,8 +2161,9 @@ private class TouchMenuPositionProvider(
                         if (state.mediaStartupAutoEnabled) onMediaStartupAuto(false)
                         else spotifyPf4Confirmation = true
                     },
-                    enabled = supported && state.framework.connected &&
-                        state.mediaStartupTraceEnabled && state.profilePublished,
+                    enabled = state.framework.connected &&
+                        (state.mediaStartupAutoEnabled ||
+                            (supported && state.mediaStartupTraceEnabled && state.profilePublished)),
                     modifier = Modifier.fillMaxWidth()
                 ) { Text(if (state.mediaStartupAutoEnabled)
                     "Disable Spotify auto-open (PF4)"

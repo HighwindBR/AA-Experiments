@@ -618,7 +618,7 @@ public final class AndroidAutoModule extends XposedModule {
         }
         event(Log.INFO, "MEDIA_PF4_AUTO_ATTEMPT", null, "target", "SPOTIFY");
         try {
-            dispatchSpotify(scheduledSession, false);
+            dispatchSpotify(scheduledSession);
             event(Log.INFO, "MEDIA_PF4_AUTO_DISPATCHED", null,
                     "result", "RETURNED", "visible", "UNVERIFIED");
         } catch (Throwable failed) {
@@ -678,7 +678,7 @@ public final class AndroidAutoModule extends XposedModule {
             event(Log.INFO, "MEDIA_PF3_REQUEST_ACCEPTED", null,
                     "mode", "MANUAL_ONESHOT", "target", "SPOTIFY");
             try {
-                dispatchSpotify(activeSession, true);
+                dispatchSpotify(activeSession);
                 // Successful return is NOT proof the HU displayed Spotify.
                 event(Log.INFO, "MEDIA_PF3_REQUEST_DISPATCHED", null,
                         "result", "RETURNED", "visible", "UNVERIFIED");
@@ -694,7 +694,7 @@ public final class AndroidAutoModule extends XposedModule {
         }
     }
 
-    private void dispatchSpotify(int sessionId, boolean manual) throws Exception {
+    private void dispatchSpotify(int sessionId) throws Exception {
         if (mediaLaunchGate == null || !mediaLaunchGate.stillReadyInSession(sessionId))
             throw new IllegalStateException("Projection ended");
         Object controller = mediaControllerFactory.invoke(null);

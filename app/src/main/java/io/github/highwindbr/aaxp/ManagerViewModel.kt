@@ -429,9 +429,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */
     fun setMediaStartupAuto(enabled: Boolean) = viewModelScope.launch {
         val current = mutable.value
-        if (!current.framework.connected || !current.aa.runtimeTarget ||
-            !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
-            (enabled && (!current.mediaStartupTraceEnabled || !current.profilePublished))) {
+        // Turning OFF must remain possible even after AA updates to an
+        // uninspected build; only enabling requires a verified runtime.
+        if (!current.framework.connected ||
+            (enabled && (!current.aa.runtimeTarget ||
+                !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
+                !current.mediaStartupTraceEnabled || !current.profilePublished))) {
             mutable.value = mutable.value.copy(message =
                 "PF4 requires the exact inspected AA 18.1 and a published Media Startup trace.")
             return@launch
@@ -1204,7 +1207,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY] as? String)
-            val mediaStartupAutoOn = mediaStartupTraceOn &&
+            // Report the saved opt-in even when a new AA build is unsupported,
+            // so Diagnostics can offer a visible OFF switch.
+            val mediaStartupAutoOn =
                 io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY] as? String)
             val snapshot = allPrefs.mapNotNull { (key, value) ->
