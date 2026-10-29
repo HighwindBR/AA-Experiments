@@ -209,10 +209,15 @@ object MediaStartupSemanticResolver {
                         anchored.forEach { selected[it.reference()] = it }
                         if (relevantController) {
                             rows.forEach { method ->
-                                if (method.implementation == null) return@forEach
+                                // Retain only the potential singleton factory;
+                                // keeping every member of a giant obfuscated
+                                // controller would defeat the candidate bound.
+                                if (method.implementation == null ||
+                                    !AccessFlags.STATIC.isSet(method.accessFlags) ||
+                                    method.parameterTypes.isNotEmpty() ||
+                                    method.returnType != cls.type) return@forEach
                                 val item = Method(cls.type, method.name,
-                                    method.parameterTypes.map { it.toString() },
-                                    method.returnType, AccessFlags.STATIC.isSet(method.accessFlags))
+                                    emptyList(), cls.type, true)
                                 selected.putIfAbsent(item.reference(), item)
                             }
                         }
