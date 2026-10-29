@@ -14,9 +14,9 @@ class MediaStartupSemanticResolverTest {
     private val route = "Lxy/Ab;"
     private val options = "Lq;"
     private fun fixture(): S.Inventory = S.Inventory(listOf(
-        method(owner, "a", anchors = *arrayOf("onProjectionReady on binder thread")),
-        method(owner, "b", anchors = *arrayOf("onProjectionEnd on binder thread")),
-        method(owner, "c", anchors = *arrayOf("onProjectionTearDown on binder thread")),
+        method(owner, "a", anchors = *arrayOf("onProjectionReady(). Notifying CarClientManager that projection is ready")),
+        method(owner, "b", anchors = *arrayOf("onProjectionEnd()")),
+        method(owner, "c", anchors = *arrayOf("onProjectionTearDown()")),
         method(route, "z", listOf("Landroid/content/Intent;", options),
             anchors = *arrayOf("startCarActivity(intent:%s, activityOptions:%s)")),
         method(route, "o", ret = route, stat = true),

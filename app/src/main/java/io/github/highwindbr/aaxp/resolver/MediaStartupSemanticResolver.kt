@@ -80,9 +80,9 @@ object MediaStartupSemanticResolver {
             methods.filter { m -> m.strings.any { it.contains(fragment, ignoreCase = false) } && predicate(m) }
 
         val lifecycle = mapOf(
-            "ready" to "onProjectionReady on binder thread",
-            "end" to "onProjectionEnd on binder thread",
-            "teardown" to "onProjectionTearDown on binder thread"
+            "ready" to "onProjectionReady(). Notifying CarClientManager",
+            "end" to "onProjectionEnd()",
+            "teardown" to "onProjectionTearDown()"
         ).mapValues { (_, anchor) ->
             byAnchor(anchor) { it.parameters.isEmpty() && it.returns == VOID }
         }
@@ -192,9 +192,9 @@ object MediaStartupSemanticResolver {
                             for (instruction in impl.instructions) {
                                 val value = ((instruction as? ReferenceInstruction)?.reference
                                     as? StringReference)?.string ?: continue
-                                if (value.contains("onProjectionReady on binder thread") ||
-                                    value.contains("onProjectionEnd on binder thread") ||
-                                    value.contains("onProjectionTearDown on binder thread") ||
+                                if (value.contains("onProjectionReady(). Notifying CarClientManager") ||
+                                    value.contains("onProjectionEnd()") ||
+                                    value.contains("onProjectionTearDown()") ||
                                     value.contains("startCarActivity(intent:") ||
                                     value.contains("onMediaAppChanged")) anchors.add(value)
                             }
