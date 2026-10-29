@@ -64,6 +64,13 @@ public final class MediaStartupLaunchGate {
         session++;
     }
 
+    /** Let PF4 reserve the same budget used by the PF3 manual command. */
+    public synchronized boolean reserveForAutomatic() {
+        if (!ready || !activitySeen || attempted) return false;
+        attempted = true;
+        return true;
+    }
+
     public synchronized boolean isReady() { return ready; }
 
     public synchronized int session() { return session; }

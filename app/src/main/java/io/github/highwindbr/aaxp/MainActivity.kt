@@ -1734,7 +1734,8 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
             model::setVideoTimingProtocolTrace, model::setMediaStartupTrace,
-            model::requestSpotifyManualLaunch, advancedAccess, onAdvancedAccess,
+            model::requestSpotifyManualLaunch, model::setMediaStartupAuto,
+            advancedAccess, onAdvancedAccess,
             model::pauseAllAdvanced, model::restoreAllAdvanced,
             model::setDoubleGetterProbe)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
@@ -1982,6 +1983,7 @@ private class TouchMenuPositionProvider(
     onVideoTimingTrace: (Boolean) -> Unit,
     onMediaStartupTrace: (Boolean) -> Unit,
     onMediaSpotifyLaunchTest: () -> Unit,
+    onMediaStartupAuto: (Boolean) -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
@@ -1998,6 +2000,23 @@ private class TouchMenuPositionProvider(
     }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     var spotifyPf3Confirmation by remember { mutableStateOf(false) }
+    var spotifyPf4Confirmation by remember { mutableStateOf(false) }
+    if (spotifyPf4Confirmation) {
+        AlertDialog(
+            onDismissRequest = { spotifyPf4Confirmation = false },
+            title = { Text("PF4 · Auto-open Spotify?") },
+            text = { Text("Experimental, off by default. On the NEXT Android Auto projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    spotifyPf4Confirmation = false
+                    onMediaStartupAuto(true)
+                }) { Text("Enable PF4 test") }
+            },
+            dismissButton = {
+                TextButton(onClick = { spotifyPf4Confirmation = false }) { Text("Cancel") }
+            }
+        )
+    }
     if (spotifyPf3Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf3Confirmation = false },
@@ -2117,15 +2136,16 @@ private class TouchMenuPositionProvider(
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup · preflight3",
+            DiagnosticSection("Media Startup · preflight4",
                 when {
-                    state.mediaStartupTraceEnabled -> "Armed · restart Android Auto"
-                    supported -> "Manual PF3 · inspected AA 18.1"
+                    state.mediaStartupAutoEnabled -> "PF4 auto-open ON · next connection"
+                    state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
+                    supported -> "Manual PF3 · PF4 opt-in OFF"
                     else -> "Unavailable for this AA build"
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
-                Text("Preflight3: observation plus an explicitly confirmed ONE-SHOT Spotify launch request. It never launches automatically and does not alter playback.",
+                Text("Preflight4: the PF3 one-shot manual button remains. An additional opt-in can automatically open the Spotify interface once per NEW projection session; audio playback is never changed.",
                     style = MaterialTheme.typography.bodySmall)
                 Text("With vehicle parked: enable the trace, restart Android Auto, then use the test button while projected Maps/Waze is already visible. The internal controller decides how to route Spotify; success is not assumed.",
                     style = MaterialTheme.typography.bodySmall)
@@ -2135,6 +2155,19 @@ private class TouchMenuPositionProvider(
                     Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
                         else "Enable Media Startup trace")
                 }
+                OutlinedButton(
+                    onClick = {
+                        if (state.mediaStartupAutoEnabled) onMediaStartupAuto(false)
+                        else spotifyPf4Confirmation = true
+                    },
+                    enabled = supported && state.framework.connected &&
+                        state.mediaStartupTraceEnabled && state.profilePublished,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (state.mediaStartupAutoEnabled)
+                    "Disable Spotify auto-open (PF4)"
+                    else "Enable Spotify auto-open (PF4 test)") }
+                Text("PF4: OFF by default. Enable BEFORE connecting. Requires Spotify to be the active media app, a first projected activity, then a 2.8 s settling interval; subsequent explicit navigation suppresses the automatic attempt. Only for AA 18.1. Inspect MEDIA_PF4_* events; visual success is not assumed.",
+                    style = MaterialTheme.typography.labelSmall)
                 OutlinedButton(
                     onClick = { spotifyPf3Confirmation = true },
                     enabled = supported && state.framework.connected &&

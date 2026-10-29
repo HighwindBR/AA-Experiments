@@ -57,6 +57,7 @@ data class ManagerUiState(
     val consumerTraceKey: String? = null,
     val videoTimingTraceEnabled: Boolean = false,
     val mediaStartupTraceEnabled: Boolean = false,
+    val mediaStartupAutoEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -69,7 +70,7 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
     val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -408,7 +409,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val ok = withContext(Dispatchers.IO) {
             ServiceBridge.dynamicPreferencesOrNull()?.edit()
                 ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY,
-                    enabled.toString())?.commit() == true
+                    enabled.toString())
+                ?.apply {
+                    if (!enabled) putString(
+                        io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                }?.commit() == true
         }
         if (!ok) {
             mutable.value = mutable.value.copy(message =
@@ -419,6 +424,34 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(message = if (enabled)
             "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
         else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
+    }
+
+    /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */
+    fun setMediaStartupAuto(enabled: Boolean) = viewModelScope.launch {
+        val current = mutable.value
+        if (!current.framework.connected || !current.aa.runtimeTarget ||
+            !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
+            (enabled && (!current.mediaStartupTraceEnabled || !current.profilePublished))) {
+            mutable.value = mutable.value.copy(message =
+                "PF4 requires the exact inspected AA 18.1 and a published Media Startup trace.")
+            return@launch
+        }
+        val ok = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY,
+                    enabled.toString())?.commit() == true
+        }
+        if (!ok) {
+            mutable.value = mutable.value.copy(message =
+                "Cannot update PF4 auto-start: LSPosed preferences unavailable.")
+            return@launch
+        }
+        // This is deliberately a remote preference, not a change to the
+        // normal flag catalog or profile schema. Armed at NEXT projection ready.
+        mutable.value = mutable.value.copy(mediaStartupAutoEnabled = enabled,
+            message = if (enabled)
+                "PF4 enabled for the NEXT projection session. Disconnect/reconnect AA. Spotify must already be the active media app."
+            else "PF4 auto-start disabled. Any pending automatic attempt will be skipped.")
     }
 
     /** Experimental PF3: one manually confirmed, short-lived Spotify request. */
@@ -1171,6 +1204,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY] as? String)
+            val mediaStartupAutoOn = mediaStartupTraceOn &&
+                io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.enabled(
+                    allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY] as? String)
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()
@@ -1293,7 +1329,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
-                protocolTraceOn, mediaStartupTraceOn)
+                protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1305,6 +1341,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             advancedRecords=outcome.advanced, advancedPublishedCount=outcome.advancedPublishedCount,
             videoTimingTraceEnabled=outcome.videoTimingTraceEnabled,
             mediaStartupTraceEnabled=outcome.mediaStartupTraceEnabled,
+            mediaStartupAutoEnabled=outcome.mediaStartupAutoEnabled,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }

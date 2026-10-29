@@ -44,6 +44,7 @@ public final class AndroidAutoModule extends XposedModule {
     private SharedPreferences remotePreferences;
     private volatile String moduleProcessName;
     private volatile MediaStartupLaunchGate mediaLaunchGate;
+    private volatile MediaStartupAutoGate mediaAutoGate;
     private volatile Handler mediaLaunchHandler;
     private volatile Method mediaControllerFactory;
     private volatile Method mediaControllerStart;
@@ -429,6 +430,7 @@ public final class AndroidAutoModule extends XposedModule {
         final MediaStartupLaunchGate gate = MediaStartupLaunchGate.create(
                 overrideSnapshot.get(MediaStartupLaunchGate.REQUEST_KEY));
         mediaLaunchGate = gate;
+        mediaAutoGate = new MediaStartupAutoGate();
         mediaLaunchHandler = new Handler(Looper.getMainLooper());
         int installed = 0;
         boolean readinessInstalled = false;
@@ -477,18 +479,38 @@ public final class AndroidAutoModule extends XposedModule {
                             // Teardown invalidates all outstanding requests before
                             // Android Auto starts shutting down its own session.
                             if ("PROJECTION_END".equals(target.stage) ||
-                                    "PROJECTION_TEARDOWN".equals(target.stage))
+                                    "PROJECTION_TEARDOWN".equals(target.stage)) {
                                 gate.onEnded();
+                                mediaAutoGate.onEnded();
+                            }
                             Object original = chain.proceed();
                             if ("PROJECTION_READY".equals(target.stage) &&
                                     MediaStartupTrace.enabled(
                                             overrideSnapshot.get(MediaStartupTrace.KEY))) {
                                 gate.onReady();
+                                if (mediaAutoGate.onReady(
+                                        MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                                MediaStartupAutoGate.KEY)), SystemClock.elapsedRealtime())) {
+                                    event(Log.INFO, "MEDIA_PF4_SESSION_ARMED", null,
+                                            "auto", MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                                    MediaStartupAutoGate.KEY)) ? "ON" : "OFF");
+                                }
                                 startMediaPolling();
-                            } else if ("ACTIVITY_START_REQUESTED".equals(target.stage) &&
-                                    MediaStartupTrace.enabled(
-                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                            } else if ("ACTIVITY_START_REQUESTED".equals(target.stage) && armed) {
                                 gate.onActivityStart();
+                                int sessionId = mediaAutoGate.onFirstActivity(SystemClock.elapsedRealtime());
+                                if (sessionId >= 0) scheduleAutoSpotify(sessionId);
+                            } else if ("MEDIA_APP_CHANGED".equals(target.stage) && armed) {
+                                try {
+                                    Object value = chain.getArg(0);
+                                    mediaAutoGate.onMediaChanged(value instanceof ComponentName &&
+                                            MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
+                                                    ((ComponentName) value).getPackageName()));
+                                } catch (Throwable ignored) {
+                                    mediaAutoGate.onMediaChanged(false);
+                                }
+                            } else if ("START_CAR_ACTIVITY".equals(target.stage) && armed) {
+                                mediaAutoGate.onNavigation();
                             }
                             // Callback return is not proof of physical HU visibility.
                             if ("PROJECTION_READY".equals(target.stage) &&
@@ -554,7 +576,7 @@ public final class AndroidAutoModule extends XposedModule {
             mediaControllerStart = launch;
             mediaActivityOptionsConstructor = ctor;
             mediaLaunchAvailable = true;
-            event(Log.INFO, "MEDIA_PF3_PROOF_ARMED", null, "mode", "MANUAL_ONLY",
+            event(Log.INFO, "MEDIA_PF3_PROOF_ARMED", null, "mode", "MANUAL_PLUS_OPT_IN_AUTO",
                     "target", "SPOTIFY", "ttlMs",
                     String.valueOf(MediaStartupLaunchGate.TTL_MILLIS));
         } catch (ReflectiveOperationException | LinkageError missing) {
@@ -563,6 +585,47 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable unexpected) {
             event(Log.ERROR, "MEDIA_PF3_DISABLED", null,
                     "reason", unexpected.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * PF4: schedule exactly one attempt for each first projected activity.
+     * The session token invalidates callbacks after disconnect/reconnect.
+     */
+    private void scheduleAutoSpotify(int sessionId) {
+        Handler handler = mediaLaunchHandler;
+        if (handler == null || !mediaLaunchAvailable) return;
+        handler.postDelayed(() -> attemptAutoSpotify(sessionId),
+                MediaStartupAutoGate.SETTLE_MILLIS);
+        event(Log.INFO, "MEDIA_PF4_AUTO_SCHEDULED", null,
+                "delayMs", String.valueOf(MediaStartupAutoGate.SETTLE_MILLIS));
+    }
+
+    private void attemptAutoSpotify(int scheduledSession) {
+        if (Looper.myLooper() != Looper.getMainLooper() || mediaAutoGate == null ||
+                !mediaLaunchAvailable || !MediaStartupTrace.enabled(
+                        overrideSnapshot.get(MediaStartupTrace.KEY))) return;
+        MediaStartupAutoGate.Decision decision = mediaAutoGate.consume(scheduledSession,
+                SystemClock.elapsedRealtime(), MediaStartupAutoGate.enabled(
+                        overrideSnapshot.get(MediaStartupAutoGate.KEY)));
+        if (decision != MediaStartupAutoGate.Decision.DISPATCH) {
+            event(Log.INFO, "MEDIA_PF4_AUTO_SKIPPED", null, "reason", decision.name());
+            return;
+        }
+        if (mediaLaunchGate == null || !mediaLaunchGate.reserveForAutomatic()) {
+            event(Log.INFO, "MEDIA_PF4_AUTO_SKIPPED", null, "reason", "manual_budget_used");
+            return;
+        }
+        event(Log.INFO, "MEDIA_PF4_AUTO_ATTEMPT", null, "target", "SPOTIFY");
+        try {
+            dispatchSpotify(scheduledSession, false);
+            event(Log.INFO, "MEDIA_PF4_AUTO_DISPATCHED", null,
+                    "result", "RETURNED", "visible", "UNVERIFIED");
+        } catch (Throwable failed) {
+            Throwable cause = failed instanceof InvocationTargetException &&
+                    failed.getCause() != null ? failed.getCause() : failed;
+            event(Log.ERROR, "MEDIA_PF4_AUTO_FAILED", null,
+                    "reason", cause.getClass().getSimpleName());
         }
     }
 
@@ -611,21 +674,12 @@ public final class AndroidAutoModule extends XposedModule {
                 event(Log.WARN, "MEDIA_PF3_REQUEST_REJECTED", null, "reason", "session_ended");
                 return;
             }
+            mediaAutoGate.onManualAttempt();
             event(Log.INFO, "MEDIA_PF3_REQUEST_ACCEPTED", null,
                     "mode", "MANUAL_ONESHOT", "target", "SPOTIFY");
             try {
-                Object controller = mediaControllerFactory.invoke(null);
-                if (controller == null || !mediaLaunchGate.stillReadyInSession(activeSession))
-                    throw new IllegalStateException("Controller or session unavailable");
-                Object options = mediaActivityOptionsConstructor.newInstance();
-                Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
-                intent.setComponent(new ComponentName(
-                        MediaStartupLaunchGate.SPOTIFY_PACKAGE,
-                        MediaStartupLaunchGate.SPOTIFY_SERVICE));
-                // This is the same internal controller used by the normal
-                // launcher; restrictions and downstream dispatch remain intact.
-                mediaControllerStart.invoke(controller, intent, options);
-                // A successful method return is NOT proof the HU displayed Spotify.
+                dispatchSpotify(activeSession, true);
+                // Successful return is NOT proof the HU displayed Spotify.
                 event(Log.INFO, "MEDIA_PF3_REQUEST_DISPATCHED", null,
                         "result", "RETURNED", "visible", "UNVERIFIED");
             } catch (Throwable error) {
@@ -638,6 +692,21 @@ public final class AndroidAutoModule extends XposedModule {
             event(Log.ERROR, "MEDIA_PF3_REQUEST_FAILED", null,
                     "reason", error.getClass().getSimpleName());
         }
+    }
+
+    private void dispatchSpotify(int sessionId, boolean manual) throws Exception {
+        if (mediaLaunchGate == null || !mediaLaunchGate.stillReadyInSession(sessionId))
+            throw new IllegalStateException("Projection ended");
+        Object controller = mediaControllerFactory.invoke(null);
+        if (controller == null || !mediaLaunchGate.stillReadyInSession(sessionId))
+            throw new IllegalStateException("Controller unavailable or session ended");
+        Object options = mediaActivityOptionsConstructor.newInstance();
+        Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+        intent.setComponent(new ComponentName(
+                MediaStartupLaunchGate.SPOTIFY_PACKAGE,
+                MediaStartupLaunchGate.SPOTIFY_SERVICE));
+        // The inspected AA controller remains responsible for routing and policy.
+        mediaControllerStart.invoke(controller, intent, options);
     }
 
     private void installProbe(ClassLoader loader, JSONObject mapping, String baseSha256) {
