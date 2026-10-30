@@ -4,6 +4,16 @@
 `feature/beta5-rc1`, based on the physically accepted PF6.2 (AA 18.1
 Chevrolet head unit), Android app versionCode **177**.
 
+## Settings layout
+
+- Media startup is available directly from **Settings → Media** and no longer
+  requires navigating through Diagnostics or developer tools.
+- The dedicated Media startup page opens with the selected-media controls
+  expanded. Compatibility reports, manual tests and pinned legacy PF3/PF4
+  remain behind an optional technical-tools expander on this page.
+- Confirm Settings → Media navigation and system Back return to Settings;
+  verify status/route labels after turning auto ON/OFF and switching routes.
+
 ## Design boundary
 
 - Dynamic A (auxiliary) and B (direct) launch the **component observed from

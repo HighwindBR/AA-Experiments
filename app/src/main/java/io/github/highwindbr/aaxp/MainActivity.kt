@@ -1732,13 +1732,15 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
         }
     }
     when(page){
+        SettingsPage.MEDIA -> MediaStartupScreen(state, {onPage(SettingsPage.ROOT)},
+            model::setMediaStartupTrace, model::requestSpotifyManualLaunch,
+            model::setMediaStartupAuto, model::inspectMediaStartupSemantics,
+            model::armMediaStartupLab, model::disarmMediaStartupLab,
+            model::chooseMediaLabRoute, model::requestMediaLabManualTest,
+            model::setMediaLabAuto)
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
-            model::setVideoTimingProtocolTrace, model::setMediaStartupTrace,
-            model::requestSpotifyManualLaunch, model::setMediaStartupAuto,
-            model::inspectMediaStartupSemantics, model::armMediaStartupLab,
-            model::disarmMediaStartupLab, model::chooseMediaLabRoute,
-            model::requestMediaLabManualTest, model::setMediaLabAuto,
+            model::setVideoTimingProtocolTrace,
             advancedAccess, onAdvancedAccess,
             model::pauseAllAdvanced, model::restoreAllAdvanced,
             model::setDoubleGetterProbe)
@@ -1838,13 +1840,23 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp), verticalArrangement=Arrangement.spacedBy(10.dp)){
-            item{ScreenTitle("Settings", "Appearance, data and engineering tools")}
+            item{ScreenTitle("Settings", "Appearance, media and advanced tools")}
             item{SectionLabel("Appearance")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Column{
                 AnchoredPreferenceDropdown(Icons.Default.DarkMode, "Theme", "Choose the app theme mode", listOf("Follow system", "Light", "Dark"), theme.ordinal) { onTheme(ThemeMode.entries[it]) }
                 HorizontalDivider(Modifier.padding(horizontal = 16.dp))
                 AnchoredPreferenceDropdown(Icons.Default.Palette, "Accent color", "Choose the app accent palette", listOf("Lab Green", "Material You"), accent.ordinal) { onAccent(AccentPalette.entries[it]) }
             }}}
+            item{SectionLabel("Media")}
+            item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
+                SettingsRow(Icons.Default.PlayCircle, "Media startup",
+                    when {
+                        state.mediaLabAutoEnabled -> "Automatic opening on · Route ${state.mediaLabRoute}"
+                        state.mediaLabArmed -> "Automatic opening off · Routes A/B available"
+                        state.mediaStartupAutoEnabled -> "Legacy Spotify opening enabled"
+                        else -> "Automatically open your selected media app"
+                    }) { onPage(SettingsPage.MEDIA) }
+            }}
             item{SectionLabel("Data")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
                 SettingsRow(Icons.Default.Storage, "Backup & recovery",
@@ -1979,12 +1991,9 @@ private class TouchMenuPositionProvider(
     }
 }
 
-@Composable private fun DiagnosticsScreen(
+@Composable private fun MediaStartupScreen(
     state: ManagerUiState,
     onBack: () -> Unit,
-    onCatalog: () -> Unit,
-    onDeepResolve: () -> Unit,
-    onVideoTimingTrace: (Boolean) -> Unit,
     onMediaStartupTrace: (Boolean) -> Unit,
     onMediaSpotifyLaunchTest: () -> Unit,
     onMediaStartupAuto: (Boolean) -> Unit,
@@ -1993,23 +2002,12 @@ private class TouchMenuPositionProvider(
     onMediaLabDisarm: () -> Unit,
     onMediaLabRoute: (String) -> Unit,
     onMediaLabTest: () -> Unit,
-    onMediaLabAuto: (Boolean) -> Unit,
-    advancedAccess: Boolean,
-    onAdvancedAccess: (Boolean) -> Unit,
-    onPauseAllAdvanced: () -> Unit,
-    onRestoreAllAdvanced: () -> Unit,
-    onDoubleGetterProbe: (String, Boolean) -> Unit
+    onMediaLabAuto: (Boolean) -> Unit
 ) {
-    val clipboard = LocalClipboardManager.current
-    var expanded by remember { mutableStateOf<String?>(null) }
-    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
+    // Primary media behavior is a first-class Settings feature, not a
+    // nested Diagnostics developer tool. Technical controls remain optional.
+    var mediaExpanded by rememberSaveable { mutableStateOf(true) }
     var mediaToolsExpanded by rememberSaveable { mutableStateOf(false) }
-    // An armed diagnostic is revealed on entry, but can still be collapsed.
-    LaunchedEffect(state.videoTimingTraceEnabled, state.mediaStartupTraceEnabled, state.probeTargetKey) {
-        if (state.videoTimingTraceEnabled || state.mediaStartupTraceEnabled || state.probeTargetKey != null)
-            developerToolsExpanded = true
-    }
-    var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     var spotifyPf3Confirmation by remember { mutableStateOf(false) }
     var spotifyPf4Confirmation by remember { mutableStateOf(false) }
     var spotifyPf6Confirmation by remember { mutableStateOf(false) }
@@ -2078,110 +2076,18 @@ private class TouchMenuPositionProvider(
             }
         )
     }
-    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
-    fun copy(value: String) = clipboard.setText(AnnotatedString(value))
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { SubpageHeader("Diagnostics", "Installation, resolver and runtime", onBack) }
-        item { DiagnosticSection("Installation", "Android Auto ${state.aa.versionName ?: "not found"}", Icons.Default.Info, expanded == "installation", { expanded = if(expanded=="installation") null else "installation" }) {
-            DiagnosticValue("Base APK", state.aa.basePath?.substringAfterLast('/')?.substringAfterLast('\\') ?: "Not available") { state.aa.basePath?.let(::copy) }
-            DiagnosticValue("Base SHA-256", state.aa.baseSha256 ?: "Not observed") { state.aa.baseSha256?.let(::copy) }
-        } }
-        item { DiagnosticSection("DEX files", "${state.aa.dexSha256.size} files", Icons.Default.Storage, expanded == "dex", { expanded = if(expanded=="dex") null else "dex" }) { state.aa.dexSha256.forEach { (name, hash) -> DiagnosticValue(name, hash) { copy(hash) } } } }
-
-        // Advanced access remains prominent. Historical probe tools only
-        // appear when requested, or while an existing diagnostic is armed.
+    LazyColumn(
+        Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         item {
-            val countActive = state.advancedRecords.count {
-                it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
-            }
-            DiagnosticSection("Advanced Overrides",
-                if (advancedAccess) "Enabled · ${state.advancedCandidates.size} eligible" else "Disabled · tap to configure",
-                Icons.Default.Security, expanded == "advanced",
-                { expanded = if (expanded == "advanced") null else "advanced" }) {
-                FilterToggle("Show Advanced in Experiments",
-                    "Only eligible typed getters, marked ADVANCED. Enable once; edit from Experiments.",
-                    advancedAccess, onAdvancedAccess)
-                Text("Advanced mode changes editor access only. Disabling this switch does not pause an existing override.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                DiagnosticValue("Eligible this build", if (advancedAccess)
-                    state.advancedCandidates.size.toString() else "Enable to load")
-                DiagnosticValue("Stored Advanced records", state.advancedRecords.size.toString())
-                DiagnosticValue("Active on current build", countActive.toString())
-                DiagnosticValue("Published Advanced hooks", state.advancedPublishedCount.toString())
-                if (state.advancedRecords.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedButton(onPauseAllAdvanced, enabled = countActive > 0) {
-                            Text("Pause all")
-                        }
-                        OutlinedButton({ restoreAdvancedConfirm = true }) {
-                            Text("Restore baselines")
-                        }
-                    }
-                }
-                Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
-        item {
-            val traceArmed = state.videoTimingTraceEnabled || state.mediaStartupTraceEnabled || state.probeTargetKey != null
-            OutlinedButton(
-                onClick = { developerToolsExpanded = !developerToolsExpanded },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Default.BugReport, null)
-                Spacer(Modifier.width(10.dp))
-                Text(if (developerToolsExpanded) "Hide developer tools"
-                    else if (traceArmed) "Developer tools · diagnostic active"
-                    else "Show developer tools")
-            }
-        }
-        if (developerToolsExpanded) {
-        item {
-            val supported = state.aa.runtimeTarget &&
-                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text("Video Timing protocol trace", fontWeight = FontWeight.Bold)
-                            Text("Read-only · inspected Android Auto 18.0 build",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Text(
-                        when {
-                            state.videoTimingTraceEnabled ->
-                                "ARMED · restart Android Auto to install read-only hooks"
-                            supported -> "OFF · no trace hooks requested"
-                            else -> "Unavailable · requires the exact inspected Android Auto base APK"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (state.videoTimingTraceEnabled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text("Observe the HU protocol major/minor and the selected Video Timing Controller branch. This does not change the negotiated protocol, getter values, or vehicle state.",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(
-                        onClick = { onVideoTimingTrace(!state.videoTimingTraceEnabled) },
-                        enabled = state.framework.connected && (supported || state.videoTimingTraceEnabled),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (state.videoTimingTraceEnabled)
-                            "Disable VTC trace" else "Enable VTC trace")
-                    }
-                    Text("LSPosed events: VTC_TRACE_INSTALLED, VTC_HU_PROTOCOL_OBSERVED, VTC_SELECTOR_INVOKED, VTC_BRANCH_SELECTED. Disable after testing; restart Android Auto to remove hooks.",
-                        style = MaterialTheme.typography.labelSmall)
-                }
-            }
+            SubpageHeader("Media startup", "Automatically open the selected media app", onBack)
         }
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup",
+            DiagnosticSection("Automatic media opening",
                 when {
                     state.mediaLabAutoEnabled -> "Automatic media opening ON · next connection"
                     state.mediaLabArmed -> "Dynamic routes ready · automatic opening OFF"
@@ -2192,11 +2098,11 @@ private class TouchMenuPositionProvider(
                     state.aa.runtimeTarget -> "Compatibility scan available · launch disabled"
                     else -> "No installed Android Auto available"
                 },
-                Icons.Default.BugReport, expanded == "mediaStartupTrace",
-                { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
+                Icons.Default.PlayCircle, mediaExpanded,
+                { mediaExpanded = !mediaExpanded }) {
                 Text("Open the currently selected Android Auto media app on connection, without starting playback. Requires root + LSPosed, a compatible build-specific resolver profile, and one-time opt-in per Android Auto build.",
                     style = MaterialTheme.typography.bodySmall)
-                Text("Set up while parked. Resolve the installed build, restart Android Auto, select route A or B, then enable automatic opening. If structural verification fails, the feature remains unavailable.",
+                Text("Configure while parked: resolve the installed Android Auto build, restart Android Auto, then choose route A or B and opt in. If verification fails, automatic opening remains unavailable.",
                     style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = onMediaLabArm,
                     enabled = state.aa.runtimeTarget && state.framework.connected &&
@@ -2300,6 +2206,135 @@ private class TouchMenuPositionProvider(
                         Text("Legacy PF3/PF4 applies only to the pinned, previously validated build. A manual launch is limited to one attempt per session; successful method return does not prove head-unit visibility.",
                             style = MaterialTheme.typography.labelSmall)
                     }
+                }
+            }
+        }
+        item {
+            Text("This feature does not start audio playback. Opening requests use Android Auto's own controller; they can be rejected by Android Auto or the head unit. Configure and test only while parked.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable private fun DiagnosticsScreen(
+    state: ManagerUiState,
+    onBack: () -> Unit,
+    onCatalog: () -> Unit,
+    onDeepResolve: () -> Unit,
+    onVideoTimingTrace: (Boolean) -> Unit,
+    advancedAccess: Boolean,
+    onAdvancedAccess: (Boolean) -> Unit,
+    onPauseAllAdvanced: () -> Unit,
+    onRestoreAllAdvanced: () -> Unit,
+    onDoubleGetterProbe: (String, Boolean) -> Unit
+) {
+    val clipboard = LocalClipboardManager.current
+    var expanded by remember { mutableStateOf<String?>(null) }
+    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
+    // An armed diagnostic is revealed on entry, but can still be collapsed.
+    LaunchedEffect(state.videoTimingTraceEnabled, state.probeTargetKey) {
+        if (state.videoTimingTraceEnabled || state.probeTargetKey != null)
+            developerToolsExpanded = true
+    }
+    var restoreAdvancedConfirm by remember { mutableStateOf(false) }
+    val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
+    fun copy(value: String) = clipboard.setText(AnnotatedString(value))
+    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { SubpageHeader("Diagnostics", "Installation, resolver and runtime", onBack) }
+        item { DiagnosticSection("Installation", "Android Auto ${state.aa.versionName ?: "not found"}", Icons.Default.Info, expanded == "installation", { expanded = if(expanded=="installation") null else "installation" }) {
+            DiagnosticValue("Base APK", state.aa.basePath?.substringAfterLast('/')?.substringAfterLast('\\') ?: "Not available") { state.aa.basePath?.let(::copy) }
+            DiagnosticValue("Base SHA-256", state.aa.baseSha256 ?: "Not observed") { state.aa.baseSha256?.let(::copy) }
+        } }
+        item { DiagnosticSection("DEX files", "${state.aa.dexSha256.size} files", Icons.Default.Storage, expanded == "dex", { expanded = if(expanded=="dex") null else "dex" }) { state.aa.dexSha256.forEach { (name, hash) -> DiagnosticValue(name, hash) { copy(hash) } } } }
+
+        // Advanced access remains prominent. Historical probe tools only
+        // appear when requested, or while an existing diagnostic is armed.
+        item {
+            val countActive = state.advancedRecords.count {
+                it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
+            }
+            DiagnosticSection("Advanced Overrides",
+                if (advancedAccess) "Enabled · ${state.advancedCandidates.size} eligible" else "Disabled · tap to configure",
+                Icons.Default.Security, expanded == "advanced",
+                { expanded = if (expanded == "advanced") null else "advanced" }) {
+                FilterToggle("Show Advanced in Experiments",
+                    "Only eligible typed getters, marked ADVANCED. Enable once; edit from Experiments.",
+                    advancedAccess, onAdvancedAccess)
+                Text("Advanced mode changes editor access only. Disabling this switch does not pause an existing override.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                DiagnosticValue("Eligible this build", if (advancedAccess)
+                    state.advancedCandidates.size.toString() else "Enable to load")
+                DiagnosticValue("Stored Advanced records", state.advancedRecords.size.toString())
+                DiagnosticValue("Active on current build", countActive.toString())
+                DiagnosticValue("Published Advanced hooks", state.advancedPublishedCount.toString())
+                if (state.advancedRecords.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(onPauseAllAdvanced, enabled = countActive > 0) {
+                            Text("Pause all")
+                        }
+                        OutlinedButton({ restoreAdvancedConfirm = true }) {
+                            Text("Restore baselines")
+                        }
+                    }
+                }
+                Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        item {
+            val traceArmed = state.videoTimingTraceEnabled || state.probeTargetKey != null
+            OutlinedButton(
+                onClick = { developerToolsExpanded = !developerToolsExpanded },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) {
+                Icon(Icons.Default.BugReport, null)
+                Spacer(Modifier.width(10.dp))
+                Text(if (developerToolsExpanded) "Hide developer tools"
+                    else if (traceArmed) "Developer tools · diagnostic active"
+                    else "Show developer tools")
+            }
+        }
+        if (developerToolsExpanded) {
+        item {
+            val supported = state.aa.runtimeTarget &&
+                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(14.dp))
+                        Column {
+                            Text("Video Timing protocol trace", fontWeight = FontWeight.Bold)
+                            Text("Read-only · inspected Android Auto 18.0 build",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Text(
+                        when {
+                            state.videoTimingTraceEnabled ->
+                                "ARMED · restart Android Auto to install read-only hooks"
+                            supported -> "OFF · no trace hooks requested"
+                            else -> "Unavailable · requires the exact inspected Android Auto base APK"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (state.videoTimingTraceEnabled) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text("Observe the HU protocol major/minor and the selected Video Timing Controller branch. This does not change the negotiated protocol, getter values, or vehicle state.",
+                        style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        onClick = { onVideoTimingTrace(!state.videoTimingTraceEnabled) },
+                        enabled = state.framework.connected && (supported || state.videoTimingTraceEnabled),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (state.videoTimingTraceEnabled)
+                            "Disable VTC trace" else "Enable VTC trace")
+                    }
+                    Text("LSPosed events: VTC_TRACE_INSTALLED, VTC_HU_PROTOCOL_OBSERVED, VTC_SELECTOR_INVOKED, VTC_BRANCH_SELECTED. Disable after testing; restart Android Auto to remove hooks.",
+                        style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

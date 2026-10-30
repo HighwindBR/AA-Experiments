@@ -1,5 +1,19 @@
 # Changelog
 
+## Beta5 RC1 UI refinement — Media startup is now first-class Settings
+
+- Move Media startup out of Diagnostics developer tools into
+  **Settings → Media → Media startup** with an always-visible Settings row
+  indicating automatic-open status and preferred route.
+- Give media startup a dedicated page with its primary controls expanded by
+  default; retain A/B selection and opt-in confirmations. Keep compatibility
+  scanning, manual route tests, and legacy PF3/PF4 fallback in an optional
+  tools section on that page.
+- Keep advanced override diagnostics, probe tools, and resolver functions in
+  Diagnostics. No change to projection hooks, selected-media consent, LSPosed
+  preference keys or build fingerprint validation.
+- RC1 remains a private validation candidate. No release publication.
+
 ## 1.0.0-beta5-rc1 — validation candidate (not released)
 
 - Generalize dynamically resolved Media Startup A/B routes to the **currently selected Android Auto media app**, rather than Spotify only. The media-selection callback provides the actual component; full package and class must still match at dispatch. No arbitrary app/package entry or autoplay.
