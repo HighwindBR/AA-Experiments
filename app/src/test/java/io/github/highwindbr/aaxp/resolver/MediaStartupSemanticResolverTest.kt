@@ -24,6 +24,14 @@ class MediaStartupSemanticResolverTest {
             anchors = *emptyArray<String>()).copy(invoked = setOf(
                 "$route->z(Landroid/content/Intent;$options)V",
                 "$options-><init>()V")),
+        method("Lrun/Tracker;", "run", stat = false)
+            .copy(runnable = true, invoked = setOf(
+                "$route->o()$route",
+                "Landroid/content/Intent;->getComponent()Landroid/content/ComponentName;",
+                "Landroid/content/Intent;->setComponent(Landroid/content/ComponentName;)Landroid/content/Intent;",
+                "Landroid/content/ComponentName;->getPackageName()Ljava/lang/String;",
+                "Landroid/os/SystemClock;->elapsedRealtime()J"
+            )),
         method("Lm;", "d", listOf("Landroid/content/ComponentName;"),
             anchors = *arrayOf("onMediaAppChanged %s"))
     ), setOf(options))
@@ -33,7 +41,7 @@ class MediaStartupSemanticResolverTest {
         val result = S.resolve(inv, "unreviewed-APK-hash")
         assertEquals(S.Status.REVIEW_ONLY, result.status)
         assertEquals(false, result.autoLaunchAllowed)
-        assertEquals(8, result.roles.size)
+        assertEquals(9, result.roles.size)
         assertTrue(result.roles["launch.startCarActivity"]!!.contains("->z("))
     }
 
@@ -83,6 +91,25 @@ class MediaStartupSemanticResolverTest {
             S.resolve(old.copy(methods = old.methods + duplicate), "new").status)
     }
 
+    @Test fun activityTrackerRequiresUniqueRunnableWithStructuralCallsAndFactory() {
+        val original = fixture()
+        val tracker = original.methods.first { it.runnable }
+        assertEquals("Lrun/Tracker;->run()V", S.resolve(original,"new").roles["activity.firstProjected"])
+        val noFactory = original.copy(methods = original.methods.map {
+            if (it.runnable) it.copy(invoked = it.invoked - "$route->o()$route") else it
+        })
+        assertNull(S.resolve(noFactory,"new").roles["activity.firstProjected"])
+        assertEquals(S.Status.REVIEW_ONLY,S.resolve(noFactory,"new").status)
+        val duplicate = original.copy(methods = original.methods +
+            tracker.copy(owner = "Lrun/Other;"))
+        assertNull(S.resolve(duplicate,"new").roles["activity.firstProjected"])
+        val noApi = original.copy(methods = original.methods.map {
+            if (it.runnable) it.copy(invoked =
+                it.invoked - "Landroid/os/SystemClock;->elapsedRealtime()J") else it
+        })
+        assertNull(S.resolve(noApi,"new").roles["activity.firstProjected"])
+    }
+
     @Test fun parserOrBudgetErrorFailsClosed() {
         val result = S.resolve(fixture().copy(errors = listOf("truncated dex")), "any")
         assertEquals(S.Status.ERROR, result.status)
@@ -111,8 +138,11 @@ class MediaStartupSemanticResolverTest {
                 "z" -> "ff"; "o" -> "gg"; "d" -> "hh"; "i" -> "ii"; else -> it.name
             }
             it.copy(name = renamed, invoked = it.invoked.map { call ->
-                if (call.startsWith("$route->z(")) call.replace("$route->z(", "$route->ff(")
-                else call
+                when {
+                    call.startsWith("$route->z(") -> call.replace("$route->z(", "$route->ff(")
+                    call.startsWith("$route->o(") -> call.replace("$route->o(", "$route->gg(")
+                    else -> call
+                }
             }.toSet())
         })
         assertEquals(S.Status.REVIEW_ONLY, S.resolve(changed, "new").status)

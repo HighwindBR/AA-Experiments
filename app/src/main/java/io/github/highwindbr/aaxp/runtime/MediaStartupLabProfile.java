@@ -59,6 +59,14 @@ public final class MediaStartupLabProfile {
         };
         Map<String, Target> map = new LinkedHashMap<>();
         for (String key : required) map.put(key, new Target(json.getString(key)));
+        // Optional for manual-only profiles produced by PF6.1. Automatic
+        // startup is available ONLY if this independent activity role exists.
+        if (json.has("activity.firstProjected")) {
+            Target tracker = new Target(json.getString("activity.firstProjected"));
+            if (!"run".equals(tracker.name) || !"()V".equals(tracker.descriptor))
+                throw new IllegalArgumentException("Invalid first projected activity ABI");
+            map.put("activity.firstProjected", tracker);
+        }
         Target direct = map.get("launch.startCarActivity");
         Target aux = map.get("launch.auxiliary");
         Target factory = map.get("launch.controllerFactory");

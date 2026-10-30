@@ -36,7 +36,8 @@ object MediaStartupSemanticResolver {
         val returns: String,
         val static: Boolean,
         val strings: Set<String> = emptySet(),
-        val invoked: Set<String> = emptySet()
+        val invoked: Set<String> = emptySet(),
+        val runnable: Boolean = false
     ) {
         fun prototype(): String = "(${parameters.joinToString("")})$returns"
         fun reference(): String = "$owner->$name${prototype()}"
@@ -115,6 +116,22 @@ object MediaStartupSemanticResolver {
         }.orEmpty()
         val auxiliary = auxiliaries.singleOrNull()
 
+        // ActivityTracker implements Android's stable Runnable interface. Verify
+        // the controller factory *and* four framework API calls, not the name
+        // of its obfuscated class or a log literal.
+        val activityCandidates = factory?.let { f ->
+            methods.filter { m ->
+                m.runnable && !m.static && m.name == "run" &&
+                    m.parameters.isEmpty() && m.returns == VOID &&
+                    f.reference() in m.invoked &&
+                    "Landroid/content/Intent;->getComponent()Landroid/content/ComponentName;" in m.invoked &&
+                    "Landroid/content/Intent;->setComponent(Landroid/content/ComponentName;)Landroid/content/Intent;" in m.invoked &&
+                    "Landroid/content/ComponentName;->getPackageName()Ljava/lang/String;" in m.invoked &&
+                    "Landroid/os/SystemClock;->elapsedRealtime()J" in m.invoked
+            }
+        }.orEmpty()
+        val firstActivity = activityCandidates.singleOrNull()
+
         val media = byAnchor("onMediaAppChanged") {
             it.parameters == listOf(COMPONENT) && it.returns == VOID
         }.singleOrNull()
@@ -125,6 +142,7 @@ object MediaStartupSemanticResolver {
             teardown?.let { put("projection.teardown", it.reference()) }
             route?.let { put("launch.startCarActivity", it.reference()) }
             auxiliary?.let { put("launch.auxiliary", it.reference()) }
+            firstActivity?.let { put("activity.firstProjected", it.reference()) }
             factory?.let { put("launch.controllerFactory", it.reference()) }
             if (ctorProven) put("launch.optionsNoArgConstructor", "$options-><init>()V")
             media?.let { put("media.selectedApp", it.reference()) }
@@ -151,7 +169,7 @@ object MediaStartupSemanticResolver {
         return Evidence(status, baseHash, roles, missing,
             when (status) {
                 Status.KNOWN_BUILD_VALIDATED -> "Anchor/ABI proof corroborates the already field-tested AA 18.1. Existing pinned PF4 path stays unchanged."
-                Status.REVIEW_ONLY -> "Unique structural candidate on an unreviewed build. Requires independent cross-build and runtime evidence before active hooks."
+                Status.REVIEW_ONLY -> "Unique launch candidate on an unreviewed build. ActivityTracker: ${if (firstActivity != null) "UNIQUE" else if (activityCandidates.size > 1) "AMBIGUOUS" else "MISSING"}. Only a separately armed experimental lab may execute."
                 Status.AMBIGUOUS -> "Several internal methods match. Refusing to select a controller."
                 Status.UNSUPPORTED -> "Required lifecycle or launch evidence was not proven. No active remapping."
                 Status.ERROR -> "Unreadable DEX."
@@ -171,6 +189,12 @@ object MediaStartupSemanticResolver {
         val constructors = HashSet<String>()
         val problems = mutableListOf<String>()
         var dexCount = 0
+        val activityApi = setOf(
+            "Landroid/content/Intent;->getComponent()Landroid/content/ComponentName;",
+            "Landroid/content/Intent;->setComponent(Landroid/content/ComponentName;)Landroid/content/Intent;",
+            "Landroid/content/ComponentName;->getPackageName()Ljava/lang/String;",
+            "Landroid/os/SystemClock;->elapsedRealtime()J"
+        )
         try {
             ZipFile(baseApk).use { zip ->
                 val entries = zip.entries().asSequence().filter {
@@ -194,12 +218,34 @@ object MediaStartupSemanticResolver {
                         val rows = cls.methods.toList()
                         val anchored = mutableListOf<Method>()
                         var relevantController = false
+                        val implementsRunnable = cls.interfaces.any {
+                            it.toString() == "Ljava/lang/Runnable;"
+                        }
                         for (method in rows) {
                             if (method.name == "<init>" &&
                                 method.parameterTypes.isEmpty() && method.returnType == VOID) {
                                 constructors.add(cls.type)
                             }
                             val impl = method.implementation ?: continue
+                            // Bounded structural scan: retain only run() methods
+                            // that use all four stable Android API operations.
+                            // Resolve the controller relationship afterwards.
+                            if (implementsRunnable && method.name == "run" &&
+                                method.parameterTypes.isEmpty() && method.returnType == VOID) {
+                                val refs = impl.instructions.mapNotNull { ins ->
+                                    val ref = (ins as? ReferenceInstruction)?.reference
+                                        as? org.jf.dexlib2.iface.reference.MethodReference
+                                        ?: return@mapNotNull null
+                                    "${ref.definingClass}->${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
+                                }.toSet()
+                                if (refs.containsAll(activityApi)) {
+                                    val candidate = Method(cls.type, method.name,
+                                        emptyList(), VOID,
+                                        AccessFlags.STATIC.isSet(method.accessFlags),
+                                        invoked = refs, runnable = true)
+                                    selected[candidate.reference()] = candidate
+                                }
+                            }
                             val anchors = linkedSetOf<String>()
                             for (instruction in impl.instructions) {
                                 val value = ((instruction as? ReferenceInstruction)?.reference
