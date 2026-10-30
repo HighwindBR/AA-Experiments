@@ -72,6 +72,11 @@ A green build does not replace hands-on vehicle validation.
 
 ## Release gate
 
+The private signing workflow now allows ONLY the exact RC1 feature ref
+`feature/beta5-rc1` with `1.0.0-beta5-rc1` / versionCode 177, and compares
+the signing certificate against the verified published beta4 APK. This gated,
+manual workflow was **not invoked** by preparing the branch.
+
 Only after automated gates and parked physical checks are reviewed: prepare an
 approved signed candidate through the existing private release pipeline, check
 APK signature and SHA-256, verify install/update/rollback on device, finalize

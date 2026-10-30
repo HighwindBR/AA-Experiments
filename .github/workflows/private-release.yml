@@ -71,7 +71,8 @@ jobs:
         github.ref == 'refs/heads/release/1.0.0-beta3' ||
         github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
         github.ref == 'refs/heads/release/1.0.0-beta4' ||
-        github.ref == 'refs/heads/feature/beta5-media-startup-preflight1'))
+        github.ref == 'refs/heads/feature/beta5-media-startup-preflight1' ||
+        github.ref == 'refs/heads/feature/beta5-rc1'))
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +130,8 @@ jobs:
       inputs.build_signed_candidate &&
       inputs.run_private_gates &&
       (github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
-       github.ref == 'refs/heads/feature/beta5-media-startup-preflight1')
+       github.ref == 'refs/heads/feature/beta5-media-startup-preflight1' ||
+       github.ref == 'refs/heads/feature/beta5-rc1')
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     permissions:
@@ -204,6 +206,11 @@ jobs:
               ;;
             refs/heads/feature/beta5-media-startup-preflight1)
               EXPECTED_VERSION="1.0.0-beta5-preflight1"; EXPECTED_CODE=170
+              BASE_VERSION="1.0.0-beta4"
+              BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
+              ;;
+            refs/heads/feature/beta5-rc1)
+              EXPECTED_VERSION="1.0.0-beta5-rc1"; EXPECTED_CODE=177
               BASE_VERSION="1.0.0-beta4"
               BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
               ;;

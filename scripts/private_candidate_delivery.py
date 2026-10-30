@@ -22,6 +22,8 @@ SOURCE_BRANCH = "refs/heads/feature/beta4-getter-probe-preflight"
 APK_NAME = "AAExperiments-1.0.0-beta4-candidate.apk"
 BETA5_BRANCH = "refs/heads/feature/beta5-media-startup-preflight1"
 BETA5_APK_NAME = "AAExperiments-1.0.0-beta5-preflight1-candidate.apk"
+BETA5_RC1_BRANCH = "refs/heads/feature/beta5-rc1"
+BETA5_RC1_APK_NAME = "AAExperiments-1.0.0-beta5-rc1-candidate.apk"
 
 
 def candidate_for_ref(ref: str) -> tuple[str, str, str]:
@@ -30,6 +32,8 @@ def candidate_for_ref(ref: str) -> tuple[str, str, str]:
         return APK_NAME, "aaxp-private-beta4-candidate", "1.0.0-beta4"
     if ref == BETA5_BRANCH:
         return BETA5_APK_NAME, "aaxp-private-beta5-preflight1", "1.0.0-beta5-preflight1"
+    if ref == BETA5_RC1_BRANCH:
+        return BETA5_RC1_APK_NAME, "aaxp-private-beta5-rc1", "1.0.0-beta5-rc1"
     raise ValueError("Private delivery is not enabled on this source ref.")
 
 
