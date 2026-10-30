@@ -1,6 +1,6 @@
 package io.github.highwindbr.aaxp.runtime;
 
-/** Pure, deterministic PF6.1 manual launch guard. No automatic launching. */
+/** Build-scoped media launch guard. Manual and auto share one attempt per session. */
 public final class MediaStartupLabGate {
     public static final String REQUEST_KEY = "diagnostics.media_startup.pf6_manual_request";
     public static final String ROUTE_KEY = "diagnostics.media_startup.pf6_route";
@@ -31,8 +31,7 @@ public final class MediaStartupLabGate {
     }
     /** Reserve the same single launch budget for a scheduled automatic attempt. */
     public synchronized boolean reserveForAutomatic() {
-        if (!ready || used || !"com.spotify.music".equals(componentPackage) ||
-                componentClass == null) return false;
+        if (!ready || used || componentPackage == null || componentClass == null) return false;
         used = true;
         return true;
     }
@@ -40,6 +39,11 @@ public final class MediaStartupLabGate {
     public synchronized long session() { return session; }
     public synchronized boolean isCurrent(long expected) { return ready && session == expected; }
     public synchronized String componentClass() { return componentClass; }
+    /** A callback-observed selected media component, never a caller-chosen Intent. */
+    public synchronized boolean selectedMediaMatches(String pkg, String cls) {
+        return ready && componentPackage != null && componentClass != null &&
+                componentPackage.equals(pkg) && componentClass.equals(cls);
+    }
     public synchronized String componentPackage() { return componentPackage; }
     public synchronized Result consider(String request, long now, Route expectedRoute) {
         if (request == null || request.equals(previous)) return Result.REPLAY;
@@ -58,7 +62,7 @@ public final class MediaStartupLabGate {
         // even if a remote-preference notification was missed.
         if (time < readyAt) return Result.EXPIRED;
         if (used) return Result.ALREADY_USED;
-        if (!"com.spotify.music".equals(componentPackage) || componentClass == null)
+        if (componentPackage == null || componentClass == null)
             return Result.NO_MEDIA;
         used = true;
         return Result.ACCEPTED;

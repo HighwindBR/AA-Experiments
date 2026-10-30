@@ -436,7 +436,7 @@ public final class AndroidAutoModule extends XposedModule {
 
 
     /**
-     * PF6.2: manual A/B plus separately opted-in automatic startup using
+     * Beta5 RC1: selected media app, manual A/B and separately opted-in auto using
      * ActivityTracker and the direct launch observer dynamically resolved
      * from the installed APK. Missing auto roles keep manual routes usable.
      */
@@ -508,13 +508,13 @@ public final class AndroidAutoModule extends XposedModule {
                                 mediaLabComponent = target;
                                 gate.media(target == null ? null : target.getPackageName(),
                                         target == null ? null : target.getClassName());
-                                automatic.onMediaChanged(target != null &&
-                                    MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
-                                        target.getPackageName()));
+                                boolean eligible = target != null &&
+                                        gate.selectedMediaMatches(target.getPackageName(),
+                                                target.getClassName());
+                                automatic.onMediaChanged(eligible);
                                 event(Log.INFO, "MEDIA_PF6_MEDIA_OBSERVED", null,
-                                        "spotify", String.valueOf(target != null &&
-                                                MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
-                                                        target.getPackageName())));
+                                        "selected", String.valueOf(eligible),
+                                        "package", eligible ? target.getPackageName() : "none");
                             }
                             return result;
                         });
@@ -536,7 +536,7 @@ public final class AndroidAutoModule extends XposedModule {
                                 .intercept(chain -> {
                                     Object original = chain.proceed();
                                     int session = automatic.onFirstActivity(SystemClock.elapsedRealtime());
-                                    if (session >= 0) scheduleDynamicSpotifyAuto(session);
+                                    if (session >= 0) scheduleDynamicSelectedMediaAuto(session);
                                     return original;
                                 });
                         hook(direct).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
@@ -614,7 +614,7 @@ public final class AndroidAutoModule extends XposedModule {
             long sessionId = gate.session();
             ComponentName component = mediaLabComponent;
             if (component == null || !gate.isCurrent(sessionId) ||
-                    !MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(component.getPackageName())) {
+                    !gate.selectedMediaMatches(component.getPackageName(), component.getClassName())) {
                 event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
                         "reason", "media_or_session_changed");
                 return;
@@ -622,7 +622,7 @@ public final class AndroidAutoModule extends XposedModule {
             if (mediaLabAutoGate != null) mediaLabAutoGate.onManualAttempt();
             event(Log.INFO, "MEDIA_PF6_REQUEST_ACCEPTED", null, "route", route.name());
             try {
-                dispatchMediaLabSpotify(route, sessionId);
+                dispatchMediaLabSelectedMedia(route, sessionId);
                 event(Log.INFO, "MEDIA_PF6_REQUEST_DISPATCHED", null,
                         "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
             } catch (Throwable problem) {
@@ -638,16 +638,17 @@ public final class AndroidAutoModule extends XposedModule {
     }
 
     /** Identical Intent for manual and automatic tests; no audio autoplay. */
-    private void dispatchMediaLabSpotify(MediaStartupLabGate.Route route, long sessionId)
+    private void dispatchMediaLabSelectedMedia(MediaStartupLabGate.Route route, long sessionId)
             throws Exception {
         MediaStartupLabGate gate = mediaLabGate;
         ComponentName component = mediaLabComponent;
         if (gate == null || component == null || !gate.isCurrent(sessionId) ||
-                !MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(component.getPackageName()))
-            throw new IllegalStateException("Media or projection changed before dispatch");
+                !gate.selectedMediaMatches(component.getPackageName(), component.getClassName()))
+            throw new IllegalStateException("Selected media or projection changed before dispatch");
         Object controller = mediaLabFactory.invoke(null);
-        if (controller == null || !gate.isCurrent(sessionId))
-            throw new IllegalStateException("Controller unavailable or projection ended");
+        if (controller == null || !gate.isCurrent(sessionId) ||
+                !gate.selectedMediaMatches(component.getPackageName(), component.getClassName()))
+            throw new IllegalStateException("Controller unavailable or selected media changed");
         Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
         intent.setComponent(component);
         if (route == MediaStartupLabGate.Route.A) {
@@ -659,16 +660,16 @@ public final class AndroidAutoModule extends XposedModule {
     }
 
     /** Schedule once after the first projected activity (PF4 settle policy). */
-    private void scheduleDynamicSpotifyAuto(int scheduledSession) {
+    private void scheduleDynamicSelectedMediaAuto(int scheduledSession) {
         if (!mediaLabAutoAvailable || mediaLabGate == null ||
                 mediaLaunchHandler == null) return;
-        mediaLaunchHandler.postDelayed(() -> attemptDynamicSpotifyAuto(scheduledSession),
+        mediaLaunchHandler.postDelayed(() -> attemptDynamicSelectedMediaAuto(scheduledSession),
                 MediaStartupAutoGate.SETTLE_MILLIS);
         event(Log.INFO, "MEDIA_PF6_AUTO_SCHEDULED", null,
                 "delayMs", String.valueOf(MediaStartupAutoGate.SETTLE_MILLIS));
     }
 
-    private void attemptDynamicSpotifyAuto(int scheduledSession) {
+    private void attemptDynamicSelectedMediaAuto(int scheduledSession) {
         MediaStartupAutoGate automatic = mediaLabAutoGate;
         MediaStartupLabGate gate = mediaLabGate;
         if (automatic == null || gate == null || !mediaLabAutoAvailable ||
@@ -678,7 +679,9 @@ public final class AndroidAutoModule extends XposedModule {
         MediaStartupAutoGate.Decision decision = automatic.consume(
                 scheduledSession, SystemClock.elapsedRealtime(), liveEnabled);
         if (decision != MediaStartupAutoGate.Decision.DISPATCH) {
-            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null, "reason", decision.name());
+            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null, "reason",
+                    decision == MediaStartupAutoGate.Decision.MEDIA_NOT_SPOTIFY ?
+                            "NO_SELECTED_MEDIA" : decision.name());
             return;
         }
         if (!gate.reserveForAutomatic()) {
@@ -695,7 +698,7 @@ public final class AndroidAutoModule extends XposedModule {
         MediaStartupLabGate.Route route = MediaStartupLabGate.Route.valueOf(preferred);
         event(Log.INFO, "MEDIA_PF6_AUTO_ATTEMPT", null, "route", route.name());
         try {
-            dispatchMediaLabSpotify(route, gate.session());
+            dispatchMediaLabSelectedMedia(route, gate.session());
             event(Log.INFO, "MEDIA_PF6_AUTO_DISPATCHED", null,
                     "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
         } catch (Throwable error) {

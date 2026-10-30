@@ -1,9 +1,9 @@
 package io.github.highwindbr.aaxp.runtime;
 
 /**
- * Beta5 PF4 experimental auto-open decision gate. Pure Java, no Android APIs.
+ * Shared PF4/PF6 auto-open decision gate. Pure Java, no Android APIs.
  * Default disabled. A single automatic attempt is possible only within a
- * freshly opened projection session, with Spotify already selected as media,
+ * freshly opened projection session, with an eligible selected media component,
  * following the first projected activity and a deliberate settling interval.
  *
  * ANY explicit launch route after the first activity suppresses auto-open.
@@ -23,7 +23,7 @@ public final class MediaStartupAutoGate {
     private boolean ready;
     private boolean optedInAtReady;
     private boolean firstActivity;
-    private boolean spotifySelected;
+    private boolean eligibleMediaSelected;
     private boolean explicitNavigation;
     private boolean attempted;
     private long readyAt;
@@ -38,7 +38,7 @@ public final class MediaStartupAutoGate {
         ready = true;
         optedInAtReady = enabledAtStart;
         firstActivity = false;
-        spotifySelected = false;
+        eligibleMediaSelected = false;
         explicitNavigation = false;
         attempted = false;
         readyAt = now;
@@ -60,8 +60,8 @@ public final class MediaStartupAutoGate {
         return optedInAtReady ? session : -1;
     }
 
-    public synchronized void onMediaChanged(boolean isSpotify) {
-        if (ready) spotifySelected = isSpotify;
+    public synchronized void onMediaChanged(boolean eligibleMedia) {
+        if (ready) eligibleMediaSelected = eligibleMedia;
     }
 
     /** A launch explicitly requested after the initial activity wins over auto. */
@@ -77,7 +77,7 @@ public final class MediaStartupAutoGate {
         ready = false;
         optedInAtReady = false;
         firstActivity = false;
-        spotifySelected = false;
+        eligibleMediaSelected = false;
         explicitNavigation = false;
         attempted = false;
         session++;
@@ -97,7 +97,8 @@ public final class MediaStartupAutoGate {
         attempted = true;
         if (now < readyAt || now - readyAt > MAX_FROM_READY_MILLIS) return Decision.STALE;
         if (explicitNavigation) return Decision.NAVIGATION_OBSERVED;
-        if (!spotifySelected) return Decision.MEDIA_NOT_SPOTIFY;
+        // Legacy enum kept for PF4 diagnostics; PF6 maps it to NO_SELECTED_MEDIA.
+        if (!eligibleMediaSelected) return Decision.MEDIA_NOT_SPOTIFY;
         return Decision.DISPATCH;
     }
 }

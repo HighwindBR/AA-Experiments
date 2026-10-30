@@ -5,7 +5,7 @@ import org.json.JSONException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Immutable per-build PF6.1 role map. Never authorizes automatic launching. */
+/** Immutable per-build role map. Hooks still require runtime ABI and explicit auto opt-in. */
 public final class MediaStartupLabProfile {
     public static final String MODE = "MANUAL_PLUS_OPT_IN_AUTO";
     public static final String LEGACY_MODE = "MANUAL_ONLY";

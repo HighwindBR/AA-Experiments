@@ -15,13 +15,13 @@ public class MediaStartupLabGateTest {
         assertEquals(MediaStartupLabGate.Result.ALREADY_USED, gate.consider(
             "v1|1006|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A", 1007, MediaStartupLabGate.Route.A));
     }
-    @Test public void rejectsExpiredReplayAndForeignMedia() {
+    @Test public void rejectsExpiredReplayAndMissingMedia() {
         MediaStartupLabGate gate = new MediaStartupLabGate(requestA);
         gate.ready(1000); gate.media("com.google.android.apps.youtube.music","x");
         assertEquals(MediaStartupLabGate.Result.REPLAY,gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
         assertEquals(MediaStartupLabGate.Result.EXPIRED,gate.consider(
             "v1|1000|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|B",14000,MediaStartupLabGate.Route.B));
-        assertEquals(MediaStartupLabGate.Result.NO_MEDIA,gate.consider(
+        assertEquals(MediaStartupLabGate.Result.ACCEPTED,gate.consider(
             "v1|14001|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A",14002,MediaStartupLabGate.Route.A));
     }
     @Test public void sessionEndsInvalidateAndNextSessionCanRun() {
@@ -57,6 +57,30 @@ public class MediaStartupLabGateTest {
         assertFalse(gate.reserveForAutomatic());
         gate.media("com.spotify.music","com.spotify.music.Service");
         assertTrue(gate.reserveForAutomatic());
+    }
+    @Test public void selectedPlayerCanBeNonSpotifyAndMustMatchBothParts() {
+        MediaStartupLabGate gate = new MediaStartupLabGate(null);
+        gate.ready(1000);
+        gate.media("com.google.android.apps.youtube.music", "yt.music.Service");
+        assertTrue(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "yt.music.Service"));
+        assertFalse(gate.selectedMediaMatches("com.spotify.music", "yt.music.Service"));
+        assertFalse(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "old.Service"));
+        assertTrue(gate.reserveForAutomatic());
+        assertFalse(gate.reserveForAutomatic());
+        gate.ended();
+        assertFalse(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "yt.music.Service"));
+    }
+    @Test public void nullOrIncompleteSelectionIsNeverLaunched() {
+        MediaStartupLabGate gate = new MediaStartupLabGate(null);
+        gate.ready(1000);
+        gate.media("com.example.player", "");
+        assertFalse(gate.reserveForAutomatic());
+        assertEquals(MediaStartupLabGate.Result.NO_MEDIA, gate.consider(
+            requestA, 1001, MediaStartupLabGate.Route.A));
+        gate.media("com.example.player", "player.Service");
+        assertFalse(gate.selectedMediaMatches("com.example.player", "other.Service"));
+        gate.media(null, null);
+        assertFalse(gate.reserveForAutomatic());
     }
     @Test public void mismatchedPreferenceOrMalformedNeverInvokes() {
         MediaStartupLabGate gate = new MediaStartupLabGate(null);
