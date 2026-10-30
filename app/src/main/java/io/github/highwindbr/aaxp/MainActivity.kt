@@ -2183,7 +2183,7 @@ private class TouchMenuPositionProvider(
             DiagnosticSection("Media Startup · preflight6.2",
                 when {
                     state.mediaLabAutoEnabled -> "PF6.2 dynamic auto ON · next connection"
-                    state.mediaLabArmed -> "PF6.2 dynamic routes armed · auto opt-in OFF",
+                    state.mediaLabArmed -> "PF6.2 dynamic routes armed · auto opt-in OFF"
                     state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
                     state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
                     state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
