@@ -93,9 +93,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
     // A slower query must never replace results from a newer screen request.
-    private var advancedCandidatesRequest = 0L
-    private var catalogSearchRequest = 0L
-    private var detailsRequest = 0L
+    private val advancedCandidatesGate = LatestRequestGate()
+    private val catalogSearchGate = LatestRequestGate()
+    private val detailsGate = LatestRequestGate()
 
     init {
         viewModelScope.launch {
@@ -157,7 +157,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
      * Reject results for builds which changed during the asynchronous query.
      */
     fun loadAdvancedCandidates() = viewModelScope.launch {
-        val request = ++advancedCandidatesRequest
+        val request = advancedCandidatesGate.begin()
         val build = mutable.value.aa.buildFingerprintSha256
         if (build == null || !mutable.value.aa.runtimeTarget) {
             mutable.value = mutable.value.copy(advancedCandidates = emptyList())
@@ -170,36 +170,36 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        if (request == advancedCandidatesRequest && mutable.value.aa.buildFingerprintSha256 == build &&
+        if (advancedCandidatesGate.accepts(request) && mutable.value.aa.buildFingerprintSha256 == build &&
             mutable.value.aa.runtimeTarget)
             mutable.value = mutable.value.copy(advancedCandidates = candidates)
     }
 
     fun clearAdvancedCandidates() {
-        advancedCandidatesRequest++
+        advancedCandidatesGate.invalidate()
         if (mutable.value.advancedCandidates.isNotEmpty())
             mutable.value = mutable.value.copy(advancedCandidates = emptyList())
     }
 
     fun searchCatalog(query: CatalogQuery, append: Boolean = false) = viewModelScope.launch {
-        val request = ++catalogSearchRequest
+        val request = catalogSearchGate.begin()
         val hash = mutable.value.aa.buildFingerprintSha256 ?: return@launch
         val result = withContext(Dispatchers.IO) { database.search(hash, query) }
-        if (request != catalogSearchRequest || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
+        if (!catalogSearchGate.accepts(request) || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
         mutable.value = mutable.value.copy(catalog = if (append) (mutable.value.catalog + result.items).distinctBy { it.key } else result.items, catalogTotal = result.total)
     }
 
     fun loadDetails(key: String) = viewModelScope.launch {
-        val request = ++detailsRequest
+        val request = detailsGate.begin()
         val hash = mutable.value.aa.buildFingerprintSha256 ?: return@launch
         mutable.value = mutable.value.copy(detailsLoading = true, selectedDetails = null)
         val value = withContext(Dispatchers.IO) { database.details(hash, key) }
-        if (request != detailsRequest || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
+        if (!detailsGate.accepts(request) || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
         mutable.value = mutable.value.copy(detailsLoading = false, selectedDetails = value)
     }
 
     fun clearDetails() {
-        detailsRequest++
+        detailsGate.invalidate()
         mutable.value = mutable.value.copy(selectedDetails = null, detailsLoading = false)
     }
 
