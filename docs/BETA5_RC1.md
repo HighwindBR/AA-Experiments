@@ -1,8 +1,14 @@
 # AA Experiments beta5 RC1 — validation and acceptance
 
-**Status:** source candidate only; not yet approved for publication. Branch
-`feature/beta5-rc1`, based on the physically accepted PF6.2 (AA 18.1
-Chevrolet head unit), Android app versionCode **177**.
+**Status:** RC1 reported functional in the vehicle by the maintainer on
+2026-10-30; superseded by the release-preparation branch
+`release/1.0.0-beta5` (`versionCode=178`). The RC1 source branch
+`feature/beta5-rc1` (versionCode **177**) remains a historical validation
+baseline. No official beta5 publication is implied.
+
+The report confirms overall functionality. The detailed checkboxes below
+remain an acceptance **matrix**, not a claim that every route, secondary
+player, negative scenario or cross-version test was individually demonstrated.
 
 ## Settings layout
 
