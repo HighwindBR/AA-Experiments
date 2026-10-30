@@ -524,10 +524,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ServiceBridge.dynamicPreferencesOrNull()?.edit()
                     ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
                     ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY, "false")
                     ?.commit() == true
             }
             if (!disabledAuto || !mediaLabPreferences.edit()
-                .putString("auto:$fingerprint", "false")
+                .putString("auto-selected:$fingerprint", "false")
                 .putString(fingerprint, lab.toString()).commit()) {
                 mutable.value = mutable.value.copy(message =
                     "Could not persist the verified Media Startup profile; existing profile is unchanged.")
@@ -555,10 +556,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val remoteDisabled = withContext(Dispatchers.IO) {
             ServiceBridge.dynamicPreferencesOrNull()?.edit()
                 ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
+                    "false")
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY,
                     "false")?.commit() == true
         }
         if (!remoteDisabled || !mediaLabPreferences.edit().remove(fingerprint)
-                .putString("auto:$fingerprint", "false").commit()) {
+                .putString("auto-selected:$fingerprint", "false").commit()) {
             mutable.value = mutable.value.copy(message = "Dynamic route disable could not be saved.")
             return@launch
         }
@@ -596,14 +599,16 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val key = io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY
         val wrote = withContext(Dispatchers.IO) {
             ServiceBridge.dynamicPreferencesOrNull()?.edit()
-                ?.putString(key, enabled.toString())?.commit() == true
+                ?.putString(key, enabled.toString())
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY,
+                    "false")?.commit() == true
         }
         if (!wrote) {
             mutable.value = mutable.value.copy(message = "Could not update automatic Media Startup preference in LSPosed.")
             return@launch
         }
         val persisted = mediaLabPreferences.edit()
-            .putString("auto:$fingerprint", enabled.toString()).commit()
+            .putString("auto-selected:$fingerprint", enabled.toString()).commit()
         if (!persisted) {
             withContext(Dispatchers.IO) {
                 ServiceBridge.dynamicPreferencesOrNull()?.edit()
@@ -1435,7 +1440,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE &&
                 savedLab.optJSONObject("roles")?.has("activity.firstProjected") == true
             val labAutoEnabled = labAutoCapable &&
-                (mediaLabPreferences.getString("auto:${aa.buildFingerprintSha256}", "false") == "true")
+                (mediaLabPreferences.getString("auto-selected:${aa.buildFingerprintSha256}", "false") == "true")
             // Restore remote preference only for this installed build.
             if ((allPrefs[
                 io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY] as? String)

@@ -15,7 +15,9 @@ Chevrolet head unit), Android app versionCode **177**.
   for automatic launch. Missing/ambiguous/ABI-incompatible roles fail closed.
 - Exact APK base SHA-256 and full build fingerprint are required. No cross-build
   profile or opt-in is reused implicitly. Resolving/arming clears auto opt-in.
-- Auto is independently OFF by default, with explicit approval per build. It
+- Auto is independently OFF by default, with explicit approval per build. RC1
+  introduces a distinct selected-media opt-in key and saved preference namespace;
+  PF6.2 Spotify-only consent is neither inherited nor sufficient. It
   waits 2800 ms after first activity, requires readiness within 12 seconds,
   permits one attempt per session, cancels on user/manual navigation or
   disconnect, never retries another route, and never starts playback.

@@ -3,7 +3,9 @@
 ## 1.0.0-beta5-rc1 — validation candidate (not released)
 
 - Generalize dynamically resolved Media Startup A/B routes to the **currently selected Android Auto media app**, rather than Spotify only. The media-selection callback provides the actual component; full package and class must still match at dispatch. No arbitrary app/package entry or autoplay.
-- Keep automatic startup OFF by default for every AA build. Preserve 2800 ms settle, 12-second readiness cutoff, one attempt per session, navigation suppression, and explicit route preference without automatic fallback.
+- Keep automatic startup OFF by default for every AA build, with a **new consent key**
+  so preflight6.2's Spotify-only opt-ins never silently grant permission for other
+  media players. Preserve 2800 ms settle, 12-second readiness cutoff, one attempt per session, navigation suppression, and explicit route preference without automatic fallback.
 - Consolidate the Diagnostics card: primary automatic media startup controls; historical pinned PF3/PF4 and manual test tools are secondary. Pinned PF4 remains Spotify-only.
 - Preserve exact base-APK SHA and build-fingerprint linkage, resolver ambiguity rejection, and manual-only degradation when first projected activity is not uniquely resolved. No downgrade to inferred method names.
 - Add tests for other selected media packages, package/class mismatch, null or incomplete components, and shared one-attempt launch budget.
