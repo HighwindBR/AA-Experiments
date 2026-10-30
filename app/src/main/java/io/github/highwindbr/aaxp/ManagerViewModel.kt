@@ -92,6 +92,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val catalogExportGate = AnalysisOperationGate()
     val state: StateFlow<ManagerUiState> = mutable
     @Volatile private var deepResolveCancelRequested = false
+    // A slower query must never replace results from a newer screen request.
+    private var advancedCandidatesRequest = 0L
+    private var catalogSearchRequest = 0L
+    private var detailsRequest = 0L
 
     init {
         viewModelScope.launch {
@@ -153,6 +157,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
      * Reject results for builds which changed during the asynchronous query.
      */
     fun loadAdvancedCandidates() = viewModelScope.launch {
+        val request = ++advancedCandidatesRequest
         val build = mutable.value.aa.buildFingerprintSha256
         if (build == null || !mutable.value.aa.runtimeTarget) {
             mutable.value = mutable.value.copy(advancedCandidates = emptyList())
@@ -165,29 +170,38 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
-        if (mutable.value.aa.buildFingerprintSha256 == build)
+        if (request == advancedCandidatesRequest && mutable.value.aa.buildFingerprintSha256 == build &&
+            mutable.value.aa.runtimeTarget)
             mutable.value = mutable.value.copy(advancedCandidates = candidates)
     }
 
     fun clearAdvancedCandidates() {
+        advancedCandidatesRequest++
         if (mutable.value.advancedCandidates.isNotEmpty())
             mutable.value = mutable.value.copy(advancedCandidates = emptyList())
     }
 
     fun searchCatalog(query: CatalogQuery, append: Boolean = false) = viewModelScope.launch {
+        val request = ++catalogSearchRequest
         val hash = mutable.value.aa.buildFingerprintSha256 ?: return@launch
         val result = withContext(Dispatchers.IO) { database.search(hash, query) }
+        if (request != catalogSearchRequest || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
         mutable.value = mutable.value.copy(catalog = if (append) (mutable.value.catalog + result.items).distinctBy { it.key } else result.items, catalogTotal = result.total)
     }
 
     fun loadDetails(key: String) = viewModelScope.launch {
+        val request = ++detailsRequest
         val hash = mutable.value.aa.buildFingerprintSha256 ?: return@launch
         mutable.value = mutable.value.copy(detailsLoading = true, selectedDetails = null)
         val value = withContext(Dispatchers.IO) { database.details(hash, key) }
+        if (request != detailsRequest || mutable.value.aa.buildFingerprintSha256 != hash) return@launch
         mutable.value = mutable.value.copy(detailsLoading = false, selectedDetails = value)
     }
 
-    fun clearDetails() { mutable.value = mutable.value.copy(selectedDetails = null, detailsLoading = false) }
+    fun clearDetails() {
+        detailsRequest++
+        mutable.value = mutable.value.copy(selectedDetails = null, detailsLoading = false)
+    }
 
     /** Bounded, direct-to-document export: no 50k-row objects in the manager UI. */
     fun exportCatalogToUri(destination: Uri, request: CatalogExportRequest) = viewModelScope.launch {
@@ -245,7 +259,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val directory = File(imports, "session-${System.currentTimeMillis()}").apply { mkdirs() }
             val archive = File(directory, "import-${System.currentTimeMillis()}.apkm")
             try {
-                context.contentResolver.openInputStream(uri).use { input -> requireNotNull(input); archive.outputStream().use(input::copyTo) }
+                context.contentResolver.openInputStream(uri).use { input ->
+                    ArchiveInputResolver.copyInputBounded(requireNotNull(input), archive)
+                }
                 val resolved = ArchiveInputResolver.resolve(archive, directory); val base = resolved.base
                 val info = context.packageManager.getPackageArchiveInfo(base.absolutePath, ManifestCatalog.PACKAGE_FLAGS)
                 val versionCode = info?.let { PackageInfoCompat.getLongVersionCode(it) }
