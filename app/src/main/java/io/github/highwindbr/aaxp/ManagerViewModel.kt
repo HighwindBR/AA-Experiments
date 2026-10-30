@@ -506,7 +506,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.REVIEW_ONLY) ||
                 evidence.baseSha256 != hash || !evidence.roles.keys.containsAll(required)) {
                 mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary(),
-                    message = "PF6.1 was not armed: incomplete, ambiguous or incompatible DEX proof.")
+                    message = "Dynamic routes not armed: incomplete, ambiguous or incompatible DEX proof.")
                 return@launch
             }
             if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
@@ -530,20 +530,20 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 .putString("auto:$fingerprint", "false")
                 .putString(fingerprint, lab.toString()).commit()) {
                 mutable.value = mutable.value.copy(message =
-                    "PF6.1 could not persist the verified profile; existing published profile is unchanged.")
+                    "Could not persist the verified Media Startup profile; existing profile is unchanged.")
                 return@launch
             }
             mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
             refreshOverridesAndProfile()
             mutable.value = mutable.value.copy(message = if (
                 mutable.value.profilePublished && mutable.value.mediaLabArmed)
-                "PF6.2 profile published. Restart Android Auto; test A/B manually. Dynamic auto stays OFF until explicit opt-in." +
+                "Media Startup profile published. Restart Android Auto; test A/B while parked. Automatic opening stays OFF until opt-in." +
                     if ("activity.firstProjected" in evidence.roles) " ActivityTracker resolved." else " ActivityTracker unresolved; manual-only."
-            else "PF6.2 proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
+            else "Media Startup proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {
             mutable.value = mutable.value.copy(message =
-                "PF6.1 failed safely: ${e.javaClass.simpleName}")
+                "Media Startup scan failed safely: ${e.javaClass.simpleName}")
         } finally {
             mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
             analysisOperationGate.finish()
@@ -559,11 +559,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
         if (!remoteDisabled || !mediaLabPreferences.edit().remove(fingerprint)
                 .putString("auto:$fingerprint", "false").commit()) {
-            mutable.value = mutable.value.copy(message = "PF6.1 disable could not be saved.")
+            mutable.value = mutable.value.copy(message = "Dynamic route disable could not be saved.")
             return@launch
         }
         refreshOverridesAndProfile()
-        mutable.value = mutable.value.copy(message = "PF6.2 disarmed, automatic attempts disabled. Restart Android Auto to remove the dynamic hooks.")
+        mutable.value = mutable.value.copy(message = "Dynamic routes disarmed, automatic attempts disabled. Restart Android Auto to unload the hooks.")
     }
 
     fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
@@ -578,8 +578,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             "route:$fingerprint", route).commit()
         mutable.value = mutable.value.copy(
             mediaLabRoute = if (persisted) route else mutable.value.mediaLabRoute,
-            message = if (persisted) "PF6.1 preferred route: ${route}. Use manual test after connecting."
-                else "Could not save PF6.1 route persistently.")
+            message = if (persisted) "Preferred Media Startup route: ${route}. Applies to the next automatic attempt."
+                else "Could not persist Media Startup route.")
     }
 
     /** PF6.2: experimental automatic open is a separate per-build user opt-in. */
@@ -590,7 +590,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             (enabled && (!state.mediaLabArmed || !state.mediaLabAutoCapable ||
                 !state.profilePublished || state.mediaStartupAutoEnabled))) {
             mutable.value = state.copy(message =
-                "Dynamic auto requires an armed PF6.2 profile with unique ActivityTracker, and PF4 auto OFF.")
+                "Automatic opening requires a verified Media Startup profile with a unique ActivityTracker and legacy PF4 OFF.")
             return@launch
         }
         val key = io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY
@@ -599,7 +599,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ?.putString(key, enabled.toString())?.commit() == true
         }
         if (!wrote) {
-            mutable.value = mutable.value.copy(message = "Could not change PF6.2 auto preference in LSPosed.")
+            mutable.value = mutable.value.copy(message = "Could not update automatic Media Startup preference in LSPosed.")
             return@launch
         }
         val persisted = mediaLabPreferences.edit()
@@ -615,15 +615,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
         mutable.value = mutable.value.copy(mediaLabAutoEnabled = enabled,
             message = if (enabled)
-                "PF6.2 dynamic auto enabled for this build's NEXT projection session. Spotify must be selected before the first activity."
-            else "PF6.2 dynamic auto disabled. Any queued launch will be skipped.")
+                "Automatic media opening enabled for this Android Auto build's NEXT connection. Select your media player in Android Auto first."
+            else "Automatic media opening disabled. Any queued attempt will be skipped.")
     }
 
     fun requestMediaLabManualTest() = viewModelScope.launch {
         val ui = mutable.value
         if (!ui.framework.connected || !ui.profilePublished || !ui.mediaLabArmed) {
             mutable.value = ui.copy(message =
-                "PF6.1 is not armed. Resolve, publish profile and restart Android Auto.")
+                "Media Startup is not armed. Resolve, publish profile and restart Android Auto.")
             return@launch
         }
         val request = "v1|" + android.os.SystemClock.elapsedRealtime() + "|" +
@@ -634,8 +634,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     request)?.commit() == true
         }
         mutable.value = mutable.value.copy(message = if (saved)
-            "PF6.1 request for route ${ui.mediaLabRoute} saved. Verify LSPosed MEDIA_PF6_* and the head unit. One attempt per projection session."
-        else "PF6.1 LSPosed request failed.")
+            "Media Startup route ${ui.mediaLabRoute} manual test requested. Verify LSPosed MEDIA_PF6_* logs and the head unit; one attempt per connection."
+        else "Media Startup LSPosed request failed.")
     }
 
     /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */

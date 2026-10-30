@@ -2003,6 +2003,7 @@ private class TouchMenuPositionProvider(
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
     var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
+    var mediaToolsExpanded by rememberSaveable { mutableStateOf(false) }
     // An armed diagnostic is revealed on entry, but can still be collapsed.
     LaunchedEffect(state.videoTimingTraceEnabled, state.mediaStartupTraceEnabled, state.probeTargetKey) {
         if (state.videoTimingTraceEnabled || state.mediaStartupTraceEnabled || state.probeTargetKey != null)
@@ -2016,13 +2017,13 @@ private class TouchMenuPositionProvider(
     if (spotifyPf6AutoConfirm) {
         AlertDialog(
             onDismissRequest = { spotifyPf6AutoConfirm = false },
-            title = { Text("Enable PF6.2 dynamic auto-open?") },
-            text = { Text("Experimental and OFF by default. Starting with the NEXT projection session, the selected route ${state.mediaLabRoute} will attempt to open Spotify once after the first projected activity and a short delay, only if Spotify is the selected media app and no other navigation was observed. This does not play audio or bypass car restrictions. You can disable it here at any time.") },
+            title = { Text("Automatically open the selected media app?") },
+            text = { Text("Off by default for each Android Auto build. On the NEXT connection, route ${state.mediaLabRoute} will try to open the app already selected in Android Auto (for example, Spotify or YouTube Music), once after the first projected activity settles. Navigation or a changed session cancels the attempt. This does not start audio or bypass car restrictions. Only use while parked.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf6AutoConfirm = false
                     onMediaLabAuto(true)
-                }) { Text("Enable dynamic auto") }
+                }) { Text("Enable auto-open") }
             },
             dismissButton = {
                 TextButton(onClick = { spotifyPf6AutoConfirm = false }) { Text("Cancel") }
@@ -2032,8 +2033,8 @@ private class TouchMenuPositionProvider(
     if (spotifyPf6Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf6Confirmation = false },
-            title = { Text("PF6.1 · Test dynamic launch?") },
-            text = { Text("Only while parked and Android Auto is already visible. This invokes ONE dynamically resolved route (${state.mediaLabRoute}) per projection session, with the same Spotify media Intent as PF4. The method returning does not prove the UI opened.") },
+            title = { Text("Test the selected media launch route?") },
+            text = { Text("Only while parked, with Android Auto visible. This sends ONE request to the already selected media app using route ${state.mediaLabRoute}. The Android Auto controller may reject it, and a method return does not prove the app appeared on the head unit.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf6Confirmation = false
@@ -2180,23 +2181,88 @@ private class TouchMenuPositionProvider(
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Media Startup · preflight6.2",
+            DiagnosticSection("Media Startup",
                 when {
-                    state.mediaLabAutoEnabled -> "PF6.2 dynamic auto ON · next connection"
-                    state.mediaLabArmed -> "PF6.2 dynamic routes armed · auto opt-in OFF"
+                    state.mediaLabAutoEnabled -> "Automatic media opening ON · next connection"
+                    state.mediaLabArmed -> "Dynamic routes ready · automatic opening OFF"
                     state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
                     state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
                     state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
                     supported -> "Manual PF3 · PF4 opt-in OFF"
-                    state.aa.runtimeTarget -> "PF5 inspection available · launch disabled"
+                    state.aa.runtimeTarget -> "Compatibility scan available · launch disabled"
                     else -> "No installed Android Auto available"
                 },
                 Icons.Default.BugReport, expanded == "mediaStartupTrace",
                 { expanded = if (expanded == "mediaStartupTrace") null else "mediaStartupTrace" }) {
-                Text("Preflight6.2: two dynamically resolved routes support both manual tests and opt-in automatic Spotify opening. The historical PF4 auto remains separate and disabled while this profile is armed.",
+                Text("Open the currently selected Android Auto media app on connection, without starting playback. Requires root + LSPosed, a compatible build-specific resolver profile, and one-time opt-in per Android Auto build.",
                     style = MaterialTheme.typography.bodySmall)
-                Text("With vehicle parked: enable the trace, restart Android Auto, then use the test button while projected Maps/Waze is already visible. The internal controller decides how to route Spotify; success is not assumed.",
+                Text("Set up while parked. Resolve the installed build, restart Android Auto, select route A or B, then enable automatic opening. If structural verification fails, the feature remains unavailable.",
                     style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(onClick = onMediaLabArm,
+                    enabled = state.aa.runtimeTarget && state.framework.connected &&
+                        !state.mediaSemanticAnalysisRunning,
+                    modifier = Modifier.fillMaxWidth()) {
+                    Text(if (state.mediaLabArmed) "Recheck installed Android Auto build"
+                        else "Resolve and enable dynamic routes")
+                }
+                if (state.mediaLabArmed) {
+                    OutlinedButton(onClick = onMediaLabDisarm,
+                        enabled = state.framework.connected,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text("Disable dynamic routes (restart required)")
+                    }
+                }
+                if (state.mediaLabArmed) {
+                    Text("Preferred opening route (resolved for this build):",
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onMediaLabRoute("A") },
+                            modifier = Modifier.weight(1f),
+                            enabled = state.framework.connected && state.mediaLabRoute != "A") {
+                            Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
+                        }
+                        OutlinedButton(onClick = { onMediaLabRoute("B") },
+                            modifier = Modifier.weight(1f),
+                            enabled = state.framework.connected && state.mediaLabRoute != "B") {
+                            Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                        }
+                    }
+                    Text("Automatic opening uses one attempt per connection, never falls back to a second route, and cancels when manual navigation is observed.",
+                        style = MaterialTheme.typography.labelSmall)
+                    Text("Automatic startup compatibility: " +
+                        if (state.mediaLabAutoCapable) "resolved for this build" else "not available (manual route only)",
+                        style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = {
+                        if (state.mediaLabAutoEnabled) onMediaLabAuto(false)
+                        else spotifyPf6AutoConfirm = true
+                    }, enabled = state.framework.connected &&
+                        (state.mediaLabAutoEnabled || (state.profilePublished &&
+                            state.mediaLabAutoCapable && !state.mediaStartupAutoEnabled)),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(if (state.mediaLabAutoEnabled)
+                            "Disable automatic media opening"
+                            else "Enable automatic media opening")
+                    }
+                }
+                OutlinedButton(
+                    onClick = { mediaToolsExpanded = !mediaToolsExpanded },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (mediaToolsExpanded) "Hide compatibility and test tools"
+                    else "Compatibility and test tools") }
+                if (mediaToolsExpanded) {
+                    OutlinedButton(onClick = onMediaSemanticAnalysis,
+                        enabled = state.aa.runtimeTarget && !state.mediaSemanticAnalysisRunning,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(if (state.mediaSemanticAnalysisRunning)
+                            "Inspecting installed DEX…" else "Inspect Media Startup compatibility")
+                    }
+                    if (state.mediaLabArmed) {
+                        OutlinedButton(onClick = { spotifyPf6Confirmation = true },
+                            enabled = state.framework.connected && state.profilePublished,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Test route ${state.mediaLabRoute} once (parked)")
+                        }
+                    } else {
                 OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
                     enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
                     modifier = Modifier.fillMaxWidth()) {
@@ -2215,79 +2281,26 @@ private class TouchMenuPositionProvider(
                 ) { Text(if (state.mediaStartupAutoEnabled)
                     "Disable Spotify auto-open (PF4)"
                     else "Enable Spotify auto-open (PF4 test)") }
-                Text("PF4 remains pinned to validated AA 18.1. PF6.2 extends the dynamic routes with a structurally resolved first-activity tracker and PF4 session safeguards, while keeping PF4 unchanged.",
+                Text("Fallback PF4 is Spotify-only and pinned to the previously validated Android Auto 18.1 build. It remains separate from the dynamic routes.",
                     style = MaterialTheme.typography.labelSmall)
-                OutlinedButton(onClick = onMediaSemanticAnalysis,
-                    enabled = state.aa.runtimeTarget && !state.mediaSemanticAnalysisRunning,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.mediaSemanticAnalysisRunning)
-                        "Inspecting DEX semantic anchors…" else "PF5 · Inspect Media Startup compatibility")
-                }
-                OutlinedButton(onClick = onMediaLabArm,
-                    enabled = state.aa.runtimeTarget && state.framework.connected &&
-                        !state.mediaSemanticAnalysisRunning,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.mediaLabArmed) "PF6.2 · Re-resolve current build"
-                        else "PF6.2 · Resolve and arm dynamic routes")
-                }
-                if (state.mediaLabArmed) {
-                    OutlinedButton(onClick = onMediaLabDisarm,
-                        enabled = state.framework.connected,
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text("Disarm dynamic Media Startup lab")
                     }
-                }
-                if (state.mediaLabArmed) {
-                    Text("Preferred launch route (both are build-resolved):",
-                        style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onMediaLabRoute("A") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "A") {
-                            Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
-                        }
-                        OutlinedButton(onClick = { onMediaLabRoute("B") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "B") {
-                            Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                    state.mediaSemanticReport?.let { report ->
+                        SelectionContainer {
+                            Text(report, fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.labelSmall)
                         }
                     }
-                    OutlinedButton(onClick = { spotifyPf6Confirmation = true },
-                        enabled = state.framework.connected && state.profilePublished,
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text("PF6.1 · Test route ${state.mediaLabRoute} once")
-                    }
-                    Text("Reconnect after arming the lab. Manual tests are one per session. Dynamic auto needs the unique ActivityTracker and explicit opt-in. The same PF4 media Intent is used; no automatic route fallback or audio autoplay.",
-                        style = MaterialTheme.typography.labelSmall)
-                    Text("First projected activity: " +
-                        if (state.mediaLabAutoCapable) "resolved" else "not resolved for this profile",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = {
-                        if (state.mediaLabAutoEnabled) onMediaLabAuto(false)
-                        else spotifyPf6AutoConfirm = true
-                    }, enabled = state.framework.connected &&
-                        (state.mediaLabAutoEnabled || (state.profilePublished &&
-                            state.mediaLabAutoCapable && !state.mediaStartupAutoEnabled)),
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(if (state.mediaLabAutoEnabled)
-                            "Disable dynamic Spotify auto-open"
-                            else "Enable dynamic Spotify auto-open (PF6.2)")
-                    }
-                }
-                state.mediaSemanticReport?.let { report ->
-                    SelectionContainer {
-                        Text(report, fontFamily = FontFamily.Monospace,
+                    if (!state.mediaLabArmed) {
+                        OutlinedButton(
+                            onClick = { spotifyPf3Confirmation = true },
+                            enabled = supported && state.framework.connected &&
+                                state.mediaStartupTraceEnabled && state.profilePublished,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Legacy: open Spotify once (test)") }
+                        Text("Legacy PF3/PF4 applies only to the pinned, previously validated build. A manual launch is limited to one attempt per session; successful method return does not prove head-unit visibility.",
                             style = MaterialTheme.typography.labelSmall)
                     }
                 }
-                OutlinedButton(
-                    onClick = { spotifyPf3Confirmation = true },
-                    enabled = supported && !state.mediaLabArmed && state.framework.connected &&
-                        state.mediaStartupTraceEnabled && state.profilePublished,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Open Spotify once (test)") }
-                Text("PF3 events: MEDIA_PF3_PROOF_ARMED, MEDIA_PF3_REQUEST_ACCEPTED, MEDIA_PF3_REQUEST_DISPATCHED, MEDIA_PF3_LAUNCH_FAILED or MEDIA_PF3_REQUEST_REJECTED. One attempt per session; repeat only after a new projection session. No foreground/display success is implied.",
-                    style = MaterialTheme.typography.labelSmall)
             }
         }
         item {
