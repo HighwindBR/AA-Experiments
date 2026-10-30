@@ -62,6 +62,8 @@ data class ManagerUiState(
     val mediaSemanticReport: String? = null,
     val mediaLabArmed: Boolean = false,
     val mediaLabRoute: String = "A",
+    val mediaLabAutoCapable: Boolean = false,
+    val mediaLabAutoEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -74,7 +76,8 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
     val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean, val mediaLabArmed: Boolean, val mediaLabRoute: String)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean, val mediaLabArmed: Boolean, val mediaLabRoute: String,
+    val mediaLabAutoCapable: Boolean, val mediaLabAutoEnabled: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -472,9 +475,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * PF6.1: arm a build-bound, manually invokable lab profile. This does
-     * not enable automatic media opening, and a prior PF4 preference is
-     * disabled atomically. Runtime validates every reflected ABI again.
+     * PF6.2: arm build-bound manual A/B routes and optionally the
+     * ActivityTracker observer needed for a separate automatic opt-in.
+     * Every new proof starts with PF6 auto OFF, independently of PF4.
      */
     fun armMediaStartupLab() = viewModelScope.launch {
         val aa = mutable.value.aa
@@ -512,7 +515,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 return@launch
             }
             val lab = JSONObject().apply {
-                put("mode", "MANUAL_ONLY")
+                put("mode", io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE)
                 put("baseSha256", hash)
                 put("buildFingerprintSha256", fingerprint)
                 put("roles", JSONObject(evidence.roles))
@@ -520,9 +523,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val disabledAuto = withContext(Dispatchers.IO) {
                 ServiceBridge.dynamicPreferencesOrNull()?.edit()
                     ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
                     ?.commit() == true
             }
             if (!disabledAuto || !mediaLabPreferences.edit()
+                .putString("auto:$fingerprint", "false")
                 .putString(fingerprint, lab.toString()).commit()) {
                 mutable.value = mutable.value.copy(message =
                     "PF6.1 could not persist the verified profile; existing published profile is unchanged.")
@@ -532,8 +537,9 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             refreshOverridesAndProfile()
             mutable.value = mutable.value.copy(message = if (
                 mutable.value.profilePublished && mutable.value.mediaLabArmed)
-                "PF6.1 profile published for this build. Restart Android Auto, then test route A or B while parked. Auto-open stays OFF."
-            else "PF6.1 proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
+                "PF6.2 profile published. Restart Android Auto; test A/B manually. Dynamic auto stays OFF until explicit opt-in." +
+                    if ("activity.firstProjected" in evidence.roles) " ActivityTracker resolved." else " ActivityTracker unresolved; manual-only."
+            else "PF6.2 proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {
             mutable.value = mutable.value.copy(message =
@@ -546,12 +552,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     fun disarmMediaStartupLab() = viewModelScope.launch {
         val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
-        if (!mediaLabPreferences.edit().remove(fingerprint).commit()) {
+        val remoteDisabled = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
+                    "false")?.commit() == true
+        }
+        if (!remoteDisabled || !mediaLabPreferences.edit().remove(fingerprint)
+                .putString("auto:$fingerprint", "false").commit()) {
             mutable.value = mutable.value.copy(message = "PF6.1 disable could not be saved.")
             return@launch
         }
         refreshOverridesAndProfile()
-        mutable.value = mutable.value.copy(message = "PF6.1 disarmed. Restart Android Auto to unload the experimental hooks.")
+        mutable.value = mutable.value.copy(message = "PF6.2 disarmed, automatic attempts disabled. Restart Android Auto to remove the dynamic hooks.")
     }
 
     fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
@@ -568,6 +580,43 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mediaLabRoute = if (persisted) route else mutable.value.mediaLabRoute,
             message = if (persisted) "PF6.1 preferred route: ${route}. Use manual test after connecting."
                 else "Could not save PF6.1 route persistently.")
+    }
+
+    /** PF6.2: experimental automatic open is a separate per-build user opt-in. */
+    fun setMediaLabAuto(enabled: Boolean) = viewModelScope.launch {
+        val state = mutable.value
+        val fingerprint = state.aa.buildFingerprintSha256 ?: return@launch
+        if (!state.framework.connected ||
+            (enabled && (!state.mediaLabArmed || !state.mediaLabAutoCapable ||
+                !state.profilePublished || state.mediaStartupAutoEnabled))) {
+            mutable.value = state.copy(message =
+                "Dynamic auto requires an armed PF6.2 profile with unique ActivityTracker, and PF4 auto OFF.")
+            return@launch
+        }
+        val key = io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY
+        val wrote = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(key, enabled.toString())?.commit() == true
+        }
+        if (!wrote) {
+            mutable.value = mutable.value.copy(message = "Could not change PF6.2 auto preference in LSPosed.")
+            return@launch
+        }
+        val persisted = mediaLabPreferences.edit()
+            .putString("auto:$fingerprint", enabled.toString()).commit()
+        if (!persisted) {
+            withContext(Dispatchers.IO) {
+                ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(key, "false")?.commit()
+            }
+            mutable.value = mutable.value.copy(mediaLabAutoEnabled = false,
+                message = "Could not persist per-build automatic preference; disabled for safety.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaLabAutoEnabled = enabled,
+            message = if (enabled)
+                "PF6.2 dynamic auto enabled for this build's NEXT projection session. Spotify must be selected before the first activity."
+            else "PF6.2 dynamic auto disabled. Any queued launch will be skipped.")
     }
 
     fun requestMediaLabManualTest() = viewModelScope.launch {
@@ -1379,7 +1428,22 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ?.let { runCatching { JSONObject(it) }.getOrNull() }
                 ?.takeIf { it.optString("buildFingerprintSha256") == aa.buildFingerprintSha256 &&
                     it.optString("baseSha256") == aa.baseSha256 &&
-                    it.optString("mode") == "MANUAL_ONLY" }
+                    it.optString("mode") in setOf(
+                        io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.LEGACY_MODE,
+                        io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE) }
+            val labAutoCapable = savedLab?.optString("mode") ==
+                io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE &&
+                savedLab.optJSONObject("roles")?.has("activity.firstProjected") == true
+            val labAutoEnabled = labAutoCapable &&
+                (mediaLabPreferences.getString("auto:${aa.buildFingerprintSha256}", "false") == "true")
+            // Restore remote preference only for this installed build.
+            if ((allPrefs[
+                io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY] as? String)
+                != labAutoEnabled.toString()) {
+                check(prefs.edit().putString(
+                    io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
+                    labAutoEnabled.toString()).commit()) { "Unable to synchronize PF6 auto preference" }
+            }
             val selectedRoute = mediaLabPreferences.getString(
                 "route:${aa.buildFingerprintSha256}", "A")
                 ?.takeIf { it == "A" || it == "B" } ?: "A"
@@ -1515,7 +1579,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
                 protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn,
-                savedLab != null, selectedRoute)
+                savedLab != null, selectedRoute, labAutoCapable, labAutoEnabled)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1530,6 +1594,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mediaStartupAutoEnabled=outcome.mediaStartupAutoEnabled,
             mediaLabArmed=outcome.mediaLabArmed,
             mediaLabRoute=outcome.mediaLabRoute,
+            mediaLabAutoCapable=outcome.mediaLabAutoCapable,
+            mediaLabAutoEnabled=outcome.mediaLabAutoEnabled,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }
