@@ -77,8 +77,14 @@ The private signing workflow now allows ONLY the exact RC1 feature ref
 the signing certificate against the verified published beta4 APK. This gated,
 manual workflow was **not invoked** by preparing the branch.
 
-Only after automated gates and parked physical checks are reviewed: prepare an
-approved signed candidate through the existing private release pipeline, check
-APK signature and SHA-256, verify install/update/rollback on device, finalize
-beta5 release notes, then request authorization to merge, tag and publish.
-Do not expose signing secrets or release-signed APKs as public Actions artifacts.
+After public CI passes, the maintainer may manually invoke the private
+fixture/signing workflow on the exact RC1 branch to build a signed **test**
+candidate. Keep it locally or in an unpublished draft in the separate private
+delivery repository; verify the APK signature, version and SHA-256 before
+installing it for the parked physical tests above. A signed RC1 **is not**
+a public release.
+
+After the physical tests, update/rollback checks and any necessary fixes pass,
+finalize release notes and separately request authorization to merge, tag and
+publish. Do not expose signing secrets or release-signed APKs as public Actions
+artifacts.
