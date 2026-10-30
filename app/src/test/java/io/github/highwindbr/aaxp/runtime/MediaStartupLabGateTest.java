@@ -15,7 +15,7 @@ public class MediaStartupLabGateTest {
         assertEquals(MediaStartupLabGate.Result.ALREADY_USED, gate.consider(
             "v1|1006|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A", 1007, MediaStartupLabGate.Route.A));
     }
-    @Test public void rejectsExpiredReplayAndMissingMedia() {
+    @Test public void acceptsSelectedNonSpotifyAfterExpiredAndReplay() {
         MediaStartupLabGate gate = new MediaStartupLabGate(requestA);
         gate.ready(1000); gate.media("com.google.android.apps.youtube.music","x");
         assertEquals(MediaStartupLabGate.Result.REPLAY,gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
@@ -67,6 +67,9 @@ public class MediaStartupLabGateTest {
         assertFalse(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "old.Service"));
         assertTrue(gate.reserveForAutomatic());
         assertFalse(gate.reserveForAutomatic());
+        // A different class in the same package is a different selected target.
+        gate.media("com.google.android.apps.youtube.music", "another.Service");
+        assertFalse(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "yt.music.Service"));
         gate.ended();
         assertFalse(gate.selectedMediaMatches("com.google.android.apps.youtube.music", "yt.music.Service"));
     }

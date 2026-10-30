@@ -12,8 +12,8 @@ android {
         applicationId 'io.github.highwindbr.aaxp'
         minSdk 27
         targetSdk 35
-        versionCode 176
-        versionName '1.0.0-beta5-preflight6-2'
+        versionCode 177
+        versionName '1.0.0-beta5-rc1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 

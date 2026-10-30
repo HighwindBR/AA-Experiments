@@ -2263,26 +2263,26 @@ private class TouchMenuPositionProvider(
                             Text("Test route ${state.mediaLabRoute} once (parked)")
                         }
                     } else {
-                OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
-                    enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
-                        else "Enable Media Startup trace")
-                }
-                OutlinedButton(
-                    onClick = {
-                        if (state.mediaStartupAutoEnabled) onMediaStartupAuto(false)
-                        else spotifyPf4Confirmation = true
-                    },
-                    enabled = state.framework.connected &&
-                        (state.mediaStartupAutoEnabled ||
-                            (supported && !state.mediaLabArmed && state.mediaStartupTraceEnabled && state.profilePublished)),
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(if (state.mediaStartupAutoEnabled)
-                    "Disable Spotify auto-open (PF4)"
-                    else "Enable Spotify auto-open (PF4 test)") }
-                Text("Fallback PF4 is Spotify-only and pinned to the previously validated Android Auto 18.1 build. It remains separate from the dynamic routes.",
-                    style = MaterialTheme.typography.labelSmall)
+                    OutlinedButton(onClick = { onMediaStartupTrace(!state.mediaStartupTraceEnabled) },
+                        enabled = state.framework.connected && (supported || state.mediaStartupTraceEnabled),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(if (state.mediaStartupTraceEnabled) "Disable Media Startup trace"
+                            else "Enable Media Startup trace")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            if (state.mediaStartupAutoEnabled) onMediaStartupAuto(false)
+                            else spotifyPf4Confirmation = true
+                        },
+                        enabled = state.framework.connected &&
+                            (state.mediaStartupAutoEnabled ||
+                                (supported && !state.mediaLabArmed && state.mediaStartupTraceEnabled && state.profilePublished)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (state.mediaStartupAutoEnabled)
+                        "Disable Spotify auto-open (PF4)"
+                        else "Enable Spotify auto-open (PF4 test)") }
+                    Text("Fallback PF4 is Spotify-only and pinned to the previously validated Android Auto 18.1 build. It remains separate from the dynamic routes.",
+                        style = MaterialTheme.typography.labelSmall)
                     }
                     state.mediaSemanticReport?.let { report ->
                         SelectionContainer {

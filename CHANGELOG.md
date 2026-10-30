@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-beta5-rc1 — validation candidate (not released)
+
+- Generalize dynamically resolved Media Startup A/B routes to the **currently selected Android Auto media app**, rather than Spotify only. The media-selection callback provides the actual component; full package and class must still match at dispatch. No arbitrary app/package entry or autoplay.
+- Keep automatic startup OFF by default for every AA build. Preserve 2800 ms settle, 12-second readiness cutoff, one attempt per session, navigation suppression, and explicit route preference without automatic fallback.
+- Consolidate the Diagnostics card: primary automatic media startup controls; historical pinned PF3/PF4 and manual test tools are secondary. Pinned PF4 remains Spotify-only.
+- Preserve exact base-APK SHA and build-fingerprint linkage, resolver ambiguity rejection, and manual-only degradation when first projected activity is not uniquely resolved. No downgrade to inferred method names.
+- Add tests for other selected media packages, package/class mismatch, null or incomplete components, and shared one-attempt launch budget.
+- Candidate identity: `1.0.0-beta5-rc1`, versionCode 177. This branch has **not** passed Android Auto 18.1 physical/head-unit acceptance for non-Spotify media or independent second-build execution. No merge, tag, signed release or official publication authorized. See [RC1 validation](docs/BETA5_RC1.md).
+
 ## 1.0.0-beta4 — release
 
 - Freeze final metadata as `1.0.0-beta4` / versionCode 169,
