@@ -7,7 +7,9 @@ import java.util.Map;
 
 /** Immutable per-build PF6.1 role map. Never authorizes automatic launching. */
 public final class MediaStartupLabProfile {
-    public static final String MODE = "MANUAL_ONLY";
+    public static final String MODE = "MANUAL_PLUS_OPT_IN_AUTO";
+    public static final String LEGACY_MODE = "MANUAL_ONLY";
+    public final String mode;
     public final Map<String, Target> targets;
     public final String fingerprint;
     public final String baseSha;
@@ -37,8 +39,8 @@ public final class MediaStartupLabProfile {
         public String reference() { return owner + "->" + name + descriptor; }
     }
 
-    private MediaStartupLabProfile(String fingerprint, String baseSha, Map<String, Target> values) {
-        this.fingerprint = fingerprint; this.baseSha = baseSha;
+    private MediaStartupLabProfile(String fingerprint, String baseSha, String mode, Map<String, Target> values) {
+        this.fingerprint = fingerprint; this.baseSha = baseSha; this.mode = mode;
         this.targets = java.util.Collections.unmodifiableMap(values);
     }
 
@@ -46,7 +48,8 @@ public final class MediaStartupLabProfile {
 
     public static MediaStartupLabProfile parse(JSONObject data, String expectedBase,
                                                 String expectedFingerprint) throws JSONException {
-        if (data == null || !MODE.equals(data.optString("mode")) ||
+        if (data == null ||
+                !(MODE.equals(data.optString("mode")) || LEGACY_MODE.equals(data.optString("mode"))) ||
                 !expectedBase.equalsIgnoreCase(data.optString("baseSha256")) ||
                 !expectedFingerprint.equalsIgnoreCase(data.optString("buildFingerprintSha256")))
             throw new IllegalArgumentException("Build binding/mode mismatch");
@@ -84,6 +87,7 @@ public final class MediaStartupLabProfile {
                 !map.get("projection.ready").owner.equals(map.get("projection.teardown").owner) ||
                 !map.get("media.selectedApp").descriptor.equals("(Landroid/content/ComponentName;)V"))
             throw new IllegalArgumentException("Cross-role ABI mismatch");
-        return new MediaStartupLabProfile(expectedFingerprint, expectedBase, map);
+        return new MediaStartupLabProfile(expectedFingerprint, expectedBase,
+                data.getString("mode"), map);
     }
 }

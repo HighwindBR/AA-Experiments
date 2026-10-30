@@ -46,6 +46,8 @@ public final class AndroidAutoModule extends XposedModule {
     private volatile MediaStartupLaunchGate mediaLaunchGate;
     private volatile MediaStartupAutoGate mediaAutoGate;
     private volatile MediaStartupLabGate mediaLabGate;
+    private volatile MediaStartupAutoGate mediaLabAutoGate;
+    private volatile boolean mediaLabAutoAvailable;
     private volatile Method mediaLabFactory;
     private volatile Method mediaLabHelper;
     private volatile Method mediaLabDirect;
@@ -434,9 +436,9 @@ public final class AndroidAutoModule extends XposedModule {
 
 
     /**
-     * PF6.1 dynamic Media Startup hook experiment. In this preflight only
-     * the manual path is installed, once per session, in the AA projection
-     * process. Failure to validate ANY role disables the complete lab.
+     * PF6.2: manual A/B plus separately opted-in automatic startup using
+     * ActivityTracker and the direct launch observer dynamically resolved
+     * from the installed APK. Missing auto roles keep manual routes usable.
      */
     private void installMediaStartupLab(ClassLoader loader, JSONObject raw,
                                          String baseSha, String fingerprint) {
@@ -469,6 +471,9 @@ public final class AndroidAutoModule extends XposedModule {
                     overrideSnapshot.get(MediaStartupLabGate.REQUEST_KEY));
             Handler handler = new Handler(Looper.getMainLooper());
             mediaLaunchHandler = handler;
+            MediaStartupAutoGate automatic = new MediaStartupAutoGate();
+            mediaLabAutoGate = automatic;
+            mediaLabAutoAvailable = false;
             mediaLabFactory = factory; mediaLabHelper = auxiliary;
             mediaLabDirect = direct; mediaLabOptions = options;
             // Always hook the essential observer set together; if one fails,
@@ -481,11 +486,20 @@ public final class AndroidAutoModule extends XposedModule {
                 hook(observed[i]).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                         .intercept(chain -> {
                             if ("END".equals(stage) || "TEARDOWN".equals(stage)) {
-                                gate.ended(); mediaLabComponent = null;
+                                gate.ended(); automatic.onEnded();
+                                mediaLabComponent = null;
                             }
                             Object result = chain.proceed();
                             if ("READY".equals(stage)) {
-                                gate.ready(SystemClock.elapsedRealtime());
+                                long now = SystemClock.elapsedRealtime();
+                                gate.ready(now);
+                                boolean enabled = mediaLabAutoAvailable &&
+                                    MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                        MediaStartupDynamicAuto.KEY));
+                                if (automatic.onReady(enabled, now)) {
+                                    event(Log.INFO, "MEDIA_PF6_AUTO_SESSION", null,
+                                        "enabled", String.valueOf(enabled));
+                                }
                                 startMediaPolling();
                             } else if ("MEDIA".equals(stage)) {
                                 Object arg = chain.getArg(0);
@@ -494,6 +508,9 @@ public final class AndroidAutoModule extends XposedModule {
                                 mediaLabComponent = target;
                                 gate.media(target == null ? null : target.getPackageName(),
                                         target == null ? null : target.getClassName());
+                                automatic.onMediaChanged(target != null &&
+                                    MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
+                                        target.getPackageName()));
                                 event(Log.INFO, "MEDIA_PF6_MEDIA_OBSERVED", null,
                                         "spotify", String.valueOf(target != null &&
                                                 MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
@@ -506,12 +523,48 @@ public final class AndroidAutoModule extends XposedModule {
             }
             if (installed == observed.length) {
                 mediaLabGate = gate;
+                // Manual is independent. No auto dispatch occurs unless the
+                // unique activity method AND direct navigation observer hook.
+                MediaStartupLabProfile.Target trackerRole = lab.role("activity.firstProjected");
+                if (MediaStartupLabProfile.MODE.equals(lab.mode) && trackerRole != null) {
+                    try {
+                        Method activity = resolveLabMethod(loader, trackerRole);
+                        if (!Runnable.class.isAssignableFrom(activity.getDeclaringClass()) ||
+                                Modifier.isStatic(activity.getModifiers()))
+                            throw new IllegalArgumentException("Invalid Runnable implementation");
+                        hook(activity).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                                .intercept(chain -> {
+                                    Object original = chain.proceed();
+                                    int session = automatic.onFirstActivity(SystemClock.elapsedRealtime());
+                                    if (session >= 0) scheduleDynamicSpotifyAuto(session);
+                                    return original;
+                                });
+                        hook(direct).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                                .intercept(chain -> {
+                                    Object original = chain.proceed();
+                                    automatic.onNavigation();
+                                    return original;
+                                });
+                        mediaLabAutoAvailable = true;
+                        event(Log.INFO, "MEDIA_PF6_AUTO_HOOKS_READY", null,
+                                "hooks", "2", "mode", "OPT_IN");
+                    } catch (Throwable problem) {
+                        mediaLabAutoAvailable = false;
+                        event(Log.WARN, "MEDIA_PF6_AUTO_UNAVAILABLE", null,
+                                "reason", problem.getClass().getSimpleName());
+                    }
+                } else {
+                    event(Log.INFO, "MEDIA_PF6_AUTO_UNAVAILABLE", null,
+                            "reason", "activity_role_or_mode_missing");
+                }
                 event(Log.INFO, "MEDIA_PF6_LAB_ARMED", null,
                         "hooks", String.valueOf(installed), "routes", "A_B",
-                        "mode", "MANUAL_ONLY");
+                        "mode", mediaLabAutoAvailable ? "MANUAL_PLUS_OPT_IN_AUTO" : "MANUAL_ONLY");
             }
         } catch (Throwable failure) {
             mediaLabGate = null;
+            mediaLabAutoGate = null;
+            mediaLabAutoAvailable = false;
             event(Log.WARN, "MEDIA_PF6_LAB_DISABLED", null,
                     "reason", failure.getClass().getSimpleName());
         }
@@ -566,21 +619,10 @@ public final class AndroidAutoModule extends XposedModule {
                         "reason", "media_or_session_changed");
                 return;
             }
+            if (mediaLabAutoGate != null) mediaLabAutoGate.onManualAttempt();
             event(Log.INFO, "MEDIA_PF6_REQUEST_ACCEPTED", null, "route", route.name());
             try {
-                Object controller = mediaLabFactory.invoke(null);
-                if (controller == null || !gate.isCurrent(sessionId))
-                    throw new IllegalStateException("Controller unavailable or session ended");
-                // PF6.1 keeps the already proven PF4 Intent action so the
-                // manual comparison isolates route A vs B, not Intent policy.
-                Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
-                intent.setComponent(component);
-                if (route == MediaStartupLabGate.Route.A) {
-                    mediaLabHelper.invoke(controller, intent);
-                } else {
-                    Object options = mediaLabOptions.newInstance();
-                    mediaLabDirect.invoke(controller, intent, options);
-                }
+                dispatchMediaLabSpotify(route, sessionId);
                 event(Log.INFO, "MEDIA_PF6_REQUEST_DISPATCHED", null,
                         "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
             } catch (Throwable problem) {
@@ -592,6 +634,75 @@ public final class AndroidAutoModule extends XposedModule {
         } catch (Throwable error) {
             event(Log.WARN, "MEDIA_PF6_REQUEST_FAILED", null,
                     "reason", error.getClass().getSimpleName());
+        }
+    }
+
+    /** Identical Intent for manual and automatic tests; no audio autoplay. */
+    private void dispatchMediaLabSpotify(MediaStartupLabGate.Route route, long sessionId)
+            throws Exception {
+        MediaStartupLabGate gate = mediaLabGate;
+        ComponentName component = mediaLabComponent;
+        if (gate == null || component == null || !gate.isCurrent(sessionId) ||
+                !MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(component.getPackageName()))
+            throw new IllegalStateException("Media or projection changed before dispatch");
+        Object controller = mediaLabFactory.invoke(null);
+        if (controller == null || !gate.isCurrent(sessionId))
+            throw new IllegalStateException("Controller unavailable or projection ended");
+        Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+        intent.setComponent(component);
+        if (route == MediaStartupLabGate.Route.A) {
+            mediaLabHelper.invoke(controller, intent);
+        } else {
+            Object options = mediaLabOptions.newInstance();
+            mediaLabDirect.invoke(controller, intent, options);
+        }
+    }
+
+    /** Schedule once after the first projected activity (PF4 settle policy). */
+    private void scheduleDynamicSpotifyAuto(int scheduledSession) {
+        if (!mediaLabAutoAvailable || mediaLabGate == null ||
+                mediaLaunchHandler == null) return;
+        mediaLaunchHandler.postDelayed(() -> attemptDynamicSpotifyAuto(scheduledSession),
+                MediaStartupAutoGate.SETTLE_MILLIS);
+        event(Log.INFO, "MEDIA_PF6_AUTO_SCHEDULED", null,
+                "delayMs", String.valueOf(MediaStartupAutoGate.SETTLE_MILLIS));
+    }
+
+    private void attemptDynamicSpotifyAuto(int scheduledSession) {
+        MediaStartupAutoGate automatic = mediaLabAutoGate;
+        MediaStartupLabGate gate = mediaLabGate;
+        if (automatic == null || gate == null || !mediaLabAutoAvailable ||
+                Looper.myLooper() != Looper.getMainLooper()) return;
+        boolean liveEnabled = MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                MediaStartupDynamicAuto.KEY));
+        MediaStartupAutoGate.Decision decision = automatic.consume(
+                scheduledSession, SystemClock.elapsedRealtime(), liveEnabled);
+        if (decision != MediaStartupAutoGate.Decision.DISPATCH) {
+            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null, "reason", decision.name());
+            return;
+        }
+        if (!gate.reserveForAutomatic()) {
+            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null,
+                    "reason", "manual_attempt_or_media_changed");
+            return;
+        }
+        String preferred = overrideSnapshot.get(MediaStartupLabGate.ROUTE_KEY);
+        if (!"A".equals(preferred) && !"B".equals(preferred)) {
+            event(Log.WARN, "MEDIA_PF6_AUTO_SKIPPED", null,
+                    "reason", "invalid_preferred_route");
+            return;
+        }
+        MediaStartupLabGate.Route route = MediaStartupLabGate.Route.valueOf(preferred);
+        event(Log.INFO, "MEDIA_PF6_AUTO_ATTEMPT", null, "route", route.name());
+        try {
+            dispatchMediaLabSpotify(route, gate.session());
+            event(Log.INFO, "MEDIA_PF6_AUTO_DISPATCHED", null,
+                    "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
+        } catch (Throwable error) {
+            Throwable cause = error instanceof InvocationTargetException &&
+                    error.getCause() != null ? error.getCause() : error;
+            event(Log.ERROR, "MEDIA_PF6_AUTO_FAILED", null,
+                    "route", route.name(), "reason", cause.getClass().getSimpleName());
         }
     }
 

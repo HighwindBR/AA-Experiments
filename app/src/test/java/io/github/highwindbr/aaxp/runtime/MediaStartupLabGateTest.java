@@ -46,6 +46,18 @@ public class MediaStartupLabGateTest {
             gate.consider("v1|4003|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|A",
                 4004, MediaStartupLabGate.Route.A));
     }
+    @Test public void autoReservationSharesManualOncePerSession() {
+        MediaStartupLabGate gate = new MediaStartupLabGate(null);
+        gate.ready(1000); gate.media("com.spotify.music","com.spotify.music.Service");
+        assertTrue(gate.reserveForAutomatic());
+        assertFalse(gate.reserveForAutomatic());
+        assertEquals(MediaStartupLabGate.Result.ALREADY_USED,
+            gate.consider(requestA,1001,MediaStartupLabGate.Route.A));
+        gate.ended(); gate.ready(2000);
+        assertFalse(gate.reserveForAutomatic());
+        gate.media("com.spotify.music","com.spotify.music.Service");
+        assertTrue(gate.reserveForAutomatic());
+    }
     @Test public void mismatchedPreferenceOrMalformedNeverInvokes() {
         MediaStartupLabGate gate = new MediaStartupLabGate(null);
         gate.ready(1000); gate.media("com.spotify.music","service");

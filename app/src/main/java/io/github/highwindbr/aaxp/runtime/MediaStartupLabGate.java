@@ -29,6 +29,13 @@ public final class MediaStartupLabGate {
             componentPackage = null; componentClass = null;
         }
     }
+    /** Reserve the same single launch budget for a scheduled automatic attempt. */
+    public synchronized boolean reserveForAutomatic() {
+        if (!ready || used || !"com.spotify.music".equals(componentPackage) ||
+                componentClass == null) return false;
+        used = true;
+        return true;
+    }
     public synchronized boolean isReady() { return ready; }
     public synchronized long session() { return session; }
     public synchronized boolean isCurrent(long expected) { return ready && session == expected; }

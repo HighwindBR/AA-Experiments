@@ -30,6 +30,16 @@ public class MediaStartupLabProfileTest {
         try{MediaStartupLabProfile.parse(x,"base","fingerprint");fail();}
         catch(IllegalArgumentException expected){}
     }
+    @Test public void newModeRequiresValidActivityRole() throws Exception {
+        JSONObject profile = profile().put("mode",MediaStartupLabProfile.MODE);
+        profile.getJSONObject("roles").put("activity.firstProjected","Ltracker;->run()V");
+        MediaStartupLabProfile parsed = MediaStartupLabProfile.parse(profile,"base","fingerprint");
+        assertEquals(9,parsed.targets.size());
+        assertEquals(MediaStartupLabProfile.MODE,parsed.mode);
+        profile.getJSONObject("roles").put("activity.firstProjected","Ltracker;->run(I)V");
+        try{MediaStartupLabProfile.parse(profile,"base","fingerprint");fail();}
+        catch(IllegalArgumentException expected){}
+    }
     @Test public void incompatibleRolesRejectBeforeReflection() throws Exception {
         JSONObject x=profile();
         x.getJSONObject("roles").put("launch.auxiliary",
