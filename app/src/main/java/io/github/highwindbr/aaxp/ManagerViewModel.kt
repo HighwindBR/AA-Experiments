@@ -667,7 +667,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             (enabled && (!state.mediaLabArmed || !state.mediaLabAutoCapable ||
                 !state.profilePublished || state.mediaStartupAutoEnabled))) {
             mutable.value = state.copy(message =
-                "Automatic opening requires a verified Media Startup profile with a unique ActivityTracker and legacy PF4 OFF.")
+                "Automatic opening requires verified routes, a unique activity trigger and legacy Spotify auto-opening disabled.")
             return@launch
         }
         val key = io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY
@@ -730,7 +730,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     request)?.commit() == true
         }
         mutable.value = mutable.value.copy(message = if (saved)
-            "Media Startup route ${ui.mediaLabRoute} manual test requested. Verify LSPosed MEDIA_PF6_* logs and the head unit; one attempt per connection."
+            "Media Startup route ${ui.mediaLabRoute} test requested. Check LSPosed events and the head unit; only one attempt per connection."
         else "Media Startup LSPosed request failed.")
     }
 
@@ -744,7 +744,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
                 !current.mediaStartupTraceEnabled || !current.profilePublished))) {
             mutable.value = mutable.value.copy(message =
-                "PF4 requires the exact inspected AA 18.1 and a published Media Startup trace.")
+                "Legacy Spotify auto-opening requires the previously validated AA 18.1 build and an active media trace.")
             return@launch
         }
         val ok = profileRefreshMutex.withLock {
@@ -762,15 +762,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
         if (!ok) {
             mutable.value = mutable.value.copy(message =
-                "Cannot update PF4 auto-start: LSPosed preferences unavailable.")
+                "Cannot update legacy Spotify auto-opening: LSPosed preferences unavailable.")
             return@launch
         }
         // This is deliberately a remote preference, not a change to the
         // normal flag catalog or profile schema. Armed at NEXT projection ready.
         mutable.value = mutable.value.copy(mediaStartupAutoEnabled = enabled,
             message = if (enabled)
-                "PF4 enabled for the NEXT projection session. Disconnect/reconnect AA. Spotify must already be the active media app."
-            else "PF4 auto-start disabled. Any pending automatic attempt will be skipped.")
+                "Legacy Spotify auto-opening enabled for the next connection. Spotify must already be the selected media app."
+            else "Legacy Spotify auto-opening disabled. Pending attempts will be skipped.")
     }
 
     /** Experimental PF3: one manually confirmed, short-lived Spotify request. */
@@ -781,7 +781,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(
                     value.aa.baseSha256)) {
             mutable.value = mutable.value.copy(message =
-                "PF3 unavailable. Arm Media Startup, publish the profile and restart Android Auto.")
+                "Legacy manual media test unavailable. Enable Media Startup compatibility, publish the profile and restart Android Auto.")
             return@launch
         }
         val request = io.github.highwindbr.aaxp.runtime.MediaStartupLaunchGate.makeRequest(
@@ -792,8 +792,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     request)?.commit() == true
         }
         mutable.value = mutable.value.copy(message = if (committed)
-            "PF3 request saved. This does not prove launch: check LSPosed MEDIA_PF3_* events. Once per active projection session."
-        else "PF3 request failed: LSPosed remote preferences unavailable.")
+            "Legacy manual request saved. Check LSPosed events to verify the result; one attempt per active connection."
+        else "Legacy manual request failed: LSPosed remote preferences unavailable.")
     }
 
     fun deepResolveInconclusive() = viewModelScope.launch {
@@ -1644,7 +1644,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 != labAutoEnabled.toString()) {
                 check(prefs.edit().putString(
                     io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
-                    labAutoEnabled.toString()).commit()) { "Unable to synchronize PF6 auto preference" }
+                    labAutoEnabled.toString()).commit()) { "Unable to synchronize automatic media opening" }
             }
             val selectedRoute = mediaLabPreferences.getString(
                 "route:${aa.buildFingerprintSha256}", "A")
@@ -1656,7 +1656,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 != selectedRoute && savedLab != null) {
                 check(prefs.edit().putString(
                     io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
-                    selectedRoute).commit()) { "Unable to synchronize PF6 route" }
+                    selectedRoute).commit()) { "Unable to synchronize preferred media opening route" }
             }
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
