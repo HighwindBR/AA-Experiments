@@ -1,6 +1,6 @@
 # Third-party notices
 
-AA Experiments is licensed as a whole under GPL-3.0-or-later. It also uses third-party software
+**AA Experiments** is licensed as a whole under GPL-3.0-or-later. It also uses third-party software
 under compatible licenses. Those components remain subject to their own licenses and copyright
 notices.
 
@@ -21,7 +21,7 @@ The full Apache License 2.0 text appears below.
 
 ## dexlib2 2.5.2
 
-AA Experiments includes `org.smali:dexlib2:2.5.2`, which is distributed under the BSD 3-Clause
+**AA Experiments** includes `org.smali:dexlib2:2.5.2`, which is distributed under the BSD 3-Clause
 license, with portions of the upstream smali/dexlib2 codebase also carrying compatible notices.
 
 Primary upstream notices:
@@ -77,7 +77,7 @@ are provided under Apache-2.0; the Apache License text below applies to those po
 ## Test-only dependencies
 
 JUnit 4.13.2 and `org.json:json:20240303` are used only by the test configuration and are not
-packaged into the AA Experiments release APK.
+packaged into the **AA Experiments** release APK.
 
 ## Android Auto interoperability metadata
 
