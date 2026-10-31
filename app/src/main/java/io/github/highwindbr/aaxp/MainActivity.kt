@@ -312,7 +312,17 @@ private val AaDarkScheme = darkColorScheme(
         CompactStatusRow(Icons.Default.Search, "Inventory", if (state.aa.runtimeTarget) "Installed Android Auto" else "Imported archive")
         RuntimeBanner(runtime, mediaConfigured, state.profilePublished)
         if (mediaConfigured) {
-            CompactStatusRow(Icons.Default.PlayCircle, "Media opening", mediaSummary)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.PlayCircle, null,
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Media opening", style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium)
+                    Text(mediaSummary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
             Text("Media opening is separate from flag overrides; this status does not confirm head-unit visibility.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
