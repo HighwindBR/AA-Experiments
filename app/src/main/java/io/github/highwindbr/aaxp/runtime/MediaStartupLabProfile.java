@@ -56,14 +56,25 @@ public final class MediaStartupLabProfile {
         JSONObject json = data.getJSONObject("roles");
         String[] required = {
                 "projection.ready", "projection.end", "projection.teardown",
-                "launch.controllerFactory", "launch.startCarActivity",
-                "launch.optionsNoArgConstructor", "launch.auxiliary",
-                "media.selectedApp"
+                "launch.controllerFactory", "media.selectedApp"
         };
         Map<String, Target> map = new LinkedHashMap<>();
         for (String key : required) map.put(key, new Target(json.getString(key)));
-        // Optional for manual-only profiles produced by PF6.1. Automatic
-        // startup is available ONLY if this independent activity role exists.
+        // Each launch route has its own proof. Never require both: Android Auto
+        // updates may retire or rename one method independently of the other.
+        if (json.has("launch.startCarActivity"))
+            map.put("launch.startCarActivity", new Target(json.getString("launch.startCarActivity")));
+        if (json.has("launch.auxiliary"))
+            map.put("launch.auxiliary", new Target(json.getString("launch.auxiliary")));
+        if (map.get("launch.startCarActivity") == null && map.get("launch.auxiliary") == null)
+            throw new IllegalArgumentException("No verified media-opening route");
+
+        if (json.has("launch.optionsNoArgConstructor"))
+            map.put("launch.optionsNoArgConstructor",
+                    new Target(json.getString("launch.optionsNoArgConstructor")));
+        if (json.has("launch.navigationObserver"))
+            map.put("launch.navigationObserver",
+                    new Target(json.getString("launch.navigationObserver")));
         if (json.has("activity.firstProjected")) {
             Target tracker = new Target(json.getString("activity.firstProjected"));
             if (!"run".equals(tracker.name) || !"()V".equals(tracker.descriptor))
@@ -71,15 +82,13 @@ public final class MediaStartupLabProfile {
             map.put("activity.firstProjected", tracker);
         }
         Target direct = map.get("launch.startCarActivity");
-        Target aux = map.get("launch.auxiliary");
+        Target auxiliary = map.get("launch.auxiliary");
+        Target observer = map.get("launch.navigationObserver");
         Target factory = map.get("launch.controllerFactory");
         Target options = map.get("launch.optionsNoArgConstructor");
         String intent = "Landroid/content/Intent;";
-        if (!direct.owner.equals(aux.owner) || !direct.owner.equals(factory.owner) ||
-                !aux.descriptor.equals("(" + intent + ")V") ||
-                !factory.descriptor.equals("()" + direct.owner) ||
-                !options.name.equals("<init>") || !options.descriptor.equals("()V") ||
-                !direct.descriptor.equals("(" + intent + options.owner + ")V") ||
+        String controller = factory.owner;
+        if (!factory.descriptor.equals("()" + controller) ||
                 !map.get("projection.ready").descriptor.equals("()V") ||
                 !map.get("projection.end").descriptor.equals("()V") ||
                 !map.get("projection.teardown").descriptor.equals("()V") ||
@@ -87,6 +96,24 @@ public final class MediaStartupLabProfile {
                 !map.get("projection.ready").owner.equals(map.get("projection.teardown").owner) ||
                 !map.get("media.selectedApp").descriptor.equals("(Landroid/content/ComponentName;)V"))
             throw new IllegalArgumentException("Cross-role ABI mismatch");
+        if (auxiliary != null && (!controller.equals(auxiliary.owner) ||
+                !auxiliary.descriptor.equals("(" + intent + ")V")))
+            throw new IllegalArgumentException("Auxiliary route ABI mismatch");
+        if (direct != null && !controller.equals(direct.owner))
+            throw new IllegalArgumentException("Direct route owner mismatch");
+        // Direct dispatch requires options. Auxiliary dispatch never resolves
+        // unavailable direct/option members, but the independent navigation
+        // observer (if proven) still needs its own valid options signature.
+        Target inspectedDirect = direct != null ? direct : observer;
+        if (inspectedDirect != null) {
+            if (options == null || !controller.equals(inspectedDirect.owner) ||
+                    !options.name.equals("<init>") || !options.descriptor.equals("()V") ||
+                    !inspectedDirect.descriptor.equals("(" + intent + options.owner + ")V"))
+                throw new IllegalArgumentException("Direct/observer ABI mismatch");
+        }
+        if (observer != null && (direct == null || !observer.reference().equals(direct.reference())) &&
+                direct != null)
+            throw new IllegalArgumentException("Mismatched navigation observer");
         return new MediaStartupLabProfile(expectedFingerprint, expectedBase,
                 data.getString("mode"), map);
     }
