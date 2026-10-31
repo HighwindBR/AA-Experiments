@@ -62,6 +62,8 @@ data class ManagerUiState(
     val mediaSemanticReport: String? = null,
     val mediaLabArmed: Boolean = false,
     val mediaLabRoute: String = "A",
+    val mediaLabRouteAAvailable: Boolean = false,
+    val mediaLabRouteBAvailable: Boolean = false,
     val mediaLabAutoCapable: Boolean = false,
     val mediaLabAutoEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
@@ -77,7 +79,8 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
 private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean, val mediaLabArmed: Boolean, val mediaLabRoute: String,
-    val mediaLabAutoCapable: Boolean, val mediaLabAutoEnabled: Boolean)
+    val mediaLabAutoCapable: Boolean, val mediaLabAutoEnabled: Boolean,
+    val mediaLabRouteAAvailable: Boolean, val mediaLabRouteBAvailable: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
@@ -518,12 +521,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.inspect(File(base))
             }
             val required = setOf("projection.ready", "projection.end",
-                "projection.teardown", "launch.controllerFactory", "launch.startCarActivity",
-                "launch.optionsNoArgConstructor", "launch.auxiliary", "media.selectedApp")
+                "projection.teardown", "launch.controllerFactory", "media.selectedApp")
+            val hasA = "launch.auxiliary" in evidence.roles
+            val hasB = "launch.startCarActivity" in evidence.roles
             if (evidence.status !in setOf(
                     io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.KNOWN_BUILD_VALIDATED,
                     io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.REVIEW_ONLY) ||
-                evidence.baseSha256 != hash || !evidence.roles.keys.containsAll(required)) {
+                evidence.baseSha256 != hash || !evidence.roles.keys.containsAll(required) ||
+                (!hasA && !hasB)) {
                 mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary(),
                     message = "Dynamic routes not armed: incomplete, ambiguous or incompatible DEX proof.")
                 return@launch
@@ -559,9 +564,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     }
                     // Persist a disabled baseline first: failed publication cannot
                     // leave remote automatic opening active, even on existing hooks.
-                    val saved = disabledAuto && mediaLabPreferences.edit()
-                        .putString("auto-selected:$fingerprint", "false")
-                        .putString(fingerprint, lab.toString()).commit()
+                    val selectedRoute = io.github.highwindbr.aaxp.runtime.MediaStartupRoutePolicy.select(
+                        mediaLabPreferences.getString("route:$fingerprint", "A"), hasA, hasB)
+                    val saved = disabledAuto && selectedRoute != null &&
+                        mediaLabPreferences.edit()
+                            .putString("auto-selected:$fingerprint", "false")
+                            .putString("route:$fingerprint", selectedRoute)
+                            .putString(fingerprint, lab.toString()).commit()
                     if (!saved) Triple(false, false, false)
                     else {
                         mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
@@ -639,8 +648,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
-        if (route != "A" && route != "B") return@launch
         val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        if ((route != "A" && route != "B") ||
+            (route == "A" && !mutable.value.mediaLabRouteAAvailable) ||
+            (route == "B" && !mutable.value.mediaLabRouteBAvailable)) {
+            mutable.value = mutable.value.copy(message =
+                "This route was not verified for the installed Android Auto build.")
+            return@launch
+        }
         val persisted = profileRefreshMutex.withLock {
             if (mutable.value.aa.buildFingerprintSha256 != fingerprint) false
             else {
@@ -1633,9 +1648,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     it.optString("mode") in setOf(
                         io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.LEGACY_MODE,
                         io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE) }
-            val labAutoCapable = savedLab?.optString("mode") ==
+            val labRoles = savedLab?.optJSONObject("roles")
+            val routeAAvailable = labRoles?.has("launch.auxiliary") == true
+            val routeBAvailable = labRoles?.has("launch.startCarActivity") == true
+            val navigationObserverAvailable = labRoles?.has("launch.navigationObserver") == true ||
+                routeBAvailable
+            val labAutoCapable = (routeAAvailable || routeBAvailable) &&
+                navigationObserverAvailable && savedLab?.optString("mode") ==
                 io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE &&
-                savedLab.optJSONObject("roles")?.has("activity.firstProjected") == true
+                labRoles?.has("activity.firstProjected") == true
             val labAutoEnabled = labAutoCapable &&
                 (mediaLabPreferences.getString("auto-selected:${aa.buildFingerprintSha256}", "false") == "true")
             // Restore remote preference only for this installed build.
@@ -1646,9 +1667,16 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                     io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
                     labAutoEnabled.toString()).commit()) { "Unable to synchronize automatic media opening" }
             }
-            val selectedRoute = mediaLabPreferences.getString(
+            val requestedRoute = mediaLabPreferences.getString(
                 "route:${aa.buildFingerprintSha256}", "A")
-                ?.takeIf { it == "A" || it == "B" } ?: "A"
+            val selectedRoute = io.github.highwindbr.aaxp.runtime.MediaStartupRoutePolicy.select(
+                requestedRoute, routeAAvailable, routeBAvailable) ?: "A"
+            if (savedLab != null && selectedRoute != requestedRoute) {
+                check(mediaLabPreferences.edit().putString(
+                    "route:${aa.buildFingerprintSha256}", selectedRoute).commit()) {
+                    "Could not persist the proven Media Startup fallback route"
+                }
+            }
             // Remote preference applies in :projection; restore each build's
             // preferred route before publishing its verified profile.
             if ((allPrefs[
@@ -1781,7 +1809,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
                 protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn,
-                savedLab != null, selectedRoute, labAutoCapable, labAutoEnabled)
+                savedLab != null, selectedRoute, labAutoCapable, labAutoEnabled,
+                routeAAvailable, routeBAvailable)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1796,6 +1825,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mediaStartupAutoEnabled=outcome.mediaStartupAutoEnabled,
             mediaLabArmed=outcome.mediaLabArmed,
             mediaLabRoute=outcome.mediaLabRoute,
+            mediaLabRouteAAvailable=outcome.mediaLabRouteAAvailable,
+            mediaLabRouteBAvailable=outcome.mediaLabRouteBAvailable,
             mediaLabAutoCapable=outcome.mediaLabAutoCapable,
             mediaLabAutoEnabled=outcome.mediaLabAutoEnabled,
             profilePublished=outcome.published,
