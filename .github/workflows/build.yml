@@ -96,3 +96,5 @@ jobs:
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
             beta6-sqlite-instrumentation.log
+            beta6-emulator-crash.log
+            beta6-emulator-logcat.log
