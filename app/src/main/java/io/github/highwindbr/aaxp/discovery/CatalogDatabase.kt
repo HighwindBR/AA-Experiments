@@ -107,6 +107,11 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         origin: CatalogOrigin = CatalogOrigin.INSTALLED
     ) {
         val buildKey = inventory.buildFingerprintSha256
+        // Importing the very same APK as the installed build must not relabel
+        // the pinned runtime catalog as an offline-only archive.
+        val effectiveOrigin = if (origin == CatalogOrigin.IMPORTED &&
+            buildKey == retentionPrefs.getString(installedPinKey, null))
+            CatalogOrigin.INSTALLED else origin
         writableDatabase.beginTransaction()
         try {
             writableDatabase.delete("getters", "identifier_id IN (SELECT id FROM identifiers WHERE base_sha=?)", arrayOf(buildKey))
@@ -120,7 +125,7 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
                 put("dex_hashes", encodeMap(inventory.dexSha256)); put("identifier_count", inventory.identifiers.size)
                 put("editable_count", inventory.identifiers.count { it.editable }); put("error_count", inventory.errors.size)
                 put("resolver_schema", SemanticClassifier.SCHEMA_VERSION)
-                put("origin", origin.name)
+                put("origin", effectiveOrigin.name)
             })
             onProgress(AnalysisProgress(AnalysisStage.SAVING_CATALOG, 0, inventory.identifiers.size))
             inventory.identifiers.forEachIndexed { index, identifier ->
