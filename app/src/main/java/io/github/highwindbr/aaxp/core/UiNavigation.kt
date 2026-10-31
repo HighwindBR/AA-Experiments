@@ -17,3 +17,13 @@ fun backAction(tab: Int, settingsPage: SettingsPage, experimentOpen: Boolean): B
     tab != 0 -> BackAction.OPEN_STATUS
     else -> BackAction.EXIT
 }
+
+/**
+ * Switching primary tabs should reopen Settings at its root, not unexpectedly
+ * restore an old nested screen. Tapping an already selected tab is a no-op.
+ */
+fun settingsPageAfterTabSelection(
+    previousTab: Int,
+    destinationTab: Int,
+    currentPage: SettingsPage
+): SettingsPage = if (previousTab == destinationTab) currentPage else SettingsPage.ROOT
