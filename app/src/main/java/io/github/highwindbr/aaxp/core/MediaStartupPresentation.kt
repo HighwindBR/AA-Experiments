@@ -5,13 +5,6 @@ package io.github.highwindbr.aaxp.core
  * This is not runtime proof: the head unit can still reject the launch.
  */
 object MediaStartupPresentation {
-    fun availableRoutes(hasA: Boolean, hasB: Boolean): String = when {
-        hasA && hasB -> "A + B"
-        hasA -> "A only"
-        hasB -> "B only"
-        else -> "None verified"
-    }
-
     fun routeDetails(hasA: Boolean, hasB: Boolean, selected: String): String =
         "Available routes: " + listOfNotNull(
             if (hasA) "A · Auxiliary" else null,
