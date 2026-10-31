@@ -37,6 +37,25 @@ APK from GitHub Releases, verifies its pinned SHA-256, and compares the
 signing certificate SHA-256 digest against the new signed APK. Any
 difference blocks publication instead of breaking in-place upgrades.
 
+## Stable promotion — Beta6 baseline (planned, not authorized)
+
+The intended stable release is a **promotion of the Beta6 implementation**,
+not a new feature line. The maintenance branch
+`maintenance/group-a-stable` is based on
+`feature/beta6-reliability` at the Beta6 source baseline. Its Group A
+changes are limited to low-risk cleanup: dead ProGuard configuration,
+consistent Status/Diagnostics readiness counts, shared route-detail
+presentation, and unused imports.
+
+Promotion still requires the full applicable release gates, review of
+known limitations, and explicit maintainer authorization. Beta6's
+remaining instrumented tests and physical-device validation are not
+waived by the word “promotion”. The stable version name/code, exact
+approved commit, signing-baseline comparison, tag allowlist and release
+notes must be reconciled together before any tag or workflow publication
+path is enabled. This maintenance branch must not publish a candidate or
+release merely because it is pushed or manually dispatched.
+
 ## Beta5 final — release candidate closure (not yet published)
 
 - RC1 source baseline: `e8286335b8261d4e8e249049b27324b27a989578`.
