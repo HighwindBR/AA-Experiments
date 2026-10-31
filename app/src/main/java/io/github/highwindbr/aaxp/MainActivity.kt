@@ -1876,12 +1876,14 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 }
             }
             item {
-                Text("Backup scope: saved flag overrides, suspended records, Advanced and Experimental baselines. Does not include Media Startup routes or consent, app appearance, catalog cache, LSPosed setup or Android Auto settings.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Backups are tied to the exact Android Auto build. Keep files private and export again before major changes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Backup scope: saved flag overrides, suspended records, Advanced and Experimental baselines. Does not include Media Startup routes or consent, app appearance, catalog cache, LSPosed setup or Android Auto settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Backups are tied to the exact Android Auto build. Keep files private and export again before major changes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp), verticalArrangement=Arrangement.spacedBy(10.dp)){
