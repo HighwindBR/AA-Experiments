@@ -19,9 +19,22 @@ publish this work while UI, build and device gates are pending.
 - Automatic opening NEVER carries over to another AA fingerprint. After an
   update, the installed build must be rescanned and the user must opt in again.
   The runtime still checks its pinned profile/fingerprint.
-- The existing resolver requires both delegated auxiliary A and direct B.
-  B-only is NOT a supported fallback; that would require separately proving
-  and reviewing the reduced route profile and its runtime semantics.
+- The resolver now attempts **independent structural proofs** for A
+  (delegated auxiliary) and B (direct Intent+options). Either proven route is
+  sufficient for a build-scoped profile; no route always fails closed.
+- When both are proven, retain the user's preferred route. When only A or
+  only B is proven, select it automatically, persist that choice for the exact
+  build, hide the missing route from selection and never reflect/invoke the
+  missing route in the Android Auto runtime.
+- A-only recovery can use a uniquely proven auxiliary delegate and separate
+  navigation observer even if the direct route's log anchor is gone. If the
+  underlying delegate itself vanishes and no safe replacement is provable,
+  neither the route nor automatic opening is invented.
+- Automatic opening still needs a unique projected-activity trigger, verified
+  navigation observer and explicit build-scoped consent. A proven route alone
+  permits manual operation but does not bypass those independent safety checks.
+- This is **build-level fallback**, not a second runtime attempt after a
+  launch fails. Each connection still has a single launch budget.
 - Route A/B choice, recheck, disarm and manual compatibility tools are now
   grouped in a collapsed "Advanced options and tests" section.
 - Legacy labels in Media Startup screens, confirmations and offline inspection
@@ -41,8 +54,12 @@ publish this work while UI, build and device gates are pending.
 ## Verification
 
 - New pure JVM tests gate the automatic enablement policy: known build with
-  unique tracker succeeds; unreviewed/unsupported/ambiguous, blank or missing
-  trackers fail closed.
+  unique tracker, one proven route and a navigation observer succeeds;
+  unreviewed/unsupported/ambiguous, blank or missing roles fail closed.
+- Route selection tests cover A+B, A-only, B-only, stale preferences and
+  absence of both routes. Resolver tests cover loss of the B anchor while
+  the typed auxiliary A survives; parser tests cover separately proven A/B
+  profiles and reject zero-route profiles.
 - Existing resolver regression tests confirm absence or ambiguity of route A
   does not silently fall back to route B.
 - Public gates: `:app:testDebugUnitTest`, `:app:lintRelease`,
