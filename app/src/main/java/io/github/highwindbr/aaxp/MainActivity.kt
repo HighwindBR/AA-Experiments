@@ -257,7 +257,7 @@ private val AaDarkScheme = darkColorScheme(
 
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel, onViewDelta: (ExperimentFilter) -> Unit) {
     var auditOpen by remember { mutableStateOf(false) }
-    val analyzing = state.scanProgress != null
+    val analyzing = state.loading || state.scanProgress != null
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
     val activeAdvanced = state.advancedRecords.count {
         it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
@@ -282,11 +282,10 @@ private val AaDarkScheme = darkColorScheme(
             Column(Modifier.weight(1f)) {
                 Text("Android Auto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    when {
-                        analyzing -> "Analyzing installation"
-                        state.aa.installed -> "Installed and ready"
-                        else -> state.aa.scanError ?: "Not found"
-                    },
+                    InstallationStatusPresentation.title(
+                        state.loading, state.scanProgress != null,
+                        state.aa.installed, state.aa.scanError
+                    ),
                     color = if (analyzing || state.aa.installed) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error
                 )
@@ -294,11 +293,10 @@ private val AaDarkScheme = darkColorScheme(
             Image(painterResource(R.drawable.app_icon), null, Modifier.size(42.dp))
         }
         Text(
-            when {
-                analyzing -> "Preparing the installed Android Auto catalog"
-                state.aa.installed -> "${state.aa.versionName} (${state.aa.versionCode})"
-                else -> "No compatible installation was detected"
-            }, style = MaterialTheme.typography.bodySmall
+            InstallationStatusPresentation.detail(
+                state.loading, state.scanProgress != null,
+                state.aa.installed, state.aa.versionName, state.aa.versionCode
+            ), style = MaterialTheme.typography.bodySmall
         )
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -308,9 +306,19 @@ private val AaDarkScheme = darkColorScheme(
     } } }
     item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Resolver & runtime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        CompactStatusRow(Icons.Default.Storage, "Base APK", state.aa.baseSha256?.let { it.take(16) + "…" } ?: "Not available")
-        CompactStatusRow(Icons.Default.Search, "Inventory", if (state.aa.runtimeTarget) "Installed Android Auto" else "Imported archive")
-        RuntimeBanner(runtime, mediaConfigured, state.profilePublished)
+        CompactStatusRow(Icons.Default.Storage, "Base APK",
+            if (analyzing) "Checking…" else state.aa.baseSha256?.let { it.take(16) + "…" } ?: "Not available")
+        CompactStatusRow(Icons.Default.Search, "Inventory",
+            if (analyzing) "Loading…" else if (state.aa.runtimeTarget)
+                "Installed Android Auto" else if (state.aa.installed) "Imported archive" else "Not available")
+        if (analyzing) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text("Checking installation and preparing the runtime status…",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        } else RuntimeBanner(runtime, mediaConfigured, state.profilePublished)
         if (mediaConfigured) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.PlayCircle, null,
@@ -375,7 +383,7 @@ private val AaDarkScheme = darkColorScheme(
         }
     } } }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(when {
-            analyzing -> "Preparing catalog and runtime profile"
+            analyzing -> "Checking installation and preparing catalog"
             state.profilePublished -> "Dynamic profile published"
             else -> "Profile not published"
         }); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if (state.suspendedOverrides.isNotEmpty()) TextButton({ auditOpen = true }) { Icon(Icons.Default.Security, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.suspendedOverrides.size} suspended overrides · View details", color = MaterialTheme.colorScheme.error) } } } }
