@@ -1393,7 +1393,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("LONG hook handoff · beta4 preflight10",
+                                Text("LONG hook handoff · experimental",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold)
                                 Text("Single reviewed getter aczh.l()J. Experimental return is fixed to 3; the existing normal LONG:3 stays stored throughout the test.",
@@ -1440,7 +1440,8 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                             }
                         }
                     }
-                    if (identifier.key in GetterProbePolicy.supportedKeys) item {
+                    if (identifier.key in GetterProbePolicy.supportedKeys &&
+                        identifier.key !in GetterProbePolicy.doubleCandidates) item {
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1477,7 +1478,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                Text("Experimental BOOLEAN override · beta4 preflight",
+                                Text("Experimental BOOLEAN override",
                                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 Text("Only this known getter is eligible. The new value may have no visible effect or cause Android Auto to malfunction.",
                                     style = MaterialTheme.typography.bodySmall)
