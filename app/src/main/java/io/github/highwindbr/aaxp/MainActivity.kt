@@ -2045,13 +2045,13 @@ private class TouchMenuPositionProvider(
     if (spotifyPf4Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf4Confirmation = false },
-            title = { Text("PF4 · Auto-open Spotify?") },
-            text = { Text("Experimental, off by default. On the NEXT Android Auto projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
+            title = { Text("Enable legacy Spotify auto-open?") },
+            text = { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf4Confirmation = false
                     onMediaStartupAuto(true)
-                }) { Text("Enable PF4 test") }
+                }) { Text("Enable legacy auto-open") }
             },
             dismissButton = {
                 TextButton(onClick = { spotifyPf4Confirmation = false }) { Text("Cancel") }
@@ -2061,8 +2061,8 @@ private class TouchMenuPositionProvider(
     if (spotifyPf3Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf3Confirmation = false },
-            title = { Text("PF3 · Open Spotify once?") },
-            text = { Text("Only test while the vehicle is parked and Android Auto is already visible on the head unit. This sends ONE manual request to the internal Android Auto media controller. No autoplay or startup automation is enabled. Check LSPosed logs to confirm the result.") },
+            title = { Text("Open Spotify once for testing?") },
+            text = { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or start playback. Inspect the logs to confirm the result.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf3Confirmation = false
@@ -2080,80 +2080,93 @@ private class TouchMenuPositionProvider(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            SubpageHeader("Media startup", "Automatically open the selected media app", onBack)
+            SubpageHeader("Media startup", "Open your selected media app when you connect", onBack)
         }
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Automatic media opening",
+            DiagnosticSection("Media opening",
                 when {
-                    state.mediaLabAutoEnabled -> "Automatic media opening ON · next connection"
-                    state.mediaLabArmed -> "Dynamic routes ready · automatic opening OFF"
-                    state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
-                    state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
-                    state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
-                    supported -> "Manual PF3 · PF4 opt-in OFF"
-                    state.aa.runtimeTarget -> "Compatibility scan available · launch disabled"
-                    else -> "No installed Android Auto available"
+                    state.mediaLabAutoEnabled -> "On · Route ${state.mediaLabRoute} · next connection"
+                    state.mediaLabArmed && state.mediaLabAutoCapable -> "Routes ready · automatic opening off"
+                    state.mediaLabArmed -> "Manual routes ready · automatic opening unavailable"
+                    state.mediaStartupAutoEnabled && supported -> "Legacy Spotify auto-open on"
+                    state.mediaStartupAutoEnabled -> "Legacy setting saved · incompatible build"
+                    state.aa.runtimeTarget -> "Check compatibility to get started"
+                    else -> "Android Auto installation required"
                 },
                 Icons.Default.PlayCircle, mediaExpanded,
                 { mediaExpanded = !mediaExpanded }) {
-                Text("Open the currently selected Android Auto media app on connection, without starting playback. Requires root + LSPosed, a compatible build-specific resolver profile, and one-time opt-in per Android Auto build.",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("Configure while parked: resolve the installed Android Auto build, restart Android Auto, then choose route A or B and opt in. If verification fails, automatic opening remains unavailable.",
-                    style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onMediaLabArm,
-                    enabled = state.aa.runtimeTarget && state.framework.connected &&
-                        !state.mediaSemanticAnalysisRunning,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.mediaLabArmed) "Recheck installed Android Auto build"
-                        else "Resolve and enable dynamic routes")
-                }
-                if (state.mediaLabArmed) {
-                    OutlinedButton(onClick = onMediaLabDisarm,
-                        enabled = state.framework.connected,
+                Text("Opens the media app already selected in Android Auto. It does not start playback.",
+                    style = MaterialTheme.typography.bodyMedium)
+                if (!state.mediaLabArmed) {
+                    Text("Requires root, LSPosed and a compatible Android Auto build.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onMediaLabArm,
+                        enabled = state.aa.runtimeTarget && state.framework.connected &&
+                            !state.mediaSemanticAnalysisRunning,
                         modifier = Modifier.fillMaxWidth()) {
-                        Text("Disable dynamic routes (restart required)")
+                        Text(if (state.mediaSemanticAnalysisRunning) "Checking compatibility…"
+                            else "Check compatibility & enable opening")
                     }
-                }
-                if (state.mediaLabArmed) {
-                    Text("Preferred opening route (resolved for this build):",
-                        style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onMediaLabRoute("A") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "A") {
-                            Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
+                    Text("Only proven, previously validated builds enable automatic opening during setup. Other builds require a separate review.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("Route ${state.mediaLabRoute} selected · ${if (state.mediaLabRoute == "A") "Auxiliary" else "Direct"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.mediaLabAutoEnabled) {
+                        Button(onClick = { onMediaLabAuto(false) },
+                            enabled = state.framework.connected,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Turn off automatic opening")
                         }
-                        OutlinedButton(onClick = { onMediaLabRoute("B") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "B") {
-                            Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                    } else if (state.mediaLabAutoCapable) {
+                        Button(onClick = { spotifyPf6AutoConfirm = true },
+                            enabled = state.framework.connected && state.profilePublished &&
+                                !state.mediaStartupAutoEnabled,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Enable automatic opening")
                         }
-                    }
-                    Text("Automatic opening uses one attempt per connection, never falls back to a second route, and cancels when manual navigation is observed.",
-                        style = MaterialTheme.typography.labelSmall)
-                    Text("Automatic startup compatibility: " +
-                        if (state.mediaLabAutoCapable) "resolved for this build" else "not available (manual route only)",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = {
-                        if (state.mediaLabAutoEnabled) onMediaLabAuto(false)
-                        else spotifyPf6AutoConfirm = true
-                    }, enabled = state.framework.connected &&
-                        (state.mediaLabAutoEnabled || (state.profilePublished &&
-                            state.mediaLabAutoCapable && !state.mediaStartupAutoEnabled)),
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(if (state.mediaLabAutoEnabled)
-                            "Disable automatic media opening"
-                            else "Enable automatic media opening")
+                    } else {
+                        Text("The opening routes were found, but the automatic trigger could not be verified. Manual tests remain available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 OutlinedButton(
                     onClick = { mediaToolsExpanded = !mediaToolsExpanded },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (mediaToolsExpanded) "Hide compatibility and test tools"
-                    else "Compatibility and test tools") }
+                ) { Text(if (mediaToolsExpanded) "Hide advanced options"
+                    else "Advanced options and tests") }
                 if (mediaToolsExpanded) {
+                    if (state.mediaLabArmed) {
+                        Text("Opening route", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onMediaLabRoute("A") },
+                                modifier = Modifier.weight(1f),
+                                enabled = state.framework.connected && state.mediaLabRoute != "A") {
+                                Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
+                            }
+                            OutlinedButton(onClick = { onMediaLabRoute("B") },
+                                modifier = Modifier.weight(1f),
+                                enabled = state.framework.connected && state.mediaLabRoute != "B") {
+                                Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                            }
+                        }
+                        TextButton(onClick = onMediaLabArm,
+                            enabled = state.framework.connected && !state.mediaSemanticAnalysisRunning) {
+                            Text("Recheck compatibility")
+                        }
+                        TextButton(onClick = onMediaLabDisarm, enabled = state.framework.connected) {
+                            Text("Disable dynamic routes")
+                        }
+                        Text("One opening attempt per connection. If it fails, the app does not try another route automatically.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     OutlinedButton(onClick = onMediaSemanticAnalysis,
                         enabled = state.aa.runtimeTarget && !state.mediaSemanticAnalysisRunning,
                         modifier = Modifier.fillMaxWidth()) {
@@ -2183,9 +2196,9 @@ private class TouchMenuPositionProvider(
                                 (supported && !state.mediaLabArmed && state.mediaStartupTraceEnabled && state.profilePublished)),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(if (state.mediaStartupAutoEnabled)
-                        "Disable Spotify auto-open (PF4)"
-                        else "Enable Spotify auto-open (PF4 test)") }
-                    Text("Fallback PF4 is Spotify-only and pinned to the previously validated Android Auto 18.1 build. It remains separate from the dynamic routes.",
+                        "Disable legacy Spotify auto-open"
+                        else "Enable legacy Spotify auto-open") }
+                    Text("Legacy Spotify opening is limited to the previously validated Android Auto build and operates separately from dynamic routes.",
                         style = MaterialTheme.typography.labelSmall)
                     }
                     state.mediaSemanticReport?.let { report ->
@@ -2200,15 +2213,15 @@ private class TouchMenuPositionProvider(
                             enabled = supported && state.framework.connected &&
                                 state.mediaStartupTraceEnabled && state.profilePublished,
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Legacy: open Spotify once (test)") }
-                        Text("Legacy PF3/PF4 applies only to the pinned, previously validated build. A manual launch is limited to one attempt per session; successful method return does not prove head-unit visibility.",
+                        ) { Text("Test legacy Spotify opening once") }
+                        Text("Legacy tests only run on a previously validated build. A returned method call does not confirm that the screen was displayed.",
                             style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
         }
         item {
-            Text("This feature does not start audio playback. Opening requests use Android Auto's own controller; they can be rejected by Android Auto or the head unit. Configure and test only while parked.",
+            Text("Only configure or test while parked. A new Android Auto version requires a new compatibility check.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
