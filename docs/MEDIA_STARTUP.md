@@ -5,9 +5,6 @@ projection starts. It may not start audio playback, launch arbitrary packages
 or bypass driving restrictions. Configure it while parked and outside active
 projection; verify the result on a parked head unit.
 
-This guide describes the current maintenance branch. Historical beta5 preflight
-and release evidence is indexed in [Documentation](README.md).
-
 ## Set up automatic opening
 
 1. Enable **AA Experiments** in LSPosed with Android Auto in scope, then let the
