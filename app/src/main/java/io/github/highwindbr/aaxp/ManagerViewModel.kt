@@ -1368,12 +1368,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 current.keys.filter(FullRecoveryBundle::managedKey).forEach(edit::remove)
                 bundle.entries.forEach { (key, value) -> edit.putString(key, value) }
                 require(edit.commit()) { "Framework rejected the complete recovery transaction." }
-                bundle
+                // Publish under the same gate used by normal/Advanced edits.
+                // The committed recovery remains available if publication fails.
+                bundle to refreshOverridesAndProfileLocked()
             }
         } }
-        result.onSuccess { bundle ->
-            refreshOverridesAndProfile()
-            val published = mutable.value.profilePublished &&
+        result.onSuccess { (bundle, publicationSucceeded) ->
+            val published = publicationSucceeded &&
                 mutable.value.aa.buildFingerprintSha256 == bundle.fingerprint
             mutable.update { it.copy(saveState = if (published) SaveState.SAVED else SaveState.FAILED,
                 message = if (published)
