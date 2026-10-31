@@ -1,6 +1,27 @@
 # Changelog
 
-## 1.0.0-beta5 — final release preparation
+Entries describe their named release or development stage. Historical pending
+statements are not the current release status; use [Release process](docs/RELEASE.md)
+and [candidate readiness](docs/BETA6_RC1_READINESS.md) for ongoing work.
+
+## Unreleased — reliability and maintenance
+
+- Harden archive input limits, catalog retention and v7-to-v8 cache migration.
+- Coordinate preference writes and profile publication; discard stale UI queries.
+- Support independently proven Media Startup A/B routes and explicit build-scoped consent.
+- Retire VTC/DOUBLE UI controls and disarm persisted selections during profile refresh.
+- Add a five-minute partial CPU wake lock alongside foreground catalog analysis.
+- Simplify route presentation and remove the unused route formatter and its exclusive test.
+- Refresh current guides and distinguish historical records from candidate evidence.
+- Record actual SQLite emulator execution separately from APK compilation and physical validation.
+
+These changes are not a stable release announcement. Private-fixture, signed-upgrade,
+physical and publication gates remain documented in candidate readiness.
+
+## 1.0.0-beta5 — release
+
+Published as [v1.0.0-beta5](https://github.com/HighwindBR/AA-Experiments/releases/tag/v1.0.0-beta5).
+The points below summarize its final preparation.
 
 - Promote the validated beta5-RC1 media startup implementation without
   changing the selected-component hook logic. Media startup lives in
@@ -14,8 +35,8 @@
   in-place upgrade from RC1 (177); package remains
   `io.github.highwindbr.aaxp`.
 - Prepare exact beta5 tag, private 256 MiB/frozen corpus gates, signed APK
-  and pinned beta4 certificate comparison. **Official publication is pending
-  final gate verification and maintainer approval.**
+  and pinned beta4 certificate comparison. Publication status and assets are
+  available at the official release link above.
 - Record the reported parked-vehicle RC1 acceptance without asserting
   independent proof for every player/route/cross-build combination.
 

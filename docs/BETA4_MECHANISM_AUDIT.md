@@ -1,5 +1,10 @@
 # AA Experiments beta4 — Override mechanism coverage audit
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Audit date: 2026-10-23
 Scope: `feature/beta4-getter-probe-preflight`, API 101 module.
 This is a **mechanism audit**, not a claim that all 900+ individual flags

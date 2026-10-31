@@ -1,5 +1,10 @@
 # Beta5 preflight5 — semantic Media Startup resolver, fail-closed
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 ## Scope and status
 PF4 is physically verified on the user's inspected Android Auto 18.1.164344-release.daily and remains unchanged. PF5 introduces a **bounded, read-only structural discovery** for future Android Auto builds; it does **not** yet enable automatic launching on unknown builds. The future PF6 cross-version fixture matrix and real HU checks are prerequisites to executing renamed internal methods.
 

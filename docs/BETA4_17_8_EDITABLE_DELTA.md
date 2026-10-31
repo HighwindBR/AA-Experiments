@@ -1,5 +1,10 @@
 # Frozen Android Auto 17.8 editable delta — beta3 → beta4
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 ## Evidence and outcome
 
 The private WSL runner executed the installed-scan gate against the

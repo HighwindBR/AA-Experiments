@@ -1,5 +1,10 @@
 # Beta4 — signed device candidate, without publication
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Scope:** manually triggered and non-publishing validation of the final
 installed identity `1.0.0-beta4` (`versionCode=169`). The signed test
 file is `AAExperiments-1.0.0-beta4-candidate.apk`, without an RC1

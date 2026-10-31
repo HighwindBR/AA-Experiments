@@ -3,6 +3,10 @@
 Development-only branch: `feature/beta6-reliability`. Do not merge, tag or
 publish this work while UI, build and device gates are pending.
 
+Current candidate evidence and pending gates are tracked in
+[readiness](BETA6_RC1_READINESS.md). User instructions are in
+[Media Startup](MEDIA_STARTUP.md) and [Advanced Overrides](ADVANCED_OVERRIDES.md).
+
 ## Media Startup screen
 
 - One short functional description instead of duplicated onboarding paragraphs.
@@ -24,7 +28,7 @@ publish this work while UI, build and device gates are pending.
   sufficient for a build-scoped profile; no route always fails closed.
 - When both are proven, retain the user's preferred route. When only A or
   only B is proven, select it automatically, persist that choice for the exact
-  build, hide the missing route from selection and never reflect/invoke the
+  build, disable the unavailable route button and never reflect/invoke the
   missing route in the Android Auto runtime.
 - A-only recovery can use a uniquely proven auxiliary delegate and separate
   navigation observer even if the direct route's log anchor is gone. If the
@@ -60,10 +64,13 @@ publish this work while UI, build and device gates are pending.
   absence of both routes. Resolver tests cover loss of the B anchor while
   the typed auxiliary A survives; parser tests cover separately proven A/B
   profiles and reject zero-route profiles.
-- Existing resolver regression tests confirm absence or ambiguity of route A
-  does not silently fall back to route B.
+- Absence or ambiguity of route A must not manufacture a replacement.
+  Route B is usable only when independently proven; there is no second
+  runtime attempt after dispatch failure.
 - Public gates: `:app:testDebugUnitTest`, `:app:lintRelease`,
   `:app:assembleDebug` and compile-only `:app:assembleDebugAndroidTest`.
+  A separate PR #14 emulator job executes the three SQLite tests; recorded
+  results and commit scope are in [readiness](BETA6_RC1_READINESS.md).
 - Not yet tested physically: legacy VTC/DOUBLE cleanup after upgrading from a
   build with probes armed, single-tap automatic setup, disconnected LSPosed,
   failed profile publication, unchanged build recheck, and Android Auto update.
@@ -96,7 +103,8 @@ publish this work while UI, build and device gates are pending.
   phone: status with zero flag overrides + armed media, A-only/B-only
   Settings summary, theme/light-dark, large text, screen rotation and
   TalkBack on expandable Backup/Danger cards.
-- Run instrumented SQLite tests and beta6 private 256 MiB fixtures; public
-  CI only compiles instrumented tests.
+- Record final-candidate SQLite execution and the private 256 MiB/frozen-corpus
+  gates. The three SQLite tests passed on the earlier head recorded in readiness;
+  private-fixture and physical acceptance remain separate.
 - Validate Media Startup consent and selected player on a **parked** head unit.
   A successful invocation alone is not evidence the player opened visually.

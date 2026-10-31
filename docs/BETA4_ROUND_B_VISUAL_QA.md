@@ -1,5 +1,10 @@
 # Beta4 — Visual QA from user screenshots
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Test build:** `1.0.0-beta4-preflight15`
 **Capture time:** 2026-10-23 23:36–23:42 (device local)
 **Evidence:** 16 JPEG images within

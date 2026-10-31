@@ -1,5 +1,12 @@
 # Advanced Overrides Mode (beta4)
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+> The current [Advanced Overrides guide](ADVANCED_OVERRIDES.md) replaces the
+> navigation instructions below; the VTC/DOUBLE panels have been retired.
+
 Advanced Overrides are opt-in and remain **more restricted than the full
 catalog**. The actual beta4 preflight18–19 navigation replaced the older
 preflight11 seven-tap unlock described later in this document.

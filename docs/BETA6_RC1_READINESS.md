@@ -1,14 +1,47 @@
 # Beta6 RC1 — release-gate checklist (NOT approved)
 
-Branch: `feature/beta6-reliability`, PR #13 (draft).
-Published beta5 and `main` remain unchanged.
-This document does not authorize a release, tag, merge or signing.
+Implementation baseline: `feature/beta6-reliability`, PR #13.
+Maintenance candidate: `maintenance/group-a-stable`, PR #14.
+Application metadata remains `1.0.0-beta6-preflight1` / versionCode `179`.
+Stable promotion is proposed, not approved. This document does not authorize
+a release, tag, merge or signing.
 
-## Public verification (exact candidate commit)
+## Recorded automated evidence
+
+[Run #275](https://github.com/HighwindBR/AA-Experiments/actions/runs/41240255586)
+completed successfully on 2026-10-31 for PR head
+`07affb739fd5141bffe4ea25d83436f2c3068726` against main
+`705c5ac6bbab24cc4af894713e91eade3388a3af`.
+The runner checked out GitHub's merge commit
+`4f9ab3fd239e6152c5e5eab23cc85e5dba8ab90d`.
+
+| Job | Recorded result | Evidence scope |
+| --- | --- | --- |
+| `unit-tests` | Passed | JVM tests and offline delivery-guard tests; unavailable private fixtures can be skipped |
+| `lint-release` | Passed | Android release lint |
+| `debug-apk` | Passed | Application and instrumented-test APK compilation |
+| `beta6-sqlite-emulator` | Passed | Android 15/API 35 x86_64; log reports `OK (3 tests)` |
+
+The three instrumented tests cover catalog pruning/checkpoint, pin/predecessor
+retention across imports and database reopen, and a synthetic v7-to-v8
+`builds` table migration. They do not exercise a full beta5 installation with
+real overrides, all relational catalog data or LSPosed storage.
+
+The [SQLite artifact](https://github.com/HighwindBR/AA-Experiments/actions/runs/41240255586/artifacts/13056654605)
+contains the instrumentation and emulator logs. The script calls `am instrument`
+directly; the upload contained three log files, not Gradle connected-test XML.
+
+This evidence belongs to the source/merge commits above. The checklist below
+is for the final candidate and remains open until its own run URLs and device
+results are recorded; later commits do not inherit an exact-commit certification.
+
+## Final candidate automated verification
 - [ ] `:app:testDebugUnitTest`
 - [ ] `:app:lintRelease`
 - [ ] `:app:assembleDebug`
-- [ ] `:app:assembleDebugAndroidTest` (compilation only; NOT execution)
+- [ ] `:app:assembleDebugAndroidTest` (compilation only)
+- [ ] Execute the three SQLite instrumented tests on the final candidate;
+      record the source/merge SHA, Android API and passing log.
 - [ ] All relevant historical 17.8/18.0 resolver fixtures pass without eligibility regressions.
 
 ## Real device background/screen-off reliability
@@ -32,8 +65,8 @@ This document does not authorize a release, tag, merge or signing.
 ## Beta5 -> Beta6 upgrade / database
 - [ ] Install over beta5 using the same signing identity. Preserve saved
       overrides, Advanced/Experimental baselines and Media Startup consent.
-- [ ] Execute the instrumented SQLite schema 7->8 migration and
-      installed-cache retention tests on emulator or phone.
+- [ ] Verify the signed upgrade preserves real catalog and override data;
+      use the isolated instrumented tests as supporting evidence.
 - [ ] Test repeated archive imports without evicting installed/previous
       installed catalog; check installed-AA comparison baseline.
 - [ ] Exercise restore with simulated LSPosed disconnect and retry.
@@ -50,9 +83,13 @@ This document does not authorize a release, tag, merge or signing.
       enlarged font, landscape, TalkBack and notification return behavior.
 
 ## External/private gates
+- [ ] Review and enable the exact candidate in the private workflow allowlist;
+      neither Beta6 nor Group A is currently accepted (see [Release](RELEASE.md)).
 - [ ] Full private 256 MiB fixture/frozen-corpus regression via trusted runner.
 - [ ] Signed APK checksums, release notes and publish workflow checks.
-- [ ] Explicit release approval before merging PR #13 or tagging beta6.
+- [ ] Reconcile final version/code, signing predecessor, tag allowlist,
+      private-delivery guards and release notes before publication is enabled.
+- [ ] Explicit maintainer approval for the exact candidate before merge/tag/release.
 
 ## Known residual risk
 A foreground service plus partial wakelock is a targeted **screen-off CPU

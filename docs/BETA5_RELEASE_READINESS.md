@@ -1,5 +1,11 @@
 # Beta5 final — evidence and publication checklist
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+> Beta5 was subsequently [published](https://github.com/HighwindBR/AA-Experiments/releases/tag/v1.0.0-beta5).
+
 ## Fixed source and metadata
 
 - Frozen validated RC1 source: `e8286335b8261d4e8e249049b27324b27a989578`.

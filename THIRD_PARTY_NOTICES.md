@@ -4,8 +4,9 @@ AA Experiments is licensed as a whole under GPL-3.0-or-later. It also uses third
 under compatible licenses. Those components remain subject to their own licenses and copyright
 notices.
 
-This file is distributed with the source tree, is packaged into release APKs, and is attached to
-GitHub releases.
+This file is distributed with the source tree and packaged into APKs. Current release
+assets contain the APK and its SHA-256 checksum; these notices remain available in source
+and inside the APK.
 
 ## Apache License 2.0 components
 

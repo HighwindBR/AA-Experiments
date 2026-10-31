@@ -4,8 +4,12 @@
 
 The Compose Manager discovers the installed Android Auto package set or imports an archive. The
 scanner reads every DEX, builds typed identifier/occurrence records and passes them through the
-resolver. SQLite schema 7 stores catalogs under a composite build fingerprint containing version
-code, base APK hash and ordered split artifact hashes.
+resolver. SQLite schema 8 stores catalogs under a composite build fingerprint containing version
+code, base APK hash and ordered split artifact hashes. The v7-to-v8 migration
+adds catalog origin as `LEGACY` without dropping existing rows. Installed scans
+persist a retention pin; the cache policy protects the installed catalog and
+its predecessor from repeated offline imports, with a default cap of three
+catalogs when a valid pin exists (two without a valid pin).
 
 Active typed preferences are validated against the current catalog and serialized into profile
 schema 3. Profile publication rotates between two remote-file slots: the manager writes and
@@ -18,11 +22,14 @@ recomputes that fingerprint, installs only zero-argument mappings from a matchin
 reads overrides from an immutable atomic snapshot. Every invalid or missing state executes the
 original getter.
 
-Long analysis runs in `viewModelScope` while a low-priority foreground data-sync service pins the
-process. A single-owner analysis gate prevents an overlapping scan, archive import or deep/targeted
+Long catalog analysis runs in `viewModelScope` alongside a foreground data-sync
+service with a low-importance notification and a partial CPU wake lock. The lock
+is bounded to five minutes without automatic renewal and is released when the
+service stops. The notification returns to the app; it does not keep the screen on. A single-owner analysis gate prevents an overlapping scan, archive import or deep/targeted
 DEX operation from stopping the foreground service owned by another operation. The service
 lifetime is protected by `try/finally`; it improves screen-off resilience but does not promise
-survival after force-stop, reboot or process termination. A separate suspend-aware mutex serializes
+survival after task removal, force-stop, reboot, process termination, service
+timeouts or wake-lock expiry. A separate suspend-aware mutex serializes
 profile refresh/publication and build-state handoffs.
 
 ## Resolver
@@ -63,7 +70,8 @@ A bounded reverse graph classifies consumers, caches, activation scope and calls
 Structural fingerprints and global one-to-one matching rediscover mappings across obfuscation
 changes. Directed deep resolve reuses one DEX graph and streams each result to SQLite.
 
-Production rules contain no obfuscated fixture names. Manual references and regression oracles can
+The general experiment resolver does not use obfuscated fixture names as rules.
+Historical diagnostic and legacy media hooks have separate exact-build restrictions. Manual references and regression oracles can
 describe expected evidence but cannot create an editable mapping. Precision is preferred over
 recall: ambiguous, shared-infrastructure, unsupported object/callback and incomplete enum/Protobuf
 paths remain read-only or inconclusive.
@@ -96,6 +104,20 @@ Imported APKM/APKS files are read-only. Their current synthetic split filenames 
 archives with different ZIP ordering receive different fingerprints; this conservative false
 incompatibility does not affect the installed runtime profile.
 
+## Media Startup
+
+Media Startup uses a separate structural role resolver. A verified auxiliary
+route (A) or direct Intent/options route (B) is sufficient for manual operation.
+Automatic opening also requires a unique first-projected-activity trigger,
+navigation observation, a published exact-build profile and explicit per-build
+consent. The preferred available route is chosen before dispatch; a failed
+attempt is not retried on the other route.
+
+The request targets the component already selected by Android Auto. It does
+not start audio or bypass vehicle restrictions. Runtime logs mark a returned
+invocation as visibility unverified. The legacy Spotify path remains separate
+and restricted to its reviewed build. See [Media Startup](MEDIA_STARTUP.md).
+
 ## Historical design notes
 
 Historical design decisions and implementation milestones live in
@@ -123,6 +145,7 @@ Complete restore additionally checks current-build Advanced/Experimental
 getter signatures and the safety policy, requires an explicit typed
 confirmation, and replaces only the supported preference namespaces
 in one commit. It never imports diagnostic probes, video trace state,
-LSPosed framework settings or profile-slot pointers. Cross-build
+Media Startup route/consent preferences, appearance, catalog cache, Android Auto
+settings, LSPosed framework settings or profile-slot pointers. Cross-build
 Advanced records can remain stored for history but are not published
 on a different build.

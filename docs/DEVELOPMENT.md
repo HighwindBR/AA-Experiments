@@ -48,7 +48,32 @@ For the regular unit suite followed by a debug build:
 gradle --no-daemon --max-workers=1 :app:testDebugUnitTest :app:assembleDebug
 ```
 
-The public GitHub CI also runs `:app:lintRelease`.
+The public [verification workflow](../.github/workflows/build.yml) also runs
+`:app:lintRelease`, offline Python delivery-guard tests, and
+`:app:assembleDebugAndroidTest`. The latter only compiles the test APK.
+
+## SQLite instrumentation
+
+The separate `beta6-sqlite-emulator` job actually executes
+`CatalogDatabaseInstrumentedTest` on Android 15/API 35 x86_64. In this branch
+it is temporarily restricted to pull-request events for PR #14; push and
+manual-dispatch runs skip that job.
+
+For an isolated emulator with ADB and the build prerequisites available:
+
+```bash
+bash scripts/run-beta6-sqlite-instrumentation.sh
+```
+
+Use only a disposable emulator with no AA Experiments user data. The tests
+delete `catalog-v1.db` and clear retention preferences in their target
+application. The script installs disposable-key debug APKs and should not be
+used on the configured phone or a release-key installation.
+
+The script builds both APKs, calls `am instrument` directly, requires
+`OK (3 tests)`, and saves instrumentation/crash/logcat text. It does not
+generate Gradle connected-test XML. Existing execution evidence and its limits
+are recorded in [candidate readiness](BETA6_RC1_READINESS.md).
 
 ## Fork identity and signing
 
@@ -128,7 +153,7 @@ to inject obfuscated fixture names or mappings into production resolution logic.
 
 The private release workflow stages the exact APKM fixtures on a self-hosted runner and verifies
 their hashes before fixture-dependent gates run. The requirements and
-non-publishing manual dispatch are documented in
+ref restrictions and non-publishing manual dispatch are documented in
 [Private runner handoff](PRIVATE_RUNNER_CHECKLIST.md).
 
 ### Why the 256 MiB memory gates matter

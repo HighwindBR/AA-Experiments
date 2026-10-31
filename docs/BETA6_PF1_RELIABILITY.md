@@ -4,6 +4,9 @@ Base: official beta5 final (`v1.0.0-beta5`, versionCode 178), merged into beta6 
 Branch: `feature/beta6-reliability`; current development version `1.0.0-beta6-preflight1` / versionCode 179. Do not merge, tag, publish or edit
 `feature/beta5-rc1` as part of this work.
 
+For current candidate evidence and pending gates, use [readiness](BETA6_RC1_READINESS.md).
+These sections record implementation stages; they do not certify a release.
+
 ## First implementation slice
 
 - Bound the initial user-selected APK/APKM/APKS copy to 256 MiB and reject
@@ -51,8 +54,8 @@ signing secrets or media-startup semantics change.
 - Add pure JVM cache-retention regression tests: repeated imports, installed
   build upgrade, missing pin, predecessor selection, and bounded fallback.
 - Add Android instrumentation tests for SQLite migration 7→8, pin persistence
-  across database reopen, catalog pruning and installed comparison. **These
-  instrumented tests are not run by the public JVM workflow.**
+  across database reopen, catalog pruning and installed comparison. They run in a separate Android emulator job, not
+  inside the JVM unit-test job.
 - Add a JVM simulated recovery/publication integration test: corrupted bundle
   is rejected before any managed preference is changed; a failed slot pointer
   commit or corrupt readback preserves the live profile, and preserved restored
@@ -63,18 +66,22 @@ signing secrets or media-startup semantics change.
 
 Public GitHub Actions: `:app:testDebugUnitTest`, `:app:lintRelease`,
 `:app:assembleDebug`, and `:app:assembleDebugAndroidTest` (compile-only);
-follow the workflow runs on the draft beta6 PR.
+the separate emulator job executes the three SQLite tests for PR #14.
+[Run #272](https://github.com/HighwindBR/AA-Experiments/actions/runs/41237309704)
+passed all four jobs for head `83699f5`; see [readiness](BETA6_RC1_READINESS.md)
+for the merge SHA, log evidence and limits.
 
 The private 256 MiB fixtures and on-device signed testing have not been run
 for beta6 yet. They remain required before beta6 release. A public green CI is not a release
 sign-off.
 
-## Later PF1 tasks (not yet implemented)
+## Remaining PF1 validation
 
 1. Audit remaining local display-only preferences and session command paths, and run targeted
    physical tests for Media Startup A/B opt-in and disarm on a parked head unit.
-2. Execute the new Android instrumentation migration/pruning tests on an
-   emulator or device, since the public JVM checks cannot execute them.
+2. Record the SQLite emulator result for the final candidate and validate a
+   signed upgrade with representative existing data; the synthetic migration
+   test does not cover all user data.
 3. Reproduce integrated LSPosed disconnect/reconnect and restore failures
    on a disposable signed beta6 candidate before any release; never use real
    stored baselines as destructive test fixtures.

@@ -1,5 +1,10 @@
 # Beta5 — preflight3: explicitly requested Spotify open proof
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Development-only / branch-only.** The public beta4, preflight1 and preflight2 are unchanged.
 
 ## Evidence and scope

@@ -48,15 +48,17 @@ developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 
 For a practical overview of the breadth of Android Auto behavior that can be customized by modifying experiment flags, see the [**Feature Catalog**](FEATURE_CATALOG.md).
 
+- [Documentation index](docs/README.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development, building, testing and forking](docs/DEVELOPMENT.md)
-- [Advanced Overrides mode](docs/ADVANCED_OVERRIDES_BETA4.md)
+- [Advanced Overrides](docs/ADVANCED_OVERRIDES.md)
+- [Media Startup](docs/MEDIA_STARTUP.md)
 - [Release process](docs/RELEASE.md)
 - [Private fixture runner handoff](docs/PRIVATE_RUNNER_CHECKLIST.md)
 - [Known limitations](docs/KNOWN_LIMITATIONS.md)
 - [Privacy](PRIVACY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
-- [Alpha history](docs/history/ALPHA_HISTORY.md)
+- [Changelog and release history](CHANGELOG.md)
 
 Use only while parked and disconnected from active projection. If Android Auto becomes unstable,
 restore all overrides in the Manager or disable the module in LSPosed. This project is not
@@ -64,7 +66,7 @@ affiliated with Google, Android Auto or LSPosed.
 
 ## Roadmap
 
-### Beta hardening
+### Reliability and compatibility
 
 - Physical lifecycle, live-listener and rapid snapshot-swap validation.
 - Compatibility reports across Android Auto, ROM, device and LSPosed versions.

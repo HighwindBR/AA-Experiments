@@ -1,5 +1,10 @@
 # AA Experiments — Deep pre-RC code and UI review
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Date: 2026-10-23
 Reviewed source: `feature/beta4-getter-probe-preflight`, commit `bbad5d6fe0e34d95ac571fe411b55797cbb1d0d9`
 Stack: native Android / Kotlin + Jetpack Compose, LSPosed API 101-compatible manager/runtime, Java hook layer and on-device SQLite catalog.

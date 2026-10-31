@@ -1,5 +1,10 @@
 # Beta5 Media Startup: preflight1 read-only investigation
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 This preflight records two observed internal Android Auto 18.1 methods. It does not launch Spotify or other apps, force the head unit to display Android Auto, alter navigation, play audio, or change vehicle settings.
 
 ## Inspected build
