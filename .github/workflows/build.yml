@@ -53,4 +53,4 @@ jobs:
       - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
-      - run: gradle --no-daemon --max-workers=1 :app:assembleDebug
+      - run: gradle --no-daemon --max-workers=1 :app:assembleDebug :app:assembleDebugAndroidTest
