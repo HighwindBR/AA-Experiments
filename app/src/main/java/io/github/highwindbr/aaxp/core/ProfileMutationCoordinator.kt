@@ -13,8 +13,17 @@ class ProfileMutationCoordinator(private val gate: ProfileRefreshGate) {
     suspend fun execute(
         write: suspend () -> Unit,
         publish: suspend () -> Boolean
-    ): Outcome = gate.withLock {
-        write()
-        if (publish()) Outcome.PUBLISHED else Outcome.SAVED_NOT_PUBLISHED
+    ): Outcome = executeWithResult(write, publish).second
+
+    /**
+     * Preserve mutation results (such as restored-record counts) while holding
+     * the same gate through verified publication. The write runs exactly once.
+     */
+    suspend fun <T> executeWithResult(
+        write: suspend () -> T,
+        publish: suspend () -> Boolean
+    ): Pair<T, Outcome> = gate.withLock {
+        val result = write()
+        result to if (publish()) Outcome.PUBLISHED else Outcome.SAVED_NOT_PUBLISHED
     }
 }
