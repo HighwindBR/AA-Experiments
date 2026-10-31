@@ -665,7 +665,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         mutable.value = mutable.value.copy(
-            mediaLabAutoEnabled = if (status == "SAVED") enabled else mutable.value.mediaLabAutoEnabled,
+            mediaLabAutoEnabled = when (status) {
+                "SAVED" -> enabled
+                "LOCAL_FAILED" -> false // Verified remote rollback: reflect fail-closed state.
+                else -> mutable.value.mediaLabAutoEnabled
+            },
             message = when (status) {
                 "SAVED" -> if (enabled)
                     "Automatic media opening enabled for this Android Auto build's NEXT connection. Select your media player in Android Auto first."
