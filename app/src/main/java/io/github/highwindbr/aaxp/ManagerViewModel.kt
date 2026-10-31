@@ -56,6 +56,14 @@ data class ManagerUiState(
     val deepResolveRunning: Boolean = false,
     val consumerTraceKey: String? = null,
     val videoTimingTraceEnabled: Boolean = false,
+    val mediaStartupTraceEnabled: Boolean = false,
+    val mediaStartupAutoEnabled: Boolean = false,
+    val mediaSemanticAnalysisRunning: Boolean = false,
+    val mediaSemanticReport: String? = null,
+    val mediaLabArmed: Boolean = false,
+    val mediaLabRoute: String = "A",
+    val mediaLabAutoCapable: Boolean = false,
+    val mediaLabAutoEnabled: Boolean = false,
     val scanProgress: AnalysisProgress? = null,
     val saveState: SaveState = SaveState.IDLE,
     val saveTargetKey: String? = null,
@@ -68,13 +76,15 @@ data class CatalogExportRequest(val scope: ExportScope, val format: ExportFormat
     val fileName: String get() = "aa-catalog-${scope.name.lowercase()}.${format.name.lowercase()}"
 }
 private data class DeepResolveOutcome(val saved: Int, val resolved: Int, val inconclusive: Int, val cancelled: Boolean)
-private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean)
+private data class OverrideRefreshOutcome(val active: Map<String, TypedOverride>, val suspended: List<SuspendedOverride>, val published: Boolean, val error: Throwable?, val experimental: ExperimentalBooleanSnapshot?, val experimentalReady: Boolean, val advanced: List<AdvancedOverrideRecord>, val advancedPublishedCount: Int, val videoTimingTraceEnabled: Boolean, val mediaStartupTraceEnabled: Boolean, val mediaStartupAutoEnabled: Boolean, val mediaLabArmed: Boolean, val mediaLabRoute: String,
+    val mediaLabAutoCapable: Boolean, val mediaLabAutoEnabled: Boolean)
 
 class ManagerViewModel(application: Application) : AndroidViewModel(application) {
     private val mutable = MutableStateFlow(ManagerUiState())
     private val database = CatalogDatabase(application)
     private val hiddenPreferences = application.getSharedPreferences("suspended_override_visibility", Context.MODE_PRIVATE)
     private val probePreferences = application.getSharedPreferences("read_only_getter_probe", Context.MODE_PRIVATE)
+    private val mediaLabPreferences = application.getSharedPreferences("media_startup_pf6_lab", Context.MODE_PRIVATE)
     // All profile computations, writes and build-state handoffs share one coordinator.
     private val profileRefreshMutex = ProfileRefreshGate()
     // Only one expensive catalog/DEX operation may own the foreground service.
@@ -100,7 +110,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }
         try {
             keepAnalysisAlive(true)
-            mutable.value = mutable.value.copy(loading = true, scanProgress = null, message = "Loading installed Android Auto catalog…")
+            mutable.value = mutable.value.copy(loading = true, scanProgress = null, mediaSemanticReport = null,
+                message = "Loading installed Android Auto catalog…")
             val aa = withContext(Dispatchers.IO) {
                 File(getApplication<Application>().filesDir, "imports").deleteRecursively()
                 InstalledAaScanner(getApplication()).scan(::reportScanProgress).also { installation ->
@@ -392,6 +403,298 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         mutable.value = mutable.value.copy(message = if (enabled)
             "VTC read-only trace enabled. Restart Android Auto, then inspect LSPosed module logs."
         else "VTC trace disabled. Existing hooks fail open; restart AA to unload them.")
+    }
+
+
+    /** Media Startup diagnostic opt-in; profile scope and pinned SHA stay unchanged. */
+    fun setMediaStartupTrace(enabled: Boolean) = viewModelScope.launch {
+        val aa = mutable.value.aa
+        if (!aa.runtimeTarget ||
+            !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256)) {
+            mutable.value = mutable.value.copy(message =
+                "Media Startup observation requires the exact inspected Android Auto 18.1 base APK.")
+            return@launch
+        }
+        val ok = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY,
+                    enabled.toString())
+                ?.apply {
+                    if (!enabled) putString(
+                        io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                }?.commit() == true
+        }
+        if (!ok) {
+            mutable.value = mutable.value.copy(message =
+                "Cannot update Media Startup trace: LSPosed preferences unavailable.")
+            return@launch
+        }
+        refreshOverridesAndProfile()
+        mutable.value = mutable.value.copy(message = if (enabled)
+            "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
+        else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
+    }
+
+    /**
+     * PF5 discovery does NOT publish runtime hooks for an unknown build.
+     * Explicitly invoked, bounded scan on the installed AA base APK.
+     */
+    fun inspectMediaStartupSemantics() = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val base = aa.basePath
+        if (!aa.runtimeTarget || base == null) {
+            mutable.value = mutable.value.copy(message =
+                "PF5 requires an installed Android Auto base APK; imported archives are not executable.")
+            return@launch
+        }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another APK analysis is already running.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = true,
+            mediaSemanticReport = null)
+        try {
+            val outcome = withContext(Dispatchers.IO) {
+                io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.inspect(File(base))
+            }
+            if (mutable.value.aa.basePath == base &&
+                mutable.value.aa.buildFingerprintSha256 == aa.buildFingerprintSha256) {
+                mutable.value = mutable.value.copy(
+                    mediaSemanticReport = outcome.summary(),
+                    message = "PF5 offline Media Startup analysis: ${outcome.status}. Runtime mappings were not changed.")
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            mutable.value = mutable.value.copy(message =
+                "PF5 scan failed safely: ${failure.javaClass.simpleName}")
+        } finally {
+            mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
+            analysisOperationGate.finish()
+        }
+    }
+
+    /**
+     * PF6.2: arm build-bound manual A/B routes and optionally the
+     * ActivityTracker observer needed for a separate automatic opt-in.
+     * Every new proof starts with PF6 auto OFF, independently of PF4.
+     */
+    fun armMediaStartupLab() = viewModelScope.launch {
+        val aa = mutable.value.aa
+        val base = aa.basePath
+        val fingerprint = aa.buildFingerprintSha256
+        val hash = aa.baseSha256
+        if (!aa.runtimeTarget || base == null || fingerprint == null || hash == null ||
+            !mutable.value.framework.connected) {
+            mutable.value = mutable.value.copy(message = "Install Android Auto and connect LSPosed first.")
+            return@launch
+        }
+        if (!analysisOperationGate.tryBegin()) {
+            mutable.value = mutable.value.copy(message = "Another APK analysis is already running.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = true)
+        try {
+            val evidence = withContext(Dispatchers.IO) {
+                io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.inspect(File(base))
+            }
+            val required = setOf("projection.ready", "projection.end",
+                "projection.teardown", "launch.controllerFactory", "launch.startCarActivity",
+                "launch.optionsNoArgConstructor", "launch.auxiliary", "media.selectedApp")
+            if (evidence.status !in setOf(
+                    io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.KNOWN_BUILD_VALIDATED,
+                    io.github.highwindbr.aaxp.resolver.MediaStartupSemanticResolver.Status.REVIEW_ONLY) ||
+                evidence.baseSha256 != hash || !evidence.roles.keys.containsAll(required)) {
+                mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary(),
+                    message = "Dynamic routes not armed: incomplete, ambiguous or incompatible DEX proof.")
+                return@launch
+            }
+            if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
+                mutable.value.aa.baseSha256 != hash) {
+                mutable.value = mutable.value.copy(message = "Android Auto changed during analysis; restart the scan.")
+                return@launch
+            }
+            val lab = JSONObject().apply {
+                put("mode", io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE)
+                put("baseSha256", hash)
+                put("buildFingerprintSha256", fingerprint)
+                put("roles", JSONObject(evidence.roles))
+            }
+            val disabledAuto = withContext(Dispatchers.IO) {
+                ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY, "false")
+                    ?.commit() == true
+            }
+            if (!disabledAuto || !mediaLabPreferences.edit()
+                .putString("auto-selected:$fingerprint", "false")
+                .putString(fingerprint, lab.toString()).commit()) {
+                mutable.value = mutable.value.copy(message =
+                    "Could not persist the verified Media Startup profile; existing profile is unchanged.")
+                return@launch
+            }
+            mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
+            refreshOverridesAndProfile()
+            mutable.value = mutable.value.copy(message = if (
+                mutable.value.profilePublished && mutable.value.mediaLabArmed)
+                "Media Startup profile published. Restart Android Auto; test A/B while parked. Automatic opening stays OFF until opt-in." +
+                    if ("activity.firstProjected" in evidence.roles) " ActivityTracker resolved." else " ActivityTracker unresolved; manual-only."
+            else "Media Startup proof saved, but runtime profile was not published. Resolve LSPosed/profile errors before testing.")
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
+            mutable.value = mutable.value.copy(message =
+                "Media Startup scan failed safely: ${e.javaClass.simpleName}")
+        } finally {
+            mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
+            analysisOperationGate.finish()
+        }
+    }
+
+    fun disarmMediaStartupLab() = viewModelScope.launch {
+        val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val remoteDisabled = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
+                    "false")
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY,
+                    "false")?.commit() == true
+        }
+        if (!remoteDisabled || !mediaLabPreferences.edit().remove(fingerprint)
+                .putString("auto-selected:$fingerprint", "false").commit()) {
+            mutable.value = mutable.value.copy(message = "Dynamic route disable could not be saved.")
+            return@launch
+        }
+        refreshOverridesAndProfile()
+        mutable.value = mutable.value.copy(message = "Dynamic routes disarmed, automatic attempts disabled. Restart Android Auto to unload the hooks.")
+    }
+
+    fun chooseMediaLabRoute(route: String) = viewModelScope.launch {
+        if (route != "A" && route != "B") return@launch
+        val fingerprint = mutable.value.aa.buildFingerprintSha256 ?: return@launch
+        val saved = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
+                    route)?.commit() == true
+        }
+        val persisted = saved && mediaLabPreferences.edit().putString(
+            "route:$fingerprint", route).commit()
+        mutable.value = mutable.value.copy(
+            mediaLabRoute = if (persisted) route else mutable.value.mediaLabRoute,
+            message = if (persisted) "Preferred Media Startup route: ${route}. Applies to the next automatic attempt."
+                else "Could not persist Media Startup route.")
+    }
+
+    /** PF6.2: experimental automatic open is a separate per-build user opt-in. */
+    fun setMediaLabAuto(enabled: Boolean) = viewModelScope.launch {
+        val state = mutable.value
+        val fingerprint = state.aa.buildFingerprintSha256 ?: return@launch
+        if (!state.framework.connected ||
+            (enabled && (!state.mediaLabArmed || !state.mediaLabAutoCapable ||
+                !state.profilePublished || state.mediaStartupAutoEnabled))) {
+            mutable.value = state.copy(message =
+                "Automatic opening requires a verified Media Startup profile with a unique ActivityTracker and legacy PF4 OFF.")
+            return@launch
+        }
+        val key = io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY
+        val wrote = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(key, enabled.toString())
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY,
+                    "false")?.commit() == true
+        }
+        if (!wrote) {
+            mutable.value = mutable.value.copy(message = "Could not update automatic Media Startup preference in LSPosed.")
+            return@launch
+        }
+        val persisted = mediaLabPreferences.edit()
+            .putString("auto-selected:$fingerprint", enabled.toString()).commit()
+        if (!persisted) {
+            withContext(Dispatchers.IO) {
+                ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(key, "false")?.commit()
+            }
+            mutable.value = mutable.value.copy(mediaLabAutoEnabled = false,
+                message = "Could not persist per-build automatic preference; disabled for safety.")
+            return@launch
+        }
+        mutable.value = mutable.value.copy(mediaLabAutoEnabled = enabled,
+            message = if (enabled)
+                "Automatic media opening enabled for this Android Auto build's NEXT connection. Select your media player in Android Auto first."
+            else "Automatic media opening disabled. Any queued attempt will be skipped.")
+    }
+
+    fun requestMediaLabManualTest() = viewModelScope.launch {
+        val ui = mutable.value
+        if (!ui.framework.connected || !ui.profilePublished || !ui.mediaLabArmed) {
+            mutable.value = ui.copy(message =
+                "Media Startup is not armed. Resolve, publish profile and restart Android Auto.")
+            return@launch
+        }
+        val request = "v1|" + android.os.SystemClock.elapsedRealtime() + "|" +
+            java.util.UUID.randomUUID().toString() + "|" + ui.mediaLabRoute
+        val saved = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.REQUEST_KEY,
+                    request)?.commit() == true
+        }
+        mutable.value = mutable.value.copy(message = if (saved)
+            "Media Startup route ${ui.mediaLabRoute} manual test requested. Verify LSPosed MEDIA_PF6_* logs and the head unit; one attempt per connection."
+        else "Media Startup LSPosed request failed.")
+    }
+
+    /** PF4 opt-in: default off, and never allowed unless PF2/PF3 trace is armed. */
+    fun setMediaStartupAuto(enabled: Boolean) = viewModelScope.launch {
+        val current = mutable.value
+        // Turning OFF must remain possible even after AA updates to an
+        // uninspected build; only enabling requires a verified runtime.
+        if (!current.framework.connected ||
+            (enabled && (current.mediaLabArmed || !current.aa.runtimeTarget ||
+                !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(current.aa.baseSha256) ||
+                !current.mediaStartupTraceEnabled || !current.profilePublished))) {
+            mutable.value = mutable.value.copy(message =
+                "PF4 requires the exact inspected AA 18.1 and a published Media Startup trace.")
+            return@launch
+        }
+        val ok = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY,
+                    enabled.toString())?.commit() == true
+        }
+        if (!ok) {
+            mutable.value = mutable.value.copy(message =
+                "Cannot update PF4 auto-start: LSPosed preferences unavailable.")
+            return@launch
+        }
+        // This is deliberately a remote preference, not a change to the
+        // normal flag catalog or profile schema. Armed at NEXT projection ready.
+        mutable.value = mutable.value.copy(mediaStartupAutoEnabled = enabled,
+            message = if (enabled)
+                "PF4 enabled for the NEXT projection session. Disconnect/reconnect AA. Spotify must already be the active media app."
+            else "PF4 auto-start disabled. Any pending automatic attempt will be skipped.")
+    }
+
+    /** Experimental PF3: one manually confirmed, short-lived Spotify request. */
+    fun requestSpotifyManualLaunch() = viewModelScope.launch {
+        val value = mutable.value
+        if (!value.framework.connected || !value.profilePublished ||
+                !value.mediaStartupTraceEnabled || !value.aa.runtimeTarget ||
+                !io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(
+                    value.aa.baseSha256)) {
+            mutable.value = mutable.value.copy(message =
+                "PF3 unavailable. Arm Media Startup, publish the profile and restart Android Auto.")
+            return@launch
+        }
+        val request = io.github.highwindbr.aaxp.runtime.MediaStartupLaunchGate.makeRequest(
+            android.os.SystemClock.elapsedRealtime(), java.util.UUID.randomUUID().toString())
+        val committed = withContext(Dispatchers.IO) {
+            ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupLaunchGate.REQUEST_KEY,
+                    request)?.commit() == true
+        }
+        mutable.value = mutable.value.copy(message = if (committed)
+            "PF3 request saved. This does not prove launch: check LSPosed MEDIA_PF3_* events. Once per active projection session."
+        else "PF3 request failed: LSPosed remote preferences unavailable.")
     }
 
     fun deepResolveInconclusive() = viewModelScope.launch {
@@ -1117,6 +1420,47 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
                     allPrefs[io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY] as? String)
+            val mediaStartupTraceOn =
+                io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256) &&
+                io.github.highwindbr.aaxp.runtime.MediaStartupTrace.enabled(
+                    allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY] as? String)
+            // Report the saved opt-in even when a new AA build is unsupported,
+            // so Diagnostics can offer a visible OFF switch.
+            val mediaStartupAutoOn =
+                io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.enabled(
+                    allPrefs[io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY] as? String)
+            val savedLab = mediaLabPreferences.getString(aa.buildFingerprintSha256, null)
+                ?.let { runCatching { JSONObject(it) }.getOrNull() }
+                ?.takeIf { it.optString("buildFingerprintSha256") == aa.buildFingerprintSha256 &&
+                    it.optString("baseSha256") == aa.baseSha256 &&
+                    it.optString("mode") in setOf(
+                        io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.LEGACY_MODE,
+                        io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE) }
+            val labAutoCapable = savedLab?.optString("mode") ==
+                io.github.highwindbr.aaxp.runtime.MediaStartupLabProfile.MODE &&
+                savedLab.optJSONObject("roles")?.has("activity.firstProjected") == true
+            val labAutoEnabled = labAutoCapable &&
+                (mediaLabPreferences.getString("auto-selected:${aa.buildFingerprintSha256}", "false") == "true")
+            // Restore remote preference only for this installed build.
+            if ((allPrefs[
+                io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY] as? String)
+                != labAutoEnabled.toString()) {
+                check(prefs.edit().putString(
+                    io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY,
+                    labAutoEnabled.toString()).commit()) { "Unable to synchronize PF6 auto preference" }
+            }
+            val selectedRoute = mediaLabPreferences.getString(
+                "route:${aa.buildFingerprintSha256}", "A")
+                ?.takeIf { it == "A" || it == "B" } ?: "A"
+            // Remote preference applies in :projection; restore each build's
+            // preferred route before publishing its verified profile.
+            if ((allPrefs[
+                io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY] as? String)
+                != selectedRoute && savedLab != null) {
+                check(prefs.edit().putString(
+                    io.github.highwindbr.aaxp.runtime.MediaStartupLabGate.ROUTE_KEY,
+                    selectedRoute).commit()) { "Unable to synchronize PF6 route" }
+            }
             val snapshot = allPrefs.mapNotNull { (key, value) ->
                 if (key.startsWith(DynamicOverrideCodec.PREFIX) && value is String) key to value else null
             }.toMap()
@@ -1235,11 +1579,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             val published = ServiceBridge.publishProfile(aa.buildFingerprintSha256, aa.baseSha256,
                 aa.versionCode ?: 0, aa.packageArtifactSha256, aa.dexSha256, mappings, probes,
-                experimentalMappings, advancedMappings, protocolTraceOn)
+                experimentalMappings, advancedMappings, protocolTraceOn, mediaStartupTraceOn, savedLab)
             OverrideRefreshOutcome(active, suspended, published.isSuccess, published.exceptionOrNull(),
                 experimental, published.isSuccess && experimentalMappings.isNotEmpty(),
                 advancedRecords, if (published.isSuccess) advancedMappings.size else 0,
-                protocolTraceOn)
+                protocolTraceOn, mediaStartupTraceOn, mediaStartupAutoOn,
+                savedLab != null, selectedRoute, labAutoCapable, labAutoEnabled)
         } }
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
@@ -1250,6 +1595,12 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
             advancedRecords=outcome.advanced, advancedPublishedCount=outcome.advancedPublishedCount,
             videoTimingTraceEnabled=outcome.videoTimingTraceEnabled,
+            mediaStartupTraceEnabled=outcome.mediaStartupTraceEnabled,
+            mediaStartupAutoEnabled=outcome.mediaStartupAutoEnabled,
+            mediaLabArmed=outcome.mediaLabArmed,
+            mediaLabRoute=outcome.mediaLabRoute,
+            mediaLabAutoCapable=outcome.mediaLabAutoCapable,
+            mediaLabAutoEnabled=outcome.mediaLabAutoEnabled,
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }

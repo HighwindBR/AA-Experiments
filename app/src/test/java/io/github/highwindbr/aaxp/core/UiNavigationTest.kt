@@ -16,6 +16,7 @@ class UiNavigationTest {
         assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.DIAGNOSTICS, false))
         assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.ABOUT, false))
         assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.BACKUPS, false))
+        assertEquals(BackAction.OPEN_SETTINGS, backAction(2, SettingsPage.MEDIA, false))
     }
 
     @Test fun `primary tabs return to status before exit`() {

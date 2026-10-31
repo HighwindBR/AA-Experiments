@@ -11,7 +11,7 @@ on:
         default: false
         type: boolean
       build_signed_candidate:
-        description: Build a signed beta4 test APK after private gates on trusted WSL runner
+        description: Build a gated signed candidate on an allowlisted feature branch (beta4 or beta5)
         required: false
         default: false
         type: boolean
@@ -65,12 +65,16 @@ jobs:
     if: >-
       (github.event_name == 'push' &&
        (github.ref == 'refs/tags/v1.0.0-beta3' ||
-        github.ref == 'refs/tags/v1.0.0-beta4')) ||
+        github.ref == 'refs/tags/v1.0.0-beta4' ||
+        github.ref == 'refs/tags/v1.0.0-beta5')) ||
       (github.event_name == 'workflow_dispatch' && inputs.run_private_gates &&
        (github.ref == 'refs/heads/main' ||
         github.ref == 'refs/heads/release/1.0.0-beta3' ||
         github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
-        github.ref == 'refs/heads/release/1.0.0-beta4'))
+        github.ref == 'refs/heads/release/1.0.0-beta4' ||
+        github.ref == 'refs/heads/feature/beta5-media-startup-preflight1' ||
+        github.ref == 'refs/heads/feature/beta5-rc1' ||
+        github.ref == 'refs/heads/release/1.0.0-beta5'))
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     steps:
       - uses: actions/checkout@v4
@@ -119,7 +123,7 @@ jobs:
           PY
 
   signed-development-candidate:
-    # Manual-only, exact beta4 feature branch; NEVER on tag, PR or publication.
+    # Manual-only, exact allowlisted feature branch; NEVER on tag, PR or publication.
     # Keystore stays on the trusted runner. Candidate APK stays local unless
     # the maintainer explicitly requests a draft in a SEPARATE PRIVATE repo.
     # Never use Actions artifacts or Releases in the PUBLIC source repository.
@@ -127,7 +131,10 @@ jobs:
       github.event_name == 'workflow_dispatch' &&
       inputs.build_signed_candidate &&
       inputs.run_private_gates &&
-      github.ref == 'refs/heads/feature/beta4-getter-probe-preflight'
+      (github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
+       github.ref == 'refs/heads/feature/beta5-media-startup-preflight1' ||
+       github.ref == 'refs/heads/feature/beta5-rc1' ||
+       github.ref == 'refs/heads/release/1.0.0-beta5')
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: [self-hosted, linux, x64, aa-private-fixtures]
     permissions:
@@ -181,7 +188,7 @@ jobs:
           test -n "$AAXP_RELEASE_KEY_ALIAS"
           test -n "$AAXP_RELEASE_KEY_PASSWORD"
           KEYSTORE="$(mktemp "$RUNNER_TEMP/aaxp-candidate-XXXXXXXX.jks")"
-          BASE_DIR="$(mktemp -d "$RUNNER_TEMP/aaxp-beta3-XXXXXXXX")"
+          BASE_DIR="$(mktemp -d "$RUNNER_TEMP/aaxp-published-baseline-XXXXXXXX")"
           cleanup() { rm -f "$KEYSTORE"; rm -rf "$BASE_DIR"; }
           trap cleanup EXIT
           printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
@@ -193,30 +200,52 @@ jobs:
           "$TOOLS/apksigner" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
           BADGING=$("$TOOLS/aapt" dump badging "$APK" | sed -n '1p')
           [[ "$BADGING" == *"name='io.github.highwindbr.aaxp'"* ]]
-          [[ "$BADGING" == *"versionName='1.0.0-beta4'"* ]]
-          [[ "$BADGING" == *"versionCode='169'"* ]]
-          # Verify against the actual published beta3 binary, not a claimed
-          # hard-coded keystore identifier. Hash is pinned in release workflow.
-          BASE="$BASE_DIR/AAExperiments-1.0.0-beta3.apk"
+          # Only exact source ref/version combinations may access signing secrets.
+          case "$GITHUB_REF" in
+            refs/heads/feature/beta4-getter-probe-preflight)
+              EXPECTED_VERSION="1.0.0-beta4"; EXPECTED_CODE=169
+              BASE_VERSION="1.0.0-beta3"
+              BASE_SHA256="6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e"
+              ;;
+            refs/heads/feature/beta5-media-startup-preflight1)
+              EXPECTED_VERSION="1.0.0-beta5-preflight1"; EXPECTED_CODE=170
+              BASE_VERSION="1.0.0-beta4"
+              BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
+              ;;
+            refs/heads/feature/beta5-rc1)
+              EXPECTED_VERSION="1.0.0-beta5-rc1"; EXPECTED_CODE=177
+              BASE_VERSION="1.0.0-beta4"
+              BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
+              ;;
+            refs/heads/release/1.0.0-beta5)
+              EXPECTED_VERSION="1.0.0-beta5"; EXPECTED_CODE=178
+              BASE_VERSION="1.0.0-beta4"
+              BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
+              ;;
+            *) echo "::error::Unapproved ref"; exit 1 ;;
+          esac
+          [[ "$BADGING" == *"versionName='$EXPECTED_VERSION'"* ]]
+          [[ "$BADGING" == *"versionCode='$EXPECTED_CODE'"* ]]
+          # Trust only a SHA-256 verified official predecessor APK as signing baseline.
+          BASE="$BASE_DIR/AAExperiments-${BASE_VERSION}.apk"
           curl --fail --location --silent --show-error --retry 2 \
             --output "$BASE" \
-            "https://github.com/HighwindBR/AA-Experiments/releases/download/v1.0.0-beta3/AAExperiments-1.0.0-beta3.apk"
-          echo "6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e  $BASE" | sha256sum -c -
+            "https://github.com/HighwindBR/AA-Experiments/releases/download/v${BASE_VERSION}/AAExperiments-${BASE_VERSION}.apk"
+          printf "%s  %s\n" "$BASE_SHA256" "$BASE" | sha256sum -c -
           BASE_CERT=$("$TOOLS/apksigner" verify --print-certs "$BASE" | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
           NEW_CERT=$("$TOOLS/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
           test -n "$BASE_CERT"
           test "$BASE_CERT" = "$NEW_CERT"
-          test "$GITHUB_REF" = "refs/heads/feature/beta4-getter-probe-preflight"
           DEST="$HOME/aaxp-private-candidates"
           mkdir -p "$DEST"
           chmod 700 "$DEST"
-          TARGET="$DEST/AAExperiments-1.0.0-beta4-candidate.apk"
+          TARGET="$DEST/AAExperiments-${EXPECTED_VERSION}-candidate.apk"
           cp "$APK" "$TARGET.new"
           chmod 600 "$TARGET.new"
           mv -f "$TARGET.new" "$TARGET"
           (cd "$DEST" && sha256sum "$(basename "$TARGET")" > "$(basename "$TARGET").sha256")
           echo "Verified signed candidate stored LOCALLY at $TARGET"
-          echo "Certificate SHA-256 matches official beta3: $NEW_CERT"
+          echo "Certificate SHA-256 matches official ${BASE_VERSION}: $NEW_CERT"
           echo "No public GitHub artifact uploaded, official tag pushed or Release published."
 
       - name: Upload candidate to a private draft for phone download
@@ -227,8 +256,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Signed in the prior step, pinned to the beta4 branch and already
-          # checked against the published beta3 signing certificate.
+          # Signed on an allowlisted branch and compared against the published
+          # SHA-256-verified predecessor certificate.
           python3 scripts/private_candidate_delivery.py
 
   signed-release:
@@ -236,7 +265,8 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       (github.ref == 'refs/tags/v1.0.0-beta3' ||
-       github.ref == 'refs/tags/v1.0.0-beta4')
+       github.ref == 'refs/tags/v1.0.0-beta4' ||
+       github.ref == 'refs/tags/v1.0.0-beta5')
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: ubuntu-latest
     permissions:
@@ -276,30 +306,47 @@ jobs:
           [[ "$BADGING" == *"versionName='${GITHUB_REF_NAME#v}'"* ]]
           VERSION_CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\\([0-9]*\\)'.*/\\1/p")
           test -n "$VERSION_CODE"
-          if [ "$GITHUB_REF" = "refs/tags/v1.0.0-beta4" ]; then
-            test "$VERSION_CODE" -eq 169
-          else
-            test "$VERSION_CODE" -gt 143
-          fi
+          case "$GITHUB_REF" in
+            refs/tags/v1.0.0-beta3) test "$VERSION_CODE" -gt 143 ;;
+            refs/tags/v1.0.0-beta4) test "$VERSION_CODE" -eq 169 ;;
+            refs/tags/v1.0.0-beta5) test "$VERSION_CODE" -eq 178 ;;
+            *) echo "::error::Unapproved release tag"; exit 1 ;;
+          esac
+          "$TOOLS/apksigner" verify --verbose "$APK" |
+            grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
 
-      - name: Verify upgrade signing certificate against official beta3
-        if: github.ref == 'refs/tags/v1.0.0-beta4'
+      - name: Verify release certificate against SHA-256-pinned predecessor
+        if: >-
+          github.ref == 'refs/tags/v1.0.0-beta4' ||
+          github.ref == 'refs/tags/v1.0.0-beta5'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/beta3"
-          gh release download v1.0.0-beta3 \
+          case "$GITHUB_REF" in
+            refs/tags/v1.0.0-beta4)
+              BASE_VERSION="1.0.0-beta3"
+              BASE_SHA256="6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e"
+              ;;
+            refs/tags/v1.0.0-beta5)
+              BASE_VERSION="1.0.0-beta4"
+              BASE_SHA256="c8e5566ab50c681bbb88f216be48f8725a6d03bdce3abe845535faf58f56bf43"
+              ;;
+            *) echo "::error::Unapproved predecessor"; exit 1 ;;
+          esac
+          mkdir -p "$RUNNER_TEMP/predecessor"
+          gh release download "v$BASE_VERSION" \
             --repo "$GITHUB_REPOSITORY" \
-            --pattern "AAExperiments-1.0.0-beta3.apk" \
-            --dir "$RUNNER_TEMP/beta3"
-          BASE="$RUNNER_TEMP/beta3/AAExperiments-1.0.0-beta3.apk"
-          echo "6b282046ab5420bcfbdd47bb7c6fe0068aee944310b6174fa86deefec786f48e  $BASE" | sha256sum -c -
+            --pattern "AAExperiments-$BASE_VERSION.apk" \
+            --dir "$RUNNER_TEMP/predecessor"
+          BASE="$RUNNER_TEMP/predecessor/AAExperiments-$BASE_VERSION.apk"
+          printf '%s  %s\n' "$BASE_SHA256" "$BASE" | sha256sum -c -
           APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          BASE_CERT=$("$APKSIGNER" verify --print-certs "$BASE" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
-          NEW_CERT=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          BASE_CERT=$("$APKSIGNER" verify --print-certs "$BASE" | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
+          NEW_CERT=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk | sed -n 's/.*certificate SHA-256 digest: //p' | sed -n '1p')
           test -n "$BASE_CERT"
           test "$BASE_CERT" = "$NEW_CERT"
+          echo "Signing certificate matches SHA-256-verified official $BASE_VERSION"
 
       - name: Name artifact and publish checksum
         run: |

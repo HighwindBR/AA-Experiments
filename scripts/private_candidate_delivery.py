@@ -20,6 +20,25 @@ API = "https://api.github.com"
 SOURCE_REPO = "HighwindBR/AA-Experiments"
 SOURCE_BRANCH = "refs/heads/feature/beta4-getter-probe-preflight"
 APK_NAME = "AAExperiments-1.0.0-beta4-candidate.apk"
+BETA5_BRANCH = "refs/heads/feature/beta5-media-startup-preflight1"
+BETA5_APK_NAME = "AAExperiments-1.0.0-beta5-preflight1-candidate.apk"
+BETA5_RC1_BRANCH = "refs/heads/feature/beta5-rc1"
+BETA5_RC1_APK_NAME = "AAExperiments-1.0.0-beta5-rc1-candidate.apk"
+BETA5_FINAL_BRANCH = "refs/heads/release/1.0.0-beta5"
+BETA5_FINAL_APK_NAME = "AAExperiments-1.0.0-beta5-candidate.apk"
+
+
+def candidate_for_ref(ref: str) -> tuple[str, str, str]:
+    """Allow only exact (ref, APK name, private draft tag) combinations."""
+    if ref == SOURCE_BRANCH:
+        return APK_NAME, "aaxp-private-beta4-candidate", "1.0.0-beta4"
+    if ref == BETA5_BRANCH:
+        return BETA5_APK_NAME, "aaxp-private-beta5-preflight1", "1.0.0-beta5-preflight1"
+    if ref == BETA5_RC1_BRANCH:
+        return BETA5_RC1_APK_NAME, "aaxp-private-beta5-rc1", "1.0.0-beta5-rc1"
+    if ref == BETA5_FINAL_BRANCH:
+        return BETA5_FINAL_APK_NAME, "aaxp-private-beta5-final", "1.0.0-beta5"
+    raise ValueError("Private delivery is not enabled on this source ref.")
 
 
 def require_private_destination(info: dict, desired: str) -> None:
@@ -30,10 +49,10 @@ def require_private_destination(info: dict, desired: str) -> None:
         raise ValueError("Delivery repository must exist and have private visibility.")
 
 
-def verify_apk_checksum(apk: Path) -> str:
+def verify_apk_checksum(apk: Path, expected_name: str = APK_NAME) -> str:
     if not apk.is_file() or not apk.stat().st_size:
         raise ValueError("Verified APK is missing or empty.")
-    if apk.name != APK_NAME:
+    if apk.name != expected_name:
         raise ValueError("Unexpected APK version/name. Refusing delivery.")
     checksum = Path(str(apk) + ".sha256")
     if not checksum.is_file():
@@ -50,10 +69,11 @@ def verify_apk_checksum(apk: Path) -> str:
     return computed
 
 
-def draft_tag(run_id: str, attempt: str) -> str:
+def draft_tag(run_id: str, attempt: str, source_ref: str = SOURCE_BRANCH) -> str:
     if not run_id.isdecimal() or not attempt.isdecimal():
         raise ValueError("GitHub Actions run identity is required.")
-    return f"aaxp-private-beta4-candidate-run-{run_id}-attempt-{attempt}"
+    _, prefix, _ = candidate_for_ref(source_ref)
+    return f"{prefix}-run-{run_id}-attempt-{attempt}"
 
 
 def github(method: str, url: str, token: str, payload=None, content_type=None) -> dict:
@@ -90,16 +110,18 @@ def run() -> None:
             "Private delivery requires AAXP_PRIVATE_DELIVERY_TOKEN secret and "
             "AAXP_PRIVATE_DELIVERY_REPO repository variable."
         )
-    if os.environ.get("GITHUB_REPOSITORY") != SOURCE_REPO or os.environ.get("GITHUB_REF") != SOURCE_BRANCH:
-        raise ValueError("Private delivery is restricted to the beta4 feature branch.")
+    if os.environ.get("GITHUB_REPOSITORY") != SOURCE_REPO:
+        raise ValueError("Private delivery is restricted to the source repository.")
+    source_ref = os.environ.get("GITHUB_REF", "")
+    apk_name, _, version = candidate_for_ref(source_ref)
     sha = os.environ.get("GITHUB_SHA", "")
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Invalid checked-out source commit.")
     run_id = os.environ.get("GITHUB_RUN_ID", "")
     attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
-    tag = draft_tag(run_id, attempt)
-    apk = Path.home() / "aaxp-private-candidates" / APK_NAME
-    digest = verify_apk_checksum(apk)
+    tag = draft_tag(run_id, attempt, source_ref)
+    apk = Path.home() / "aaxp-private-candidates" / apk_name
+    digest = verify_apk_checksum(apk, expected_name=apk_name)
 
     repo_info = github("GET", f"{API}/repos/{destination}", token)
     require_private_destination(repo_info, destination)
@@ -110,13 +132,13 @@ def run() -> None:
     release = github("POST", f"{API}/repos/{destination}/releases", token, {
         "tag_name": tag,
         "target_commitish": default_branch,
-        "name": f"AA Experiments 1.0.0-beta4 · private candidate build {run_id}/{attempt}",
+        "name": f"AA Experiments {version} · private candidate build {run_id}/{attempt}",
         "body": (
             "UNPUBLISHED PRIVATE TEST DOWNLOAD. Never publish this draft.\n\n"
             f"Source: {SOURCE_REPO}@{sha}\n"
             f"APK SHA-256: {digest}\n"
             "Requires Android Auto/LSPosed device validation. This is not an "
-            "official AA Experiments release or beta4 tag."
+            "official AA Experiments release or published tag."
         ),
         "draft": True,
         "prerelease": False,

@@ -2,6 +2,13 @@ package io.github.highwindbr.aaxp.runtime;
 
 import android.content.SharedPreferences;
 import android.os.ParcelFileDescriptor;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.content.Intent;
+import android.content.ComponentName;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Modifier;
 import io.github.highwindbr.aaxp.core.ExperimentalBooleanPolicy;
 import android.util.Log;
 
@@ -35,11 +42,49 @@ public final class AndroidAutoModule extends XposedModule {
     private final Map<String, Boolean> probedCalls = new ConcurrentHashMap<>();
     private final ExperimentalEventLimiter experimentalEvents = new ExperimentalEventLimiter();
     private SharedPreferences remotePreferences;
+    private volatile String moduleProcessName;
+    private volatile MediaStartupLaunchGate mediaLaunchGate;
+    private volatile MediaStartupAutoGate mediaAutoGate;
+    private volatile MediaStartupLabGate mediaLabGate;
+    private volatile MediaStartupAutoGate mediaLabAutoGate;
+    private volatile boolean mediaLabAutoAvailable;
+    private volatile Method mediaLabFactory;
+    private volatile Method mediaLabHelper;
+    private volatile Method mediaLabDirect;
+    private volatile Constructor<?> mediaLabOptions;
+    private volatile ComponentName mediaLabComponent;
+    private volatile Handler mediaLaunchHandler;
+    private volatile Method mediaControllerFactory;
+    private volatile Method mediaControllerStart;
+    private volatile Constructor<?> mediaActivityOptionsConstructor;
+    private volatile boolean mediaLaunchAvailable;
+    private boolean mediaPollScheduled;
+    private final Runnable mediaCommandPoll = new Runnable() {
+        @Override public void run() {
+            mediaPollScheduled = false;
+            if (mediaLabGate != null) {
+                if (!mediaLabGate.isReady()) return;
+                checkMediaLabRequest();
+                startMediaPolling();
+                return;
+            }
+            if (mediaLaunchGate == null || !mediaLaunchGate.isReady() ||
+                    !MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY)))
+                return;
+            checkMediaLaunchRequest();
+            startMediaPolling();
+        }
+    };
     private final SharedPreferences.OnSharedPreferenceChangeListener preferenceListener =
-            (preferences, key) -> refreshSnapshot(preferences);
+            (preferences, key) -> {
+                refreshSnapshot(preferences);
+                if (MediaStartupLaunchGate.REQUEST_KEY.equals(key) ||
+                        MediaStartupLabGate.REQUEST_KEY.equals(key)) requestMediaLaunchCheck();
+            };
 
     @Override public void onModuleLoaded(XposedModuleInterface.ModuleLoadedParam param) {
-        event(Log.INFO, "MODULE_LOADED", null, "process", param.getProcessName(), "api", String.valueOf(getApiVersion()));
+        moduleProcessName = param.getProcessName();
+        event(Log.INFO, "MODULE_LOADED", null, "process", moduleProcessName, "api", String.valueOf(getApiVersion()));
         try {
             remotePreferences = getRemotePreferences(PREF_GROUP);
             refreshSnapshot(remotePreferences);
@@ -96,6 +141,17 @@ public final class AndroidAutoModule extends XposedModule {
             }
             if (profile.optBoolean("videoTimingTrace", false)) {
                 installVideoTimingTrace(param.getClassLoader(), identity.getBaseSha256());
+            }
+            if (MediaStartupTrace2.isProjectionProcess(moduleProcessName)) {
+                // PF6.1 lab is an explicit manually armed alternative to
+                // legacy PF2-PF4 hooks, never a second overlapping hook set.
+                JSONObject lab = profile.optJSONObject("mediaStartupLab");
+                if (lab != null) {
+                    installMediaStartupLab(param.getClassLoader(), lab,
+                            identity.getBaseSha256(), identity.getFingerprintSha256());
+                } else if (profile.optBoolean("mediaStartupTrace", false)) {
+                    installMediaStartupTrace2(param.getClassLoader(), identity.getBaseSha256());
+                }
             }
             event(Log.INFO, "PROFILE_ACCEPTED", null, "mappings", String.valueOf(mappings.length()),
                     "probes", String.valueOf(probes == null ? 0 : probes.length()),
@@ -376,6 +432,577 @@ public final class AndroidAutoModule extends XposedModule {
             event(Log.ERROR, "VTC_TRACE_HOOK_FAILED", null, "reason", failure.getClass().getSimpleName());
             log(Log.ERROR, TAG, "VideoTiming protocol observation hook failed", failure);
         }
+    }
+
+
+    /**
+     * Beta5 RC1: selected media app, manual A/B and separately opted-in auto using
+     * ActivityTracker and the direct launch observer dynamically resolved
+     * from the installed APK. Missing auto roles keep manual routes usable.
+     */
+    private void installMediaStartupLab(ClassLoader loader, JSONObject raw,
+                                         String baseSha, String fingerprint) {
+        try {
+            MediaStartupLabProfile lab = MediaStartupLabProfile.parse(raw, baseSha, fingerprint);
+            Method ready = resolveLabMethod(loader, lab.role("projection.ready"));
+            Method end = resolveLabMethod(loader, lab.role("projection.end"));
+            Method teardown = resolveLabMethod(loader, lab.role("projection.teardown"));
+            Method media = resolveLabMethod(loader, lab.role("media.selectedApp"));
+            Method factory = resolveLabMethod(loader, lab.role("launch.controllerFactory"));
+            Method auxiliary = resolveLabMethod(loader, lab.role("launch.auxiliary"));
+            Method direct = resolveLabMethod(loader, lab.role("launch.startCarActivity"));
+            MediaStartupLabProfile.Target ctorTarget = lab.role("launch.optionsNoArgConstructor");
+            Class<?> optionsType = Class.forName(ctorTarget.javaOwner(), false, loader);
+            Constructor<?> options = optionsType.getDeclaredConstructor();
+            if (!Modifier.isStatic(factory.getModifiers()) ||
+                    !factory.getReturnType().equals(direct.getDeclaringClass()) ||
+                    Modifier.isStatic(direct.getModifiers()) ||
+                    Modifier.isStatic(auxiliary.getModifiers()) ||
+                    !direct.getParameterTypes()[1].equals(optionsType) ||
+                    options.getParameterCount() != 0 ||
+                    factory.getDeclaringClass() != direct.getDeclaringClass() ||
+                    auxiliary.getDeclaringClass() != direct.getDeclaringClass()) {
+                throw new IllegalArgumentException("PF6 cross-role reflection mismatch");
+            }
+            // Keep private members accessible without changing runtime hooks.
+            factory.setAccessible(true); auxiliary.setAccessible(true);
+            direct.setAccessible(true); options.setAccessible(true);
+            MediaStartupLabGate gate = new MediaStartupLabGate(
+                    overrideSnapshot.get(MediaStartupLabGate.REQUEST_KEY));
+            Handler handler = new Handler(Looper.getMainLooper());
+            mediaLaunchHandler = handler;
+            MediaStartupAutoGate automatic = new MediaStartupAutoGate();
+            mediaLabAutoGate = automatic;
+            mediaLabAutoAvailable = false;
+            mediaLabFactory = factory; mediaLabHelper = auxiliary;
+            mediaLabDirect = direct; mediaLabOptions = options;
+            // Always hook the essential observer set together; if one fails,
+            // leave the AA originals callable and suppress any PF6 dispatch.
+            Method[] observed = {ready, end, teardown, media};
+            String[] stages = {"READY", "END", "TEARDOWN", "MEDIA"};
+            int installed = 0;
+            for (int i = 0; i < observed.length; i++) {
+                final String stage = stages[i];
+                hook(observed[i]).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            if ("END".equals(stage) || "TEARDOWN".equals(stage)) {
+                                gate.ended(); automatic.onEnded();
+                                mediaLabComponent = null;
+                            }
+                            Object result = chain.proceed();
+                            if ("READY".equals(stage)) {
+                                long now = SystemClock.elapsedRealtime();
+                                gate.ready(now);
+                                boolean enabled = mediaLabAutoAvailable &&
+                                    MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                        MediaStartupDynamicAuto.KEY));
+                                if (automatic.onReady(enabled, now)) {
+                                    event(Log.INFO, "MEDIA_PF6_AUTO_SESSION", null,
+                                        "enabled", String.valueOf(enabled));
+                                }
+                                startMediaPolling();
+                            } else if ("MEDIA".equals(stage)) {
+                                Object arg = chain.getArg(0);
+                                ComponentName target = arg instanceof ComponentName ?
+                                        (ComponentName) arg : null;
+                                mediaLabComponent = target;
+                                gate.media(target == null ? null : target.getPackageName(),
+                                        target == null ? null : target.getClassName());
+                                boolean eligible = target != null &&
+                                        gate.selectedMediaMatches(target.getPackageName(),
+                                                target.getClassName());
+                                automatic.onMediaChanged(eligible);
+                                event(Log.INFO, "MEDIA_PF6_MEDIA_OBSERVED", null,
+                                        "selected", String.valueOf(eligible),
+                                        "package", eligible ? target.getPackageName() : "none");
+                            }
+                            return result;
+                        });
+                installed++;
+                event(Log.INFO, "MEDIA_PF6_HOOK_INSTALLED", null, "stage", stage);
+            }
+            if (installed == observed.length) {
+                mediaLabGate = gate;
+                // Manual is independent. No auto dispatch occurs unless the
+                // unique activity method AND direct navigation observer hook.
+                MediaStartupLabProfile.Target trackerRole = lab.role("activity.firstProjected");
+                if (MediaStartupLabProfile.MODE.equals(lab.mode) && trackerRole != null) {
+                    try {
+                        Method activity = resolveLabMethod(loader, trackerRole);
+                        if (!Runnable.class.isAssignableFrom(activity.getDeclaringClass()) ||
+                                Modifier.isStatic(activity.getModifiers()))
+                            throw new IllegalArgumentException("Invalid Runnable implementation");
+                        hook(activity).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                                .intercept(chain -> {
+                                    Object original = chain.proceed();
+                                    int session = automatic.onFirstActivity(SystemClock.elapsedRealtime());
+                                    if (session >= 0) scheduleDynamicSelectedMediaAuto(session);
+                                    return original;
+                                });
+                        hook(direct).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                                .intercept(chain -> {
+                                    Object original = chain.proceed();
+                                    automatic.onNavigation();
+                                    return original;
+                                });
+                        mediaLabAutoAvailable = true;
+                        event(Log.INFO, "MEDIA_PF6_AUTO_HOOKS_READY", null,
+                                "hooks", "2", "mode", "OPT_IN");
+                    } catch (Throwable problem) {
+                        mediaLabAutoAvailable = false;
+                        event(Log.WARN, "MEDIA_PF6_AUTO_UNAVAILABLE", null,
+                                "reason", problem.getClass().getSimpleName());
+                    }
+                } else {
+                    event(Log.INFO, "MEDIA_PF6_AUTO_UNAVAILABLE", null,
+                            "reason", "activity_role_or_mode_missing");
+                }
+                event(Log.INFO, "MEDIA_PF6_LAB_ARMED", null,
+                        "hooks", String.valueOf(installed), "routes", "A_B",
+                        "mode", mediaLabAutoAvailable ? "MANUAL_PLUS_OPT_IN_AUTO" : "MANUAL_ONLY");
+            }
+        } catch (Throwable failure) {
+            mediaLabGate = null;
+            mediaLabAutoGate = null;
+            mediaLabAutoAvailable = false;
+            event(Log.WARN, "MEDIA_PF6_LAB_DISABLED", null,
+                    "reason", failure.getClass().getSimpleName());
+        }
+    }
+
+    private Method resolveLabMethod(ClassLoader loader, MediaStartupLabProfile.Target target)
+            throws ReflectiveOperationException {
+        Class<?> owner = Class.forName(target.javaOwner(), false, loader);
+        Method match = null;
+        for (Method method : owner.getDeclaredMethods()) {
+            if (method.getName().equals(target.name) &&
+                    descriptor(method).equals(target.descriptor)) {
+                if (match != null) throw new IllegalArgumentException("Ambiguous lab ABI");
+                match = method;
+            }
+        }
+        if (match == null) throw new NoSuchMethodException(target.reference());
+        match.setAccessible(true);
+        return match;
+    }
+
+    private void checkMediaLabRequest() {
+        MediaStartupLabGate gate = mediaLabGate;
+        if (gate == null || !gate.isReady()) return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            requestMediaLaunchCheck();
+            return;
+        }
+        try {
+            SharedPreferences prefs = remotePreferences;
+            if (prefs == null) return;
+            String preferred = prefs.getString(MediaStartupLabGate.ROUTE_KEY, "A");
+            if (!"A".equals(preferred) && !"B".equals(preferred)) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
+                        "reason", "invalid_route_preference");
+                return;
+            }
+            MediaStartupLabGate.Route route = MediaStartupLabGate.Route.valueOf(preferred);
+            MediaStartupLabGate.Result result = gate.consider(
+                    prefs.getString(MediaStartupLabGate.REQUEST_KEY, null),
+                    SystemClock.elapsedRealtime(), route);
+            if (result == MediaStartupLabGate.Result.REPLAY) return;
+            if (result != MediaStartupLabGate.Result.ACCEPTED) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null, "reason", result.name());
+                return;
+            }
+            long sessionId = gate.session();
+            ComponentName component = mediaLabComponent;
+            if (component == null || !gate.isCurrent(sessionId) ||
+                    !gate.selectedMediaMatches(component.getPackageName(), component.getClassName())) {
+                event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
+                        "reason", "media_or_session_changed");
+                return;
+            }
+            if (mediaLabAutoGate != null) mediaLabAutoGate.onManualAttempt();
+            event(Log.INFO, "MEDIA_PF6_REQUEST_ACCEPTED", null, "route", route.name());
+            try {
+                dispatchMediaLabSelectedMedia(route, sessionId);
+                event(Log.INFO, "MEDIA_PF6_REQUEST_DISPATCHED", null,
+                        "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
+            } catch (Throwable problem) {
+                Throwable reason = problem instanceof InvocationTargetException &&
+                        problem.getCause() != null ? problem.getCause() : problem;
+                event(Log.ERROR, "MEDIA_PF6_REQUEST_FAILED", null,
+                        "route", route.name(), "reason", reason.getClass().getSimpleName());
+            }
+        } catch (Throwable error) {
+            event(Log.WARN, "MEDIA_PF6_REQUEST_FAILED", null,
+                    "reason", error.getClass().getSimpleName());
+        }
+    }
+
+    /** Identical Intent for manual and automatic tests; no audio autoplay. */
+    private void dispatchMediaLabSelectedMedia(MediaStartupLabGate.Route route, long sessionId)
+            throws Exception {
+        MediaStartupLabGate gate = mediaLabGate;
+        ComponentName component = mediaLabComponent;
+        if (gate == null || component == null || !gate.isCurrent(sessionId) ||
+                !gate.selectedMediaMatches(component.getPackageName(), component.getClassName()))
+            throw new IllegalStateException("Selected media or projection changed before dispatch");
+        Object controller = mediaLabFactory.invoke(null);
+        if (controller == null || !gate.isCurrent(sessionId) ||
+                !gate.selectedMediaMatches(component.getPackageName(), component.getClassName()))
+            throw new IllegalStateException("Controller unavailable or selected media changed");
+        Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+        intent.setComponent(component);
+        if (route == MediaStartupLabGate.Route.A) {
+            mediaLabHelper.invoke(controller, intent);
+        } else {
+            Object options = mediaLabOptions.newInstance();
+            mediaLabDirect.invoke(controller, intent, options);
+        }
+    }
+
+    /** Schedule once after the first projected activity (PF4 settle policy). */
+    private void scheduleDynamicSelectedMediaAuto(int scheduledSession) {
+        if (!mediaLabAutoAvailable || mediaLabGate == null ||
+                mediaLaunchHandler == null) return;
+        mediaLaunchHandler.postDelayed(() -> attemptDynamicSelectedMediaAuto(scheduledSession),
+                MediaStartupAutoGate.SETTLE_MILLIS);
+        event(Log.INFO, "MEDIA_PF6_AUTO_SCHEDULED", null,
+                "delayMs", String.valueOf(MediaStartupAutoGate.SETTLE_MILLIS));
+    }
+
+    private void attemptDynamicSelectedMediaAuto(int scheduledSession) {
+        MediaStartupAutoGate automatic = mediaLabAutoGate;
+        MediaStartupLabGate gate = mediaLabGate;
+        if (automatic == null || gate == null || !mediaLabAutoAvailable ||
+                Looper.myLooper() != Looper.getMainLooper()) return;
+        boolean liveEnabled = MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                MediaStartupDynamicAuto.KEY));
+        MediaStartupAutoGate.Decision decision = automatic.consume(
+                scheduledSession, SystemClock.elapsedRealtime(), liveEnabled);
+        if (decision != MediaStartupAutoGate.Decision.DISPATCH) {
+            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null, "reason",
+                    decision == MediaStartupAutoGate.Decision.MEDIA_NOT_SPOTIFY ?
+                            "NO_SELECTED_MEDIA" : decision.name());
+            return;
+        }
+        if (!gate.reserveForAutomatic()) {
+            event(Log.INFO, "MEDIA_PF6_AUTO_SKIPPED", null,
+                    "reason", "manual_attempt_or_media_changed");
+            return;
+        }
+        String preferred = overrideSnapshot.get(MediaStartupLabGate.ROUTE_KEY);
+        if (!"A".equals(preferred) && !"B".equals(preferred)) {
+            event(Log.WARN, "MEDIA_PF6_AUTO_SKIPPED", null,
+                    "reason", "invalid_preferred_route");
+            return;
+        }
+        MediaStartupLabGate.Route route = MediaStartupLabGate.Route.valueOf(preferred);
+        event(Log.INFO, "MEDIA_PF6_AUTO_ATTEMPT", null, "route", route.name());
+        try {
+            dispatchMediaLabSelectedMedia(route, gate.session());
+            event(Log.INFO, "MEDIA_PF6_AUTO_DISPATCHED", null,
+                    "route", route.name(), "result", "RETURNED", "visible", "UNVERIFIED");
+        } catch (Throwable error) {
+            Throwable cause = error instanceof InvocationTargetException &&
+                    error.getCause() != null ? error.getCause() : error;
+            event(Log.ERROR, "MEDIA_PF6_AUTO_FAILED", null,
+                    "route", route.name(), "reason", cause.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Beta5 preflight2: inspect precisely identified callbacks observed in
+     * real projection logs. No arguments or return values are accessed or
+     * changed. The original method is always called once via chain.proceed().
+     */
+    private void installMediaStartupTrace2(ClassLoader loader, String baseSha256) {
+        if (!MediaStartupTrace.isSupported(baseSha256)) {
+            event(Log.WARN, "MEDIA_PF2_NOT_INSTALLED", null, "reason", "base_sha_mismatch");
+            return;
+        }
+        final MediaStartupTrace2.Budget budget = new MediaStartupTrace2.Budget();
+        final MediaStartupLaunchGate gate = MediaStartupLaunchGate.create(
+                overrideSnapshot.get(MediaStartupLaunchGate.REQUEST_KEY));
+        mediaLaunchGate = gate;
+        mediaAutoGate = new MediaStartupAutoGate();
+        mediaLaunchHandler = new Handler(Looper.getMainLooper());
+        int installed = 0;
+        boolean readinessInstalled = false;
+        boolean endInstalled = false;
+        boolean teardownInstalled = false;
+        boolean activityInstalled = false;
+        boolean launchRouteInstalled = false;
+        for (MediaStartupTrace2.Target target : MediaStartupTrace2.TARGETS) {
+            try {
+                Class<?> owner = Class.forName(target.owner, false, loader);
+                Class<?>[] parameters;
+                switch (target.stage) {
+                    case "INTENT_PROCESSED":
+                    case "START_CAR_ACTIVITY":
+                        parameters = new Class<?>[]{android.content.Intent.class,
+                                Class.forName("rgi", false, loader)};
+                        break;
+                    case "INTENT_TARGET_STORED":
+                        parameters = new Class<?>[]{android.content.Intent.class};
+                        break;
+                    case "MEDIA_APP_CHANGED":
+                        parameters = new Class<?>[]{android.content.ComponentName.class};
+                        break;
+                    default:
+                        parameters = new Class<?>[0];
+                        break;
+                }
+                Method method = owner.getDeclaredMethod(target.method, parameters);
+                if (!target.descriptor.equals(descriptor(method))) {
+                    event(Log.WARN, "MEDIA_PF2_TARGET_REJECTED", null,
+                            "stage", target.stage, "reason", "signature_mismatch");
+                    continue;
+                }
+                hook(method).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        .intercept(chain -> {
+                            boolean armed = MediaStartupTrace.enabled(
+                                    overrideSnapshot.get(MediaStartupTrace.KEY));
+                            if (armed) {
+                                int number = budget.take(target.stage);
+                                if (number > 0) {
+                                    event(Log.INFO, "MEDIA_PF2_STAGE_ENTER", null,
+                                            "stage", target.stage, "ordinal", String.valueOf(number),
+                                            "mode", "READ_ONLY");
+                                }
+                            }
+                            // Teardown invalidates all outstanding requests before
+                            // Android Auto starts shutting down its own session.
+                            if ("PROJECTION_END".equals(target.stage) ||
+                                    "PROJECTION_TEARDOWN".equals(target.stage)) {
+                                gate.onEnded();
+                                mediaAutoGate.onEnded();
+                            }
+                            Object original = chain.proceed();
+                            if ("PROJECTION_READY".equals(target.stage) &&
+                                    MediaStartupTrace.enabled(
+                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                                gate.onReady();
+                                if (mediaAutoGate.onReady(
+                                        MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                                MediaStartupAutoGate.KEY)), SystemClock.elapsedRealtime())) {
+                                    event(Log.INFO, "MEDIA_PF4_SESSION_ARMED", null,
+                                            "auto", MediaStartupAutoGate.enabled(overrideSnapshot.get(
+                                                    MediaStartupAutoGate.KEY)) ? "ON" : "OFF");
+                                }
+                                startMediaPolling();
+                            } else if ("ACTIVITY_START_REQUESTED".equals(target.stage) && armed) {
+                                gate.onActivityStart();
+                                int sessionId = mediaAutoGate.onFirstActivity(SystemClock.elapsedRealtime());
+                                if (sessionId >= 0) scheduleAutoSpotify(sessionId);
+                            } else if ("MEDIA_APP_CHANGED".equals(target.stage) && armed) {
+                                try {
+                                    Object value = chain.getArg(0);
+                                    mediaAutoGate.onMediaChanged(value instanceof ComponentName &&
+                                            MediaStartupLaunchGate.SPOTIFY_PACKAGE.equals(
+                                                    ((ComponentName) value).getPackageName()));
+                                } catch (Throwable ignored) {
+                                    mediaAutoGate.onMediaChanged(false);
+                                }
+                            } else if ("START_CAR_ACTIVITY".equals(target.stage) && armed) {
+                                mediaAutoGate.onNavigation();
+                            }
+                            // Callback return is not proof of physical HU visibility.
+                            if ("PROJECTION_READY".equals(target.stage) &&
+                                    MediaStartupTrace.enabled(
+                                            overrideSnapshot.get(MediaStartupTrace.KEY))) {
+                                int number = budget.take("PROJECTION_READY_RETURN");
+                                if (number > 0) {
+                                    event(Log.INFO, "MEDIA_PF2_STAGE_RETURN", null,
+                                            "stage", target.stage, "ordinal", String.valueOf(number));
+                                }
+                            }
+                            return original;
+                        });
+                installed++;
+                if ("PROJECTION_READY".equals(target.stage)) readinessInstalled = true;
+                if ("PROJECTION_END".equals(target.stage)) endInstalled = true;
+                if ("PROJECTION_TEARDOWN".equals(target.stage)) teardownInstalled = true;
+                if ("ACTIVITY_START_REQUESTED".equals(target.stage)) activityInstalled = true;
+                if ("START_CAR_ACTIVITY".equals(target.stage)) launchRouteInstalled = true;
+                event(Log.INFO, "MEDIA_PF2_HOOK_INSTALLED", null,
+                        "stage", target.stage, "mode", "READ_ONLY");
+            } catch (ClassNotFoundException | NoSuchMethodException | LinkageError incompatible) {
+                event(Log.WARN, "MEDIA_PF2_TARGET_REJECTED", null,
+                        "stage", target.stage, "reason", incompatible.getClass().getSimpleName());
+            } catch (Throwable failure) {
+                event(Log.ERROR, "MEDIA_PF2_TARGET_FAILED", null,
+                        "stage", target.stage, "reason", failure.getClass().getSimpleName());
+            }
+        }
+        event(Log.INFO, "MEDIA_PF2_INSTALLATION_COMPLETE", null,
+                "installed", String.valueOf(installed),
+                "expected", String.valueOf(MediaStartupTrace2.TARGETS.length),
+                "base", baseSha256.substring(0, 16));
+        if (readinessInstalled && endInstalled && teardownInstalled &&
+                activityInstalled && launchRouteInstalled) {
+            installMediaLaunchProof(loader);
+        } else {
+            event(Log.WARN, "MEDIA_PF3_DISABLED", null, "reason", "required_hook_missing");
+        }
+    }
+
+    /**
+     * Resolve all required ABI before allowing any request. The DI singleton
+     * nfh.a() and no-options rgi() constructor were inspected in AA 18.1 DEX.
+     * No invocation occurs during installation; no automatic launch path exists.
+     */
+    private void installMediaLaunchProof(ClassLoader loader) {
+        try {
+            Class<?> owner = Class.forName("nfh", false, loader);
+            Class<?> options = Class.forName("rgi", false, loader);
+            Method factory = owner.getDeclaredMethod("a");
+            Method launch = owner.getDeclaredMethod("k", Intent.class, options);
+            Constructor<?> ctor = options.getDeclaredConstructor();
+            if (!Modifier.isStatic(factory.getModifiers()) ||
+                    !owner.equals(factory.getReturnType()) ||
+                    !"()Lnfh;".equals(descriptor(factory)) ||
+                    !"(Landroid/content/Intent;Lrgi;)V".equals(descriptor(launch)) ||
+                    ctor.getParameterCount() != 0) {
+                event(Log.WARN, "MEDIA_PF3_DISABLED", null, "reason", "abi_mismatch");
+                return;
+            }
+            mediaControllerFactory = factory;
+            mediaControllerStart = launch;
+            mediaActivityOptionsConstructor = ctor;
+            mediaLaunchAvailable = true;
+            event(Log.INFO, "MEDIA_PF3_PROOF_ARMED", null, "mode", "MANUAL_PLUS_OPT_IN_AUTO",
+                    "target", "SPOTIFY", "ttlMs",
+                    String.valueOf(MediaStartupLaunchGate.TTL_MILLIS));
+        } catch (ReflectiveOperationException | LinkageError missing) {
+            event(Log.WARN, "MEDIA_PF3_DISABLED", null,
+                    "reason", missing.getClass().getSimpleName());
+        } catch (Throwable unexpected) {
+            event(Log.ERROR, "MEDIA_PF3_DISABLED", null,
+                    "reason", unexpected.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * PF4: schedule exactly one attempt for each first projected activity.
+     * The session token invalidates callbacks after disconnect/reconnect.
+     */
+    private void scheduleAutoSpotify(int sessionId) {
+        Handler handler = mediaLaunchHandler;
+        if (handler == null || !mediaLaunchAvailable) return;
+        handler.postDelayed(() -> attemptAutoSpotify(sessionId),
+                MediaStartupAutoGate.SETTLE_MILLIS);
+        event(Log.INFO, "MEDIA_PF4_AUTO_SCHEDULED", null,
+                "delayMs", String.valueOf(MediaStartupAutoGate.SETTLE_MILLIS));
+    }
+
+    private void attemptAutoSpotify(int scheduledSession) {
+        if (Looper.myLooper() != Looper.getMainLooper() || mediaAutoGate == null ||
+                !mediaLaunchAvailable || !MediaStartupTrace.enabled(
+                        overrideSnapshot.get(MediaStartupTrace.KEY))) return;
+        MediaStartupAutoGate.Decision decision = mediaAutoGate.consume(scheduledSession,
+                SystemClock.elapsedRealtime(), MediaStartupAutoGate.enabled(
+                        overrideSnapshot.get(MediaStartupAutoGate.KEY)));
+        if (decision != MediaStartupAutoGate.Decision.DISPATCH) {
+            event(Log.INFO, "MEDIA_PF4_AUTO_SKIPPED", null, "reason", decision.name());
+            return;
+        }
+        if (mediaLaunchGate == null || !mediaLaunchGate.reserveForAutomatic()) {
+            event(Log.INFO, "MEDIA_PF4_AUTO_SKIPPED", null, "reason", "manual_budget_used");
+            return;
+        }
+        event(Log.INFO, "MEDIA_PF4_AUTO_ATTEMPT", null, "target", "SPOTIFY");
+        try {
+            dispatchSpotify(scheduledSession);
+            event(Log.INFO, "MEDIA_PF4_AUTO_DISPATCHED", null,
+                    "result", "RETURNED", "visible", "UNVERIFIED");
+        } catch (Throwable failed) {
+            Throwable cause = failed instanceof InvocationTargetException &&
+                    failed.getCause() != null ? failed.getCause() : failed;
+            event(Log.ERROR, "MEDIA_PF4_AUTO_FAILED", null,
+                    "reason", cause.getClass().getSimpleName());
+        }
+    }
+
+    /** Called by remote-preference listener; never execute car activity on binder threads. */
+    private void requestMediaLaunchCheck() {
+        Handler handler = mediaLaunchHandler;
+        if (handler != null) handler.post(() -> {
+            if (mediaLabGate != null) checkMediaLabRequest();
+            else checkMediaLaunchRequest();
+        });
+    }
+
+    private void startMediaPolling() {
+        Handler handler = mediaLaunchHandler;
+        if (handler == null) return;
+        // The lifecycle hook can arrive on a binder thread. Serialize the
+        // poll scheduler on the AA main thread to avoid duplicate timers.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post(this::startMediaPolling);
+            return;
+        }
+        if (mediaPollScheduled) return;
+        mediaPollScheduled = true;
+        handler.postDelayed(mediaCommandPoll, 1000);
+    }
+
+    /** Fallback polling covers LSPosed implementations without remote change broadcasts. */
+    private void checkMediaLaunchRequest() {
+        if (!mediaLaunchAvailable || mediaLaunchGate == null ||
+                !MediaStartupTrace.enabled(overrideSnapshot.get(MediaStartupTrace.KEY)))
+            return;
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            requestMediaLaunchCheck();
+            return;
+        }
+        try {
+            SharedPreferences prefs = remotePreferences;
+            if (prefs == null) return;
+            String request = prefs.getString(MediaStartupLaunchGate.REQUEST_KEY, null);
+            MediaStartupLaunchGate.Decision decision =
+                    mediaLaunchGate.consider(request, SystemClock.elapsedRealtime());
+            if (decision == MediaStartupLaunchGate.Decision.NO_CHANGE) return;
+            if (decision != MediaStartupLaunchGate.Decision.ACCEPTED) {
+                event(Log.WARN, "MEDIA_PF3_REQUEST_REJECTED", null, "reason", decision.name());
+                return;
+            }
+            final int activeSession = mediaLaunchGate.session();
+            if (!mediaLaunchGate.stillReadyInSession(activeSession)) {
+                event(Log.WARN, "MEDIA_PF3_REQUEST_REJECTED", null, "reason", "session_ended");
+                return;
+            }
+            mediaAutoGate.onManualAttempt();
+            event(Log.INFO, "MEDIA_PF3_REQUEST_ACCEPTED", null,
+                    "mode", "MANUAL_ONESHOT", "target", "SPOTIFY");
+            try {
+                dispatchSpotify(activeSession);
+                // Successful return is NOT proof the HU displayed Spotify.
+                event(Log.INFO, "MEDIA_PF3_REQUEST_DISPATCHED", null,
+                        "result", "RETURNED", "visible", "UNVERIFIED");
+            } catch (Throwable error) {
+                Throwable cause = error instanceof InvocationTargetException &&
+                        error.getCause() != null ? error.getCause() : error;
+                event(Log.ERROR, "MEDIA_PF3_LAUNCH_FAILED", null,
+                        "reason", cause.getClass().getSimpleName());
+            }
+        } catch (Throwable error) {
+            event(Log.ERROR, "MEDIA_PF3_REQUEST_FAILED", null,
+                    "reason", error.getClass().getSimpleName());
+        }
+    }
+
+    private void dispatchSpotify(int sessionId) throws Exception {
+        if (mediaLaunchGate == null || !mediaLaunchGate.stillReadyInSession(sessionId))
+            throw new IllegalStateException("Projection ended");
+        Object controller = mediaControllerFactory.invoke(null);
+        if (controller == null || !mediaLaunchGate.stillReadyInSession(sessionId))
+            throw new IllegalStateException("Controller unavailable or session ended");
+        Object options = mediaActivityOptionsConstructor.newInstance();
+        Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
+        intent.setComponent(new ComponentName(
+                MediaStartupLaunchGate.SPOTIFY_PACKAGE,
+                MediaStartupLaunchGate.SPOTIFY_SERVICE));
+        // The inspected AA controller remains responsible for routing and policy.
+        mediaControllerStart.invoke(controller, intent, options);
     }
 
     private void installProbe(ClassLoader loader, JSONObject mapping, String baseSha256) {

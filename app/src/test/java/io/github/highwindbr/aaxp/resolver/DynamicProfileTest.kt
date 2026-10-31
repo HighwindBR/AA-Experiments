@@ -80,6 +80,21 @@ class DynamicProfileTest {
         assertEquals(3, traceProfile.getInt("schemaVersion"))
     }
 
+    @Test fun mediaStartupReadOnlyTraceIsOffByDefaultAndIndependentOfExistingProfile() {
+        val defaultProfile = JSONObject(DynamicProfile.create("build", "base", 42,
+            emptyMap(), emptyMap(), emptyList()))
+        assertEquals(false, defaultProfile.getBoolean("mediaStartupTrace"))
+        assertEquals(false, defaultProfile.getBoolean("videoTimingTrace"))
+        val profile = JSONObject(DynamicProfile.create("build", "base", 42,
+            emptyMap(), emptyMap(), emptyList(), emptyList(), emptyList(),
+            emptyList(), false, true))
+        assertEquals(true, profile.getBoolean("mediaStartupTrace"))
+        assertEquals(false, profile.getBoolean("videoTimingTrace"))
+        assertEquals(0, profile.getJSONArray("mappings").length())
+        assertEquals(0, profile.getJSONArray("advanced").length())
+        assertEquals(3, profile.getInt("schemaVersion"))
+    }
+
     @Test fun emitsCompactDatabaseBackedMappings() {
         val mapping = DynamicProfile.Mapping("flag", "override.v2.hash", "a.b", "c", "()Z", "BOOLEAN")
         val root = JSONObject(DynamicProfile.create("build", "base", 42, mapOf("base" to "base"), mapOf("classes.dex" to "dex"), listOf(mapping)))

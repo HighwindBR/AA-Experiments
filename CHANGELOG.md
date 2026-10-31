@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.0.0-beta5 — final release preparation
+
+- Promote the validated beta5-RC1 media startup implementation without
+  changing the selected-component hook logic. Media startup lives in
+  **Settings → Media**, not Diagnostics.
+- Support the Android Auto-selected media player through structurally
+  resolved A/B routes, subject to per-build explicit opt-in, single-attempt
+  session safeguards and safe rejection of unverified builds.
+- Keep legacy Spotify-only PF4 separate and OFF while dynamic hooks run.
+  Automatic audio playback and driving-restriction bypass are not provided.
+- Freeze final app metadata as `1.0.0-beta5` / `versionCode=178` to allow
+  in-place upgrade from RC1 (177); package remains
+  `io.github.highwindbr.aaxp`.
+- Prepare exact beta5 tag, private 256 MiB/frozen corpus gates, signed APK
+  and pinned beta4 certificate comparison. **Official publication is pending
+  final gate verification and maintainer approval.**
+- Record the reported parked-vehicle RC1 acceptance without asserting
+  independent proof for every player/route/cross-build combination.
+
+## Beta5 RC1 UI refinement — Media startup is now first-class Settings
+
+- Move Media startup out of Diagnostics developer tools into
+  **Settings → Media → Media startup** with an always-visible Settings row
+  indicating automatic-open status and preferred route.
+- Give media startup a dedicated page with its primary controls expanded by
+  default; retain A/B selection and opt-in confirmations. Keep compatibility
+  scanning, manual route tests, and legacy PF3/PF4 fallback in an optional
+  tools section on that page.
+- Keep advanced override diagnostics, probe tools, and resolver functions in
+  Diagnostics. No change to projection hooks, selected-media consent, LSPosed
+  preference keys or build fingerprint validation.
+- RC1 remains a private validation candidate. No release publication.
+
+## 1.0.0-beta5-rc1 — validation candidate (not released)
+
+- Generalize dynamically resolved Media Startup A/B routes to the **currently selected Android Auto media app**, rather than Spotify only. The media-selection callback provides the actual component; full package and class must still match at dispatch. No arbitrary app/package entry or autoplay.
+- Keep automatic startup OFF by default for every AA build, with a **new consent key**
+  so preflight6.2's Spotify-only opt-ins never silently grant permission for other
+  media players. Preserve 2800 ms settle, 12-second readiness cutoff, one attempt per session, navigation suppression, and explicit route preference without automatic fallback.
+- Consolidate the Diagnostics card: primary automatic media startup controls; historical pinned PF3/PF4 and manual test tools are secondary. Pinned PF4 remains Spotify-only.
+- Preserve exact base-APK SHA and build-fingerprint linkage, resolver ambiguity rejection, and manual-only degradation when first projected activity is not uniquely resolved. No downgrade to inferred method names.
+- Add tests for other selected media packages, package/class mismatch, null or incomplete components, and shared one-attempt launch budget.
+- Candidate identity: `1.0.0-beta5-rc1`, versionCode 177. This branch has **not** passed Android Auto 18.1 physical/head-unit acceptance for non-Spotify media or independent second-build execution. No merge, tag, signed release or official publication authorized. See [RC1 validation](docs/BETA5_RC1.md).
+
 ## 1.0.0-beta4 — release
 
 - Freeze final metadata as `1.0.0-beta4` / versionCode 169,
