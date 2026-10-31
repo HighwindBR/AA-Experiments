@@ -2089,8 +2089,9 @@ private class TouchMenuPositionProvider(
             DiagnosticSection("Media opening",
                 when {
                     state.mediaLabAutoEnabled -> "On · Route ${state.mediaLabRoute} · next connection"
-                    state.mediaLabArmed && state.mediaLabAutoCapable -> "Routes ready · automatic opening off"
-                    state.mediaLabArmed -> "Manual routes ready · automatic opening unavailable"
+                    state.mediaLabArmed && state.mediaLabAutoCapable ->
+                        "Route ${state.mediaLabRoute} ready · automatic opening off"
+                    state.mediaLabArmed -> "Route ${state.mediaLabRoute} ready · manual only"
                     state.mediaStartupAutoEnabled && supported -> "Legacy Spotify auto-open on"
                     state.mediaStartupAutoEnabled -> "Legacy setting saved · incompatible build"
                     state.aa.runtimeTarget -> "Check compatibility to get started"
@@ -2115,7 +2116,10 @@ private class TouchMenuPositionProvider(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Text("Route ${state.mediaLabRoute} selected · ${if (state.mediaLabRoute == "A") "Auxiliary" else "Direct"}",
+                    Text("Available routes: " + listOfNotNull(
+                        if (state.mediaLabRouteAAvailable) "A · Auxiliary" else null,
+                        if (state.mediaLabRouteBAvailable) "B · Direct" else null
+                    ).joinToString("  ·  ") + "   |   Selected: ${state.mediaLabRoute}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (state.mediaLabAutoEnabled) {
@@ -2148,12 +2152,14 @@ private class TouchMenuPositionProvider(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { onMediaLabRoute("A") },
                                 modifier = Modifier.weight(1f),
-                                enabled = state.framework.connected && state.mediaLabRoute != "A") {
+                                enabled = state.framework.connected && state.mediaLabRouteAAvailable &&
+                                    state.mediaLabRoute != "A") {
                                 Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
                             }
                             OutlinedButton(onClick = { onMediaLabRoute("B") },
                                 modifier = Modifier.weight(1f),
-                                enabled = state.framework.connected && state.mediaLabRoute != "B") {
+                                enabled = state.framework.connected && state.mediaLabRouteBAvailable &&
+                                    state.mediaLabRoute != "B") {
                                 Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
                             }
                         }
@@ -2164,7 +2170,7 @@ private class TouchMenuPositionProvider(
                         TextButton(onClick = onMediaLabDisarm, enabled = state.framework.connected) {
                             Text("Disable dynamic routes")
                         }
-                        Text("One opening attempt per connection. If it fails, the app does not try another route automatically.",
+                        Text("If only one route was proven, it is selected automatically. There is one opening attempt per connection, with no retry on another route.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
