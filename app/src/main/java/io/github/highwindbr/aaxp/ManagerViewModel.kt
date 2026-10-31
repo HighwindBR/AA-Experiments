@@ -119,9 +119,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 message = "Loading installed Android Auto catalog…")
             val aa = withContext(Dispatchers.IO) {
                 File(getApplication<Application>().filesDir, "imports").deleteRecursively()
-                InstalledAaScanner(getApplication()).scan(::reportScanProgress).also { installation ->
-                    installation.buildFingerprintSha256?.let(database::pruneToRecentBuilds)
-                }
+                InstalledAaScanner(getApplication()).scan(::reportScanProgress)
             }
             if (mutable.value.scanProgress != null) reportScanProgress(AnalysisProgress(AnalysisStage.LOADING_EXPERIMENTS, detail = "Loading editable experiments"))
             val page = withContext(Dispatchers.IO) { aa.buildFingerprintSha256?.let { database.editablePage(it, Int.MAX_VALUE, 0) }.orEmpty() }
@@ -278,7 +276,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 ).let { scanned ->
                     if (info == null) scanned else scanned.copy(identifiers = (scanned.identifiers + ManifestCatalog.components(info)).distinctBy { it.key }.sortedBy { it.key })
                 }
-                database.put(inventory, ::reportScanProgress)
+                database.put(inventory, ::reportScanProgress, CatalogOrigin.IMPORTED)
                 AaInstallation(installed=true, versionName=info?.versionName, versionCode=versionCode, baseSha256=inventory.baseSha256,
                     dexSha256=inventory.dexSha256, identifierCount=inventory.identifiers.size, editableCount=inventory.identifiers.count { it.editable },
                     discoveryErrorCount=inventory.errors.size, runtimeTarget=false, buildFingerprintSha256=inventory.buildFingerprintSha256,
