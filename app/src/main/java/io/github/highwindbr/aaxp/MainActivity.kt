@@ -1740,10 +1740,8 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             model::setMediaLabAuto)
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
-            model::setVideoTimingProtocolTrace,
             advancedAccess, onAdvancedAccess,
-            model::pauseAllAdvanced, model::restoreAllAdvanced,
-            model::setDoubleGetterProbe)
+            model::pauseAllAdvanced, model::restoreAllAdvanced)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
         SettingsPage.ABOUT -> AboutScreen(appVersionName) { onPage(SettingsPage.ROOT) }
         SettingsPage.BACKUPS -> LazyColumn(
@@ -2222,21 +2220,13 @@ private class TouchMenuPositionProvider(
     onBack: () -> Unit,
     onCatalog: () -> Unit,
     onDeepResolve: () -> Unit,
-    onVideoTimingTrace: (Boolean) -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
-    onRestoreAllAdvanced: () -> Unit,
-    onDoubleGetterProbe: (String, Boolean) -> Unit
+    onRestoreAllAdvanced: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
-    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
-    // An armed diagnostic is revealed on entry, but can still be collapsed.
-    LaunchedEffect(state.videoTimingTraceEnabled, state.probeTargetKey) {
-        if (state.videoTimingTraceEnabled || state.probeTargetKey != null)
-            developerToolsExpanded = true
-    }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
@@ -2282,99 +2272,6 @@ private class TouchMenuPositionProvider(
                 Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
                     style = MaterialTheme.typography.bodySmall)
             }
-        }
-        item {
-            val traceArmed = state.videoTimingTraceEnabled || state.probeTargetKey != null
-            OutlinedButton(
-                onClick = { developerToolsExpanded = !developerToolsExpanded },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Default.BugReport, null)
-                Spacer(Modifier.width(10.dp))
-                Text(if (developerToolsExpanded) "Hide developer tools"
-                    else if (traceArmed) "Developer tools · diagnostic active"
-                    else "Show developer tools")
-            }
-        }
-        if (developerToolsExpanded) {
-        item {
-            val supported = state.aa.runtimeTarget &&
-                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text("Video Timing protocol trace", fontWeight = FontWeight.Bold)
-                            Text("Read-only · inspected Android Auto 18.0 build",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Text(
-                        when {
-                            state.videoTimingTraceEnabled ->
-                                "ARMED · restart Android Auto to install read-only hooks"
-                            supported -> "OFF · no trace hooks requested"
-                            else -> "Unavailable · requires the exact inspected Android Auto base APK"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (state.videoTimingTraceEnabled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text("Observe the HU protocol major/minor and the selected Video Timing Controller branch. This does not change the negotiated protocol, getter values, or vehicle state.",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(
-                        onClick = { onVideoTimingTrace(!state.videoTimingTraceEnabled) },
-                        enabled = state.framework.connected && (supported || state.videoTimingTraceEnabled),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (state.videoTimingTraceEnabled)
-                            "Disable VTC trace" else "Enable VTC trace")
-                    }
-                    Text("LSPosed events: VTC_TRACE_INSTALLED, VTC_HU_PROTOCOL_OBSERVED, VTC_SELECTOR_INVOKED, VTC_BRANCH_SELECTED. Disable after testing; restart Android Auto to remove hooks.",
-                        style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-        item {
-            val supported = state.aa.runtimeTarget &&
-                GetterProbePolicy.isInspectedDoubleBuild(state.aa.baseSha256)
-            val armed = state.probeTargetKey
-            val isDoubleArmed = armed in GetterProbePolicy.doubleCandidates
-            DiagnosticSection("DOUBLE getter activity",
-                when {
-                    isDoubleArmed -> "Armed · restart Android Auto"
-                    !supported -> "Unavailable for this AA build"
-                    else -> "Read-only · 3 reviewed targets"
-                },
-                Icons.Default.Search, expanded == "doubleProbe",
-                { expanded = if (expanded == "doubleProbe") null else "doubleProbe" }) {
-                Text("Read-only diagnostic for three reviewed DOUBLE getters. This does not change returned values or normal preferences.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (!supported) Text(
-                    "This probe is restricted to the inspected Android Auto 18.0 base APK.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (armed != null && !isDoubleArmed) Text(
-                    "Another read-only probe is armed. Disarm it before selecting a DOUBLE getter.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                GetterProbePolicy.doubleCandidates.keys.forEach { key ->
-                    val selected = armed == key
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(key, fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.labelSmall)
-                        OutlinedButton({ onDoubleGetterProbe(key, !selected) },
-                            enabled = supported && state.framework.connected &&
-                                (armed == null || selected)) {
-                            Text(if (selected) "Disarm read-only probe" else "Arm read-only probe")
-                        }
-                    }
-                }
-                Text("Only one getter per session. After arming, restart Android Auto and connect to Open Headunit. Inspect LSPosed module events PROBE_HOOK_INSTALLED and PROBE_INVOKED. If not invoked, disarm and try another. Do not set a DOUBLE override for this test.",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
         }
         item { DiagnosticSection("Resolver", "${state.aa.identifierCount} identifiers · ${state.aa.editableCount} editable", Icons.Default.Search, expanded == "resolver", { expanded = if(expanded=="resolver") null else "resolver" }) {
             DiagnosticCount("Modified", state.dynamicOverrides.size)
