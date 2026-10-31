@@ -229,7 +229,12 @@ private val AaDarkScheme = darkColorScheme(
     }
     Scaffold(
         topBar = { TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) { Image(painterResource(R.drawable.app_icon), null, Modifier.size(32.dp), contentScale = ContentScale.Fit); Spacer(Modifier.width(10.dp)); Text("AA Experiments", fontWeight = FontWeight.SemiBold) } }, actions = { if (tab == 0) IconButton(model::refreshInstallation) { Icon(Icons.Default.Refresh, "Refresh status") } }) },
-        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) -> NavigationBarItem(tab == index, { tab = index }, { Icon(icon, label) }, label = { Text(label) }) } } },
+        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) ->
+            NavigationBarItem(tab == index, {
+                settingsPageName = settingsPageAfterTabSelection(tab, index, settingsPage).name
+                tab = index
+            }, { Icon(icon, label) }, label = { Text(label) })
+        } } },
         snackbarHost = { SnackbarHost(feedbackHost) }
     ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) { when (tab) {
         0 -> StatusScreen(state, model) { chosen -> experimentFilterName = chosen.name; tab = 1 }
@@ -252,7 +257,7 @@ private val AaDarkScheme = darkColorScheme(
 
 @Composable private fun StatusScreen(state: ManagerUiState, model: ManagerViewModel, onViewDelta: (ExperimentFilter) -> Unit) {
     var auditOpen by remember { mutableStateOf(false) }
-    val analyzing = state.scanProgress != null
+    val analyzing = state.loading || state.scanProgress != null
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(model::importArchive) }
     val activeAdvanced = state.advancedRecords.count {
         it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
@@ -261,6 +266,12 @@ private val AaDarkScheme = darkColorScheme(
         state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0
     val runtime = runtimeReadiness(state.aa, state.framework,
         state.dynamicOverrides.size + activeAdvanced + oldExperimental, state.profilePublished)
+    val mediaConfigured = MediaStartupPresentation.hasMediaConfiguration(
+        state.mediaLabArmed, state.mediaStartupAutoEnabled)
+    val mediaSummary = MediaStartupPresentation.summary(
+        state.mediaLabArmed, state.mediaLabRouteAAvailable, state.mediaLabRouteBAvailable,
+        state.mediaLabRoute, state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+        state.profilePublished)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item { ScreenTitle("Status", "Environment, resolver and runtime readiness") }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -271,11 +282,10 @@ private val AaDarkScheme = darkColorScheme(
             Column(Modifier.weight(1f)) {
                 Text("Android Auto", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    when {
-                        analyzing -> "Analyzing installation"
-                        state.aa.installed -> "Installed and ready"
-                        else -> state.aa.scanError ?: "Not found"
-                    },
+                    InstallationStatusPresentation.title(
+                        state.loading, state.scanProgress != null,
+                        state.aa.installed, state.aa.scanError
+                    ),
                     color = if (analyzing || state.aa.installed) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error
                 )
@@ -283,11 +293,10 @@ private val AaDarkScheme = darkColorScheme(
             Image(painterResource(R.drawable.app_icon), null, Modifier.size(42.dp))
         }
         Text(
-            when {
-                analyzing -> "Preparing the installed Android Auto catalog"
-                state.aa.installed -> "${state.aa.versionName} (${state.aa.versionCode})"
-                else -> "No compatible installation was detected"
-            }, style = MaterialTheme.typography.bodySmall
+            InstallationStatusPresentation.detail(
+                state.loading, state.scanProgress != null,
+                state.aa.installed, state.aa.versionName, state.aa.versionCode
+            ), style = MaterialTheme.typography.bodySmall
         )
         HorizontalDivider()
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -297,9 +306,35 @@ private val AaDarkScheme = darkColorScheme(
     } } }
     item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Resolver & runtime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        CompactStatusRow(Icons.Default.Storage, "Base APK", state.aa.baseSha256?.let { it.take(16) + "…" } ?: "Not available")
-        CompactStatusRow(Icons.Default.Search, "Inventory", if (state.aa.runtimeTarget) "Installed Android Auto" else "Imported archive")
-        RuntimeBanner(runtime)
+        CompactStatusRow(Icons.Default.Storage, "Base APK",
+            if (analyzing) "Checking…" else state.aa.baseSha256?.let { it.take(16) + "…" } ?: "Not available")
+        CompactStatusRow(Icons.Default.Search, "Inventory",
+            if (analyzing) "Loading…" else if (state.aa.runtimeTarget)
+                "Installed Android Auto" else if (state.aa.installed) "Imported archive" else "Not available")
+        if (analyzing) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text("Checking installation and preparing the runtime status…",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        } else RuntimeBanner(runtime, mediaConfigured, state.profilePublished)
+        if (mediaConfigured) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.PlayCircle, null,
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Media opening", style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium)
+                    Text(mediaSummary, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Text("Media opening is separate from flag overrides; this status does not confirm head-unit visibility.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Text("Identifiers: ${state.aa.editableCount} editable · ${state.dynamicOverrides.size} modified", style = MaterialTheme.typography.bodySmall)
         state.probeTargetKey?.let { key ->
             Text("Read-only getter probe armed: ${technicalDisplay(key)} (restart AA to install)",
@@ -348,7 +383,7 @@ private val AaDarkScheme = darkColorScheme(
         }
     } } }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("Analysis", fontWeight = FontWeight.Bold); Text(when {
-            analyzing -> "Preparing catalog and runtime profile"
+            analyzing -> "Checking installation and preparing catalog"
             state.profilePublished -> "Dynamic profile published"
             else -> "Profile not published"
         }); Text("Overrides apply only when the complete installed build fingerprint matches.", style = MaterialTheme.typography.bodySmall); if (state.suspendedOverrides.isNotEmpty()) TextButton({ auditOpen = true }) { Icon(Icons.Default.Security, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("${state.suspendedOverrides.size} suspended overrides · View details", color = MaterialTheme.colorScheme.error) } } } }
@@ -430,10 +465,6 @@ private val AaDarkScheme = darkColorScheme(
                     }
                 }
 
-                Text("Keep AA Experiments open while the catalog is being prepared.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-
                 if (onCancel != null) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onCancel) { Text("Cancel after current") }
@@ -446,10 +477,18 @@ private val AaDarkScheme = darkColorScheme(
 
 @Composable private fun ScreenTitle(title: String, subtitle: String? = null) { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 @Composable private fun MiniStatus(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, ok: Boolean) { Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, Modifier.size(22.dp), tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); Spacer(Modifier.width(8.dp)); Column { Text(title, style = MaterialTheme.typography.labelMedium); Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) } } } }
-@Composable private fun RuntimeBanner(runtime: RuntimeReadiness) {
+@Composable private fun RuntimeBanner(
+    runtime: RuntimeReadiness,
+    mediaConfigured: Boolean = false,
+    profilePublished: Boolean = false
+) {
     val concise = when (runtime.kind) {
         RuntimeReadinessKind.READY_AWAITING_PROCESS -> "Ready — waiting for Android Auto"
-        RuntimeReadinessKind.NO_OVERRIDES -> "Idle — no active overrides"
+        RuntimeReadinessKind.NO_OVERRIDES -> when {
+            mediaConfigured && profilePublished -> "Media opening configured · no flag overrides"
+            mediaConfigured -> "Media setup saved · profile not published"
+            else -> "Idle — no active overrides"
+        }
         else -> runtime.label
     }
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
@@ -1393,7 +1432,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("LONG hook handoff · beta4 preflight10",
+                                Text("LONG hook handoff · experimental",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold)
                                 Text("Single reviewed getter aczh.l()J. Experimental return is fixed to 3; the existing normal LONG:3 stays stored throughout the test.",
@@ -1440,7 +1479,8 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                             }
                         }
                     }
-                    if (identifier.key in GetterProbePolicy.supportedKeys) item {
+                    if (identifier.key in GetterProbePolicy.supportedKeys &&
+                        identifier.key !in GetterProbePolicy.doubleCandidates) item {
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1477,7 +1517,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                                Text("Experimental BOOLEAN override · beta4 preflight",
+                                Text("Experimental BOOLEAN override",
                                     style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
                                 Text("Only this known getter is eligible. The new value may have no visible effect or cause Android Auto to malfunction.",
                                     style = MaterialTheme.typography.bodySmall)
@@ -1740,10 +1780,8 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             model::setMediaLabAuto)
         SettingsPage.DIAGNOSTICS -> DiagnosticsScreen(state, {onPage(SettingsPage.ROOT)},
             {onPage(SettingsPage.CATALOG)}, { model.deepResolveInconclusive() },
-            model::setVideoTimingProtocolTrace,
             advancedAccess, onAdvancedAccess,
-            model::pauseAllAdvanced, model::restoreAllAdvanced,
-            model::setDoubleGetterProbe)
+            model::pauseAllAdvanced, model::restoreAllAdvanced)
         SettingsPage.CATALOG -> Column(Modifier.fillMaxSize()){ SubpageHeader("Full catalog", "Every retained discovery", {onPage(SettingsPage.DIAGNOSTICS)}); CatalogScreen(state,model,advancedAccess) }
         SettingsPage.ABOUT -> AboutScreen(appVersionName) { onPage(SettingsPage.ROOT) }
         SettingsPage.BACKUPS -> LazyColumn(
@@ -1757,7 +1795,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     SettingsRow(
                         Icons.Default.Upload, "Export complete backup",
-                        "Recommended · Normal, Advanced, Experimental and saved baselines",
+                        "Normal, Advanced and Experimental overrides · includes baselines",
                         enabled = state.framework.connected && state.aa.runtimeTarget
                     ) { fullExport.launch("aa-experiments-full-recovery.json") }
                 }
@@ -1767,7 +1805,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     SettingsRow(
                         Icons.Default.Download, "Restore complete backup",
-                        "Replaces saved records · Exact AA build and RESTORE ALL confirmation required",
+                        "Replaces overrides and baselines · same AA build only",
                         enabled = state.framework.connected && state.aa.runtimeTarget
                     ) { fullImport.launch(arrayOf("application/json", "text/plain")) }
                 }
@@ -1776,7 +1814,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().clickable { legacyBackupExpanded = !legacyBackupExpanded }
+                            Modifier.fillMaxWidth().semantics {
+                                role = Role.Button
+                                stateDescription = if (legacyBackupExpanded) "Expanded" else "Collapsed"
+                            }.clickable { legacyBackupExpanded = !legacyBackupExpanded }
                                 .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1809,7 +1850,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().clickable { dangerZoneExpanded = !dangerZoneExpanded }
+                            Modifier.fillMaxWidth().semantics {
+                                role = Role.Button
+                                stateDescription = if (dangerZoneExpanded) "Expanded" else "Collapsed"
+                            }.clickable { dangerZoneExpanded = !dangerZoneExpanded }
                                 .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1835,9 +1879,16 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                     }
                 }
             }
-            item { Text("Full recovery backups are build-specific. Keep these files private and export again before major changes.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Backup scope: saved flag overrides, suspended records, Advanced and Experimental baselines. Does not include Media Startup routes or consent, app appearance, catalog cache, LSPosed setup or Android Auto settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Backups are tied to the exact Android Auto build. Keep files private and export again before major changes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp), verticalArrangement=Arrangement.spacedBy(10.dp)){
             item{ScreenTitle("Settings", "Appearance, media and advanced tools")}
@@ -1851,9 +1902,17 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
                 SettingsRow(Icons.Default.PlayCircle, "Media startup",
                     when {
-                        state.mediaLabAutoEnabled -> "Automatic opening on · Route ${state.mediaLabRoute}"
-                        state.mediaLabArmed -> "Automatic opening off · Routes A/B available"
-                        state.mediaStartupAutoEnabled -> "Legacy Spotify opening enabled"
+                        state.mediaLabAutoEnabled -> MediaStartupPresentation.summary(
+                            state.mediaLabArmed, state.mediaLabRouteAAvailable,
+                            state.mediaLabRouteBAvailable, state.mediaLabRoute,
+                            state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+                            state.profilePublished)
+                        state.mediaLabArmed -> MediaStartupPresentation.summary(
+                            state.mediaLabArmed, state.mediaLabRouteAAvailable,
+                            state.mediaLabRouteBAvailable, state.mediaLabRoute,
+                            state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+                            state.profilePublished)
+                        state.mediaStartupAutoEnabled -> "Legacy Spotify opening on"
                         else -> "Automatically open your selected media app"
                     }) { onPage(SettingsPage.MEDIA) }
             }}
@@ -1868,7 +1927,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version $appVersionName · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
-    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently removes all active and suspended normal overrides, Experimental records and Advanced baseline snapshots. Export normal overrides does NOT back up Advanced or Experimental records, so those baselines cannot be recovered from that JSON. Continue only if you intend to discard them all.")})
+    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently deletes normal, Advanced and Experimental overrides and their saved baselines. It does not reset Media Startup preferences, appearance or catalog data. Export a complete override backup first if you may need to restore these values.")})
     recoveryPending?.let { (raw, preview) ->
         AlertDialog(
             onDismissRequest = { recoveryPending = null; recoveryAcknowledgement = "" },
@@ -2047,13 +2106,13 @@ private class TouchMenuPositionProvider(
     if (spotifyPf4Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf4Confirmation = false },
-            title = { Text("PF4 · Auto-open Spotify?") },
-            text = { Text("Experimental, off by default. On the NEXT Android Auto projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
+            title = { Text("Enable legacy Spotify auto-open?") },
+            text = { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf4Confirmation = false
                     onMediaStartupAuto(true)
-                }) { Text("Enable PF4 test") }
+                }) { Text("Enable legacy auto-open") }
             },
             dismissButton = {
                 TextButton(onClick = { spotifyPf4Confirmation = false }) { Text("Cancel") }
@@ -2063,8 +2122,8 @@ private class TouchMenuPositionProvider(
     if (spotifyPf3Confirmation) {
         AlertDialog(
             onDismissRequest = { spotifyPf3Confirmation = false },
-            title = { Text("PF3 · Open Spotify once?") },
-            text = { Text("Only test while the vehicle is parked and Android Auto is already visible on the head unit. This sends ONE manual request to the internal Android Auto media controller. No autoplay or startup automation is enabled. Check LSPosed logs to confirm the result.") },
+            title = { Text("Open Spotify once for testing?") },
+            text = { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or start playback. Inspect the logs to confirm the result.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf3Confirmation = false
@@ -2082,80 +2141,99 @@ private class TouchMenuPositionProvider(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            SubpageHeader("Media startup", "Automatically open the selected media app", onBack)
+            SubpageHeader("Media startup", "Open your selected media app when you connect", onBack)
         }
         item {
             val supported = state.aa.runtimeTarget &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(state.aa.baseSha256)
-            DiagnosticSection("Automatic media opening",
+            DiagnosticSection("Media opening",
                 when {
-                    state.mediaLabAutoEnabled -> "Automatic media opening ON · next connection"
-                    state.mediaLabArmed -> "Dynamic routes ready · automatic opening OFF"
-                    state.mediaStartupAutoEnabled && supported -> "PF4 auto-open ON · next connection"
-                    state.mediaStartupAutoEnabled -> "PF4 preference saved · unsupported AA build"
-                    state.mediaStartupTraceEnabled -> "PF3 manual + PF4 available"
-                    supported -> "Manual PF3 · PF4 opt-in OFF"
-                    state.aa.runtimeTarget -> "Compatibility scan available · launch disabled"
-                    else -> "No installed Android Auto available"
+                    state.mediaLabAutoEnabled -> "On · Route ${state.mediaLabRoute} · next connection"
+                    state.mediaLabArmed && state.mediaLabAutoCapable ->
+                        "Route ${state.mediaLabRoute} ready · automatic opening off"
+                    state.mediaLabArmed -> "Route ${state.mediaLabRoute} ready · manual only"
+                    state.mediaStartupAutoEnabled && supported -> "Legacy Spotify auto-open on"
+                    state.mediaStartupAutoEnabled -> "Legacy setting saved · incompatible build"
+                    state.aa.runtimeTarget -> "Check compatibility to get started"
+                    else -> "Android Auto installation required"
                 },
                 Icons.Default.PlayCircle, mediaExpanded,
                 { mediaExpanded = !mediaExpanded }) {
-                Text("Open the currently selected Android Auto media app on connection, without starting playback. Requires root + LSPosed, a compatible build-specific resolver profile, and one-time opt-in per Android Auto build.",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("Configure while parked: resolve the installed Android Auto build, restart Android Auto, then choose route A or B and opt in. If verification fails, automatic opening remains unavailable.",
-                    style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = onMediaLabArm,
-                    enabled = state.aa.runtimeTarget && state.framework.connected &&
-                        !state.mediaSemanticAnalysisRunning,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Text(if (state.mediaLabArmed) "Recheck installed Android Auto build"
-                        else "Resolve and enable dynamic routes")
-                }
-                if (state.mediaLabArmed) {
-                    OutlinedButton(onClick = onMediaLabDisarm,
-                        enabled = state.framework.connected,
+                Text("Opens the media app already selected in Android Auto. It does not start playback.",
+                    style = MaterialTheme.typography.bodyMedium)
+                if (!state.mediaLabArmed) {
+                    Text("Requires root, LSPosed and a compatible Android Auto build.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onMediaLabArm,
+                        enabled = state.aa.runtimeTarget && state.framework.connected &&
+                            !state.mediaSemanticAnalysisRunning,
                         modifier = Modifier.fillMaxWidth()) {
-                        Text("Disable dynamic routes (restart required)")
+                        Text(if (state.mediaSemanticAnalysisRunning) "Checking compatibility…"
+                            else "Check compatibility & enable opening")
                     }
-                }
-                if (state.mediaLabArmed) {
-                    Text("Preferred opening route (resolved for this build):",
-                        style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onMediaLabRoute("A") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "A") {
-                            Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
+                    Text("Only proven, previously validated builds enable automatic opening during setup. Other builds require a separate review.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("Available routes: " + listOfNotNull(
+                        if (state.mediaLabRouteAAvailable) "A · Auxiliary" else null,
+                        if (state.mediaLabRouteBAvailable) "B · Direct" else null
+                    ).joinToString("  ·  ") + "   |   Selected: ${state.mediaLabRoute}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.mediaLabAutoEnabled) {
+                        Button(onClick = { onMediaLabAuto(false) },
+                            enabled = state.framework.connected,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Turn off automatic opening")
                         }
-                        OutlinedButton(onClick = { onMediaLabRoute("B") },
-                            modifier = Modifier.weight(1f),
-                            enabled = state.framework.connected && state.mediaLabRoute != "B") {
-                            Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                    } else if (state.mediaLabAutoCapable) {
+                        Button(onClick = { spotifyPf6AutoConfirm = true },
+                            enabled = state.framework.connected && state.profilePublished &&
+                                !state.mediaStartupAutoEnabled,
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text("Enable automatic opening")
                         }
-                    }
-                    Text("Automatic opening uses one attempt per connection, never falls back to a second route, and cancels when manual navigation is observed.",
-                        style = MaterialTheme.typography.labelSmall)
-                    Text("Automatic startup compatibility: " +
-                        if (state.mediaLabAutoCapable) "resolved for this build" else "not available (manual route only)",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = {
-                        if (state.mediaLabAutoEnabled) onMediaLabAuto(false)
-                        else spotifyPf6AutoConfirm = true
-                    }, enabled = state.framework.connected &&
-                        (state.mediaLabAutoEnabled || (state.profilePublished &&
-                            state.mediaLabAutoCapable && !state.mediaStartupAutoEnabled)),
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text(if (state.mediaLabAutoEnabled)
-                            "Disable automatic media opening"
-                            else "Enable automatic media opening")
+                    } else {
+                        Text("The opening routes were found, but the automatic trigger could not be verified. Manual tests remain available.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 OutlinedButton(
                     onClick = { mediaToolsExpanded = !mediaToolsExpanded },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (mediaToolsExpanded) "Hide compatibility and test tools"
-                    else "Compatibility and test tools") }
+                ) { Text(if (mediaToolsExpanded) "Hide advanced options"
+                    else "Advanced options and tests") }
                 if (mediaToolsExpanded) {
+                    if (state.mediaLabArmed) {
+                        Text("Opening route", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onMediaLabRoute("A") },
+                                modifier = Modifier.weight(1f),
+                                enabled = state.framework.connected && state.mediaLabRouteAAvailable &&
+                                    state.mediaLabRoute != "A") {
+                                Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
+                            }
+                            OutlinedButton(onClick = { onMediaLabRoute("B") },
+                                modifier = Modifier.weight(1f),
+                                enabled = state.framework.connected && state.mediaLabRouteBAvailable &&
+                                    state.mediaLabRoute != "B") {
+                                Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
+                            }
+                        }
+                        TextButton(onClick = onMediaLabArm,
+                            enabled = state.framework.connected && !state.mediaSemanticAnalysisRunning) {
+                            Text("Recheck compatibility")
+                        }
+                        TextButton(onClick = onMediaLabDisarm, enabled = state.framework.connected) {
+                            Text("Disable dynamic routes")
+                        }
+                        Text("If only one route was proven, it is selected automatically. There is one opening attempt per connection, with no retry on another route.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     OutlinedButton(onClick = onMediaSemanticAnalysis,
                         enabled = state.aa.runtimeTarget && !state.mediaSemanticAnalysisRunning,
                         modifier = Modifier.fillMaxWidth()) {
@@ -2185,9 +2263,9 @@ private class TouchMenuPositionProvider(
                                 (supported && !state.mediaLabArmed && state.mediaStartupTraceEnabled && state.profilePublished)),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(if (state.mediaStartupAutoEnabled)
-                        "Disable Spotify auto-open (PF4)"
-                        else "Enable Spotify auto-open (PF4 test)") }
-                    Text("Fallback PF4 is Spotify-only and pinned to the previously validated Android Auto 18.1 build. It remains separate from the dynamic routes.",
+                        "Disable legacy Spotify auto-open"
+                        else "Enable legacy Spotify auto-open") }
+                    Text("Legacy Spotify opening is limited to the previously validated Android Auto build and operates separately from dynamic routes.",
                         style = MaterialTheme.typography.labelSmall)
                     }
                     state.mediaSemanticReport?.let { report ->
@@ -2202,15 +2280,15 @@ private class TouchMenuPositionProvider(
                             enabled = supported && state.framework.connected &&
                                 state.mediaStartupTraceEnabled && state.profilePublished,
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Legacy: open Spotify once (test)") }
-                        Text("Legacy PF3/PF4 applies only to the pinned, previously validated build. A manual launch is limited to one attempt per session; successful method return does not prove head-unit visibility.",
+                        ) { Text("Test legacy Spotify opening once") }
+                        Text("Legacy tests only run on a previously validated build. A returned method call does not confirm that the screen was displayed.",
                             style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
         }
         item {
-            Text("This feature does not start audio playback. Opening requests use Android Auto's own controller; they can be rejected by Android Auto or the head unit. Configure and test only while parked.",
+            Text("Only configure or test while parked. A new Android Auto version requires a new compatibility check.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -2222,21 +2300,13 @@ private class TouchMenuPositionProvider(
     onBack: () -> Unit,
     onCatalog: () -> Unit,
     onDeepResolve: () -> Unit,
-    onVideoTimingTrace: (Boolean) -> Unit,
     advancedAccess: Boolean,
     onAdvancedAccess: (Boolean) -> Unit,
     onPauseAllAdvanced: () -> Unit,
-    onRestoreAllAdvanced: () -> Unit,
-    onDoubleGetterProbe: (String, Boolean) -> Unit
+    onRestoreAllAdvanced: () -> Unit
 ) {
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
-    var developerToolsExpanded by rememberSaveable { mutableStateOf(false) }
-    // An armed diagnostic is revealed on entry, but can still be collapsed.
-    LaunchedEffect(state.videoTimingTraceEnabled, state.probeTargetKey) {
-        if (state.videoTimingTraceEnabled || state.probeTargetKey != null)
-            developerToolsExpanded = true
-    }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
     val runtime = runtimeReadiness(state.aa, state.framework, state.dynamicOverrides.size + if (state.experimentalSnapshot?.active == true && state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
@@ -2282,99 +2352,6 @@ private class TouchMenuPositionProvider(
                 Text("Unsupported symbols, safety-sensitive flags, unverified getter signatures and ambiguous mappings remain read-only. Upgrading Android Auto does not automatically reactivate old records.",
                     style = MaterialTheme.typography.bodySmall)
             }
-        }
-        item {
-            val traceArmed = state.videoTimingTraceEnabled || state.probeTargetKey != null
-            OutlinedButton(
-                onClick = { developerToolsExpanded = !developerToolsExpanded },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-            ) {
-                Icon(Icons.Default.BugReport, null)
-                Spacer(Modifier.width(10.dp))
-                Text(if (developerToolsExpanded) "Hide developer tools"
-                    else if (traceArmed) "Developer tools · diagnostic active"
-                    else "Show developer tools")
-            }
-        }
-        if (developerToolsExpanded) {
-        item {
-            val supported = state.aa.runtimeTarget &&
-                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(state.aa.baseSha256)
-            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(14.dp))
-                        Column {
-                            Text("Video Timing protocol trace", fontWeight = FontWeight.Bold)
-                            Text("Read-only · inspected Android Auto 18.0 build",
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    Text(
-                        when {
-                            state.videoTimingTraceEnabled ->
-                                "ARMED · restart Android Auto to install read-only hooks"
-                            supported -> "OFF · no trace hooks requested"
-                            else -> "Unavailable · requires the exact inspected Android Auto base APK"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (state.videoTimingTraceEnabled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text("Observe the HU protocol major/minor and the selected Video Timing Controller branch. This does not change the negotiated protocol, getter values, or vehicle state.",
-                        style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(
-                        onClick = { onVideoTimingTrace(!state.videoTimingTraceEnabled) },
-                        enabled = state.framework.connected && (supported || state.videoTimingTraceEnabled),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (state.videoTimingTraceEnabled)
-                            "Disable VTC trace" else "Enable VTC trace")
-                    }
-                    Text("LSPosed events: VTC_TRACE_INSTALLED, VTC_HU_PROTOCOL_OBSERVED, VTC_SELECTOR_INVOKED, VTC_BRANCH_SELECTED. Disable after testing; restart Android Auto to remove hooks.",
-                        style = MaterialTheme.typography.labelSmall)
-                }
-            }
-        }
-        item {
-            val supported = state.aa.runtimeTarget &&
-                GetterProbePolicy.isInspectedDoubleBuild(state.aa.baseSha256)
-            val armed = state.probeTargetKey
-            val isDoubleArmed = armed in GetterProbePolicy.doubleCandidates
-            DiagnosticSection("DOUBLE getter activity",
-                when {
-                    isDoubleArmed -> "Armed · restart Android Auto"
-                    !supported -> "Unavailable for this AA build"
-                    else -> "Read-only · 3 reviewed targets"
-                },
-                Icons.Default.Search, expanded == "doubleProbe",
-                { expanded = if (expanded == "doubleProbe") null else "doubleProbe" }) {
-                Text("Read-only diagnostic for three reviewed DOUBLE getters. This does not change returned values or normal preferences.",
-                    style = MaterialTheme.typography.bodySmall)
-                if (!supported) Text(
-                    "This probe is restricted to the inspected Android Auto 18.0 base APK.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                if (armed != null && !isDoubleArmed) Text(
-                    "Another read-only probe is armed. Disarm it before selecting a DOUBLE getter.",
-                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                GetterProbePolicy.doubleCandidates.keys.forEach { key ->
-                    val selected = armed == key
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(key, fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.labelSmall)
-                        OutlinedButton({ onDoubleGetterProbe(key, !selected) },
-                            enabled = supported && state.framework.connected &&
-                                (armed == null || selected)) {
-                            Text(if (selected) "Disarm read-only probe" else "Arm read-only probe")
-                        }
-                    }
-                }
-                Text("Only one getter per session. After arming, restart Android Auto and connect to Open Headunit. Inspect LSPosed module events PROBE_HOOK_INSTALLED and PROBE_INVOKED. If not invoked, disarm and try another. Do not set a DOUBLE override for this test.",
-                    style = MaterialTheme.typography.bodySmall)
-            }
-        }
         }
         item { DiagnosticSection("Resolver", "${state.aa.identifierCount} identifiers · ${state.aa.editableCount} editable", Icons.Default.Search, expanded == "resolver", { expanded = if(expanded=="resolver") null else "resolver" }) {
             DiagnosticCount("Modified", state.dynamicOverrides.size)

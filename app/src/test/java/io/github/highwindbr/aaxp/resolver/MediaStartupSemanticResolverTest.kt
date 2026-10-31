@@ -41,7 +41,7 @@ class MediaStartupSemanticResolverTest {
         val result = S.resolve(inv, "unreviewed-APK-hash")
         assertEquals(S.Status.REVIEW_ONLY, result.status)
         assertEquals(false, result.autoLaunchAllowed)
-        assertEquals(9, result.roles.size)
+        assertEquals(10, result.roles.size)
         assertTrue(result.roles["launch.startCarActivity"]!!.contains("->z("))
     }
 
@@ -52,13 +52,15 @@ class MediaStartupSemanticResolverTest {
         assertTrue(result.missing.isEmpty())
     }
 
-    @Test fun duplicateLaunchRoutesCannotWinByFirstOrLexicographicOrder() {
+    @Test fun ambiguousDirectRouteDoesNotBlockUniquelyProvenAuxiliary() {
         val old = fixture()
         val other = method("Lnew/Other;", "k",
             listOf("Landroid/content/Intent;", "Lx;"),
             anchors = *arrayOf("startCarActivity(intent:%s, activityOptions:%s)"))
         val result = S.resolve(old.copy(methods = old.methods + other), "new")
-        assertEquals(S.Status.AMBIGUOUS, result.status)
+        assertEquals(S.Status.REVIEW_ONLY, result.status)
+        assertTrue(result.roles.containsKey("launch.auxiliary"))
+        assertFalse(result.roles.containsKey("launch.startCarActivity"))
         assertFalse(result.autoLaunchAllowed)
     }
 
@@ -110,6 +112,38 @@ class MediaStartupSemanticResolverTest {
         assertNull(S.resolve(noApi,"new").roles["activity.firstProjected"])
     }
 
+    @Test fun bOnlyStillProducesLaunchProfileWithoutAuxiliary() {
+        val old = fixture()
+        val withoutHelper = old.copy(methods = old.methods.filterNot { it.name == "i" })
+        val resolved = S.resolve(withoutHelper, "new-build")
+        assertEquals(S.Status.REVIEW_ONLY, resolved.status)
+        assertTrue(resolved.roles.containsKey("launch.startCarActivity"))
+        assertFalse(resolved.roles.containsKey("launch.auxiliary"))
+        assertEquals(resolved.roles["launch.startCarActivity"],
+            resolved.roles["launch.navigationObserver"])
+    }
+
+    @Test fun aOnlyStillProducesProfileWhenDirectAnchorDisappears() {
+        val old = fixture()
+        val withoutDirectAnchor = old.copy(methods = old.methods.map {
+            if (it.name == "z") it.copy(strings = emptySet()) else it
+        })
+        val resolved = S.resolve(withoutDirectAnchor, "new-build")
+        assertEquals(S.Status.REVIEW_ONLY, resolved.status)
+        assertTrue(resolved.roles.containsKey("launch.auxiliary"))
+        assertFalse(resolved.roles.containsKey("launch.startCarActivity"))
+        assertEquals("Lxy/Ab;->z(Landroid/content/Intent;Lq;)V",
+            resolved.roles["launch.navigationObserver"])
+    }
+
+    @Test fun noVerifiedRouteIsNotAccepted() {
+        val old = fixture()
+        val noRoutes = old.copy(methods = old.methods.filterNot {
+            it.name == "z" || it.name == "i"
+        })
+        assertEquals(S.Status.UNSUPPORTED, S.resolve(noRoutes, "new-build").status)
+    }
+
     @Test fun parserOrBudgetErrorFailsClosed() {
         val result = S.resolve(fixture().copy(errors = listOf("truncated dex")), "any")
         assertEquals(S.Status.ERROR, result.status)
@@ -124,10 +158,16 @@ class MediaStartupSemanticResolverTest {
             if (it === helper) it.copy(invoked = setOf("$options-><init>()V"))
             else it
         })
-        assertEquals(S.Status.UNSUPPORTED, S.resolve(broken, "new").status)
+        val bOnly = S.resolve(broken, "new")
+        assertEquals(S.Status.REVIEW_ONLY, bOnly.status)
+        assertTrue(bOnly.roles.containsKey("launch.startCarActivity"))
+        assertFalse(bOnly.roles.containsKey("launch.auxiliary"))
         val twoHelpers = original.copy(methods = original.methods +
             helper.copy(name = "another"))
-        assertEquals(S.Status.AMBIGUOUS, S.resolve(twoHelpers, "new").status)
+        val directFallback = S.resolve(twoHelpers, "new")
+        assertEquals(S.Status.REVIEW_ONLY, directFallback.status)
+        assertFalse(directFallback.roles.containsKey("launch.auxiliary"))
+        assertTrue(directFallback.roles.containsKey("launch.startCarActivity"))
     }
 
     @Test fun resolverDoesNotUseObfuscatedNames() {
