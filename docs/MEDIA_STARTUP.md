@@ -11,9 +11,7 @@ projection; verify the result on a parked head unit.
    manager scan the installed Android Auto build.
 2. Open **Settings → Media → Media startup** and select
    **Check compatibility & enable opening**.
-3. For a previously validated build with the required structural proof, setup
-   can enable automatic opening after successfully publishing the profile.
-   On an unreviewed build, successful compatibility proof leaves automatic
+3. Successful compatibility proof leaves automatic
    opening off until the separate explicit confirmation is accepted.
 4. Read the resulting status. If only manual operation is supported, or the
    profile was saved but not published, automatic opening is unavailable.
@@ -21,8 +19,8 @@ projection; verify the result on a parked head unit.
    Auto, and test the next connection while parked.
 
 Automatic consent belongs to the exact installed build fingerprint, including
-splits. An Android Auto update requires another scan, compatibility check and
-opt-in. A normal flag-override backup does not transfer this consent.
+splits. To avoid bugs, **an Android Auto update requires another scan, compatibility check and
+opt-in.** A normal flag-override backup does not transfer this consent.
 
 ## Routes and advanced controls
 
@@ -45,23 +43,3 @@ selected components can suppress an attempt.
 preference. **Disable dynamic routes** removes the saved dynamic setup and
 publishes the change; follow the restart instruction to unload existing hooks.
 Check any save/publication failure message before assuming a change reached runtime.
-
-The legacy Spotify-only controls are separate, exact-build diagnostic paths.
-They are not a universal fallback for unsupported builds.
-
-## Interpret the result
-
-A saved configuration is not a published profile. A published profile is not
-proof of hook installation. A returned launch invocation is not proof that the
-head unit displayed the player. Use LSPosed events and direct observation for
-physical acceptance.
-
-Known-build evidence covers particular tested combinations, not every route,
-media player, Android Auto version or head unit. Current candidate checks are
-listed in [readiness](BETA6_RC1_READINESS.md).
-
-## Backup scope
-
-Complete override recovery includes normal, Advanced and Experimental values
-and baselines. Media Startup route preferences and consent are excluded.
-Keep this setup separate from flag backup/restore.
