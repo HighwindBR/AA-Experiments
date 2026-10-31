@@ -916,7 +916,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mutable.value = mutable.value.copy(message = "Read-only probes need the installed Android Auto and LSPosed service.")
             return@launch
         }
-        val result = withContext(Dispatchers.IO) { runCatching {
+        val result = writePreferencesAndPublish { withContext(Dispatchers.IO) {
             if (enabled) {
                 val current = checkNotNull(database.details(fingerprint, identifier.key)) { "Flag is not in the installed catalog" }
                 require(GetterProbePolicy.issue(current) == null) { GetterProbePolicy.issue(current) ?: "Not eligible" }
@@ -946,14 +946,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 require(probePreferences.edit().clear().commit()) { "Failed to disable probe" }
             }
         } }
-        if (result.isFailure) {
-            mutable.value = mutable.value.copy(message = "Getter probe rejected: ${result.exceptionOrNull()?.message}")
-        } else {
-            refreshOverridesAndProfile()
-            mutable.value = mutable.value.copy(message =
-                if (enabled) "Read-only probe armed. Restart Android Auto to install the hook; observe AAX_EVENT in logcat."
-                else "Probe disabled in the profile. Restart Android Auto to remove its installed hook.")
-        }
+        mutable.value = mutable.value.copy(message = when {
+            result.isFailure -> "Getter probe rejected: ${result.exceptionOrNull()?.message}"
+            result.getOrThrow() != ProfileMutationCoordinator.Outcome.PUBLISHED ->
+                "Getter probe preference saved, but runtime profile was NOT published. Check LSPosed."
+            enabled -> "Read-only probe armed and profile published. Restart Android Auto; observe AAX_EVENT in logcat."
+            else -> "Probe disabled and profile published. Restart Android Auto to remove its installed hook."
+        })
     }
 
     /** Only one BOOLEAN experiment is permitted in this beta4 preflight. */
