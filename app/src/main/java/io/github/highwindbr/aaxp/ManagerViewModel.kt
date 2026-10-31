@@ -539,15 +539,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 put("buildFingerprintSha256", fingerprint)
                 put("roles", JSONObject(evidence.roles))
             }
-            // This explicit button is both a compatibility request and an
-            // opt-in for this exact build. Never enable without a proven
-            // projected-activity trigger; future builds require a new tap.
+            // A single explicit click requests setup + auto-opening, but never
+            // arms the automatic gate before the new profile was VERIFIED.
+            // A future build has a different fingerprint and requires a new click.
             val requestAutomatic = MediaStartupConsentPolicy.allowAutoAfterExplicitResolution(
                 evidence.status, evidence.roles)
-            val (stored, published) = profileRefreshMutex.withLock {
+            val (stored, published, automaticEnabled) = profileRefreshMutex.withLock {
                 if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
                     mutable.value.aa.baseSha256 != hash || !mutable.value.aa.runtimeTarget) {
-                    false to false
+                    Triple(false, false, false)
                 } else {
                     val disabledAuto = withContext(Dispatchers.IO) {
                         ServiceBridge.dynamicPreferencesOrNull()?.edit()
@@ -556,35 +556,50 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                             ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.LEGACY_PF6_KEY, "false")
                             ?.commit() == true
                     }
+                    // Persist a disabled baseline first: failed publication cannot
+                    // leave remote automatic opening active, even on existing hooks.
                     val saved = disabledAuto && mediaLabPreferences.edit()
-                        .putString("auto-selected:$fingerprint", requestAutomatic.toString())
+                        .putString("auto-selected:$fingerprint", "false")
                         .putString(fingerprint, lab.toString()).commit()
-                    if (saved) {
+                    if (!saved) Triple(false, false, false)
+                    else {
                         mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
                         val publishedNow = refreshOverridesAndProfileLocked()
-                        if (!publishedNow && requestAutomatic) {
-                            // A profile that could not be published must not leave
-                            // unattended opening armed in remote preferences.
-                            mediaLabPreferences.edit()
-                                .putString("auto-selected:$fingerprint", "false").commit()
-                            withContext(Dispatchers.IO) {
-                                ServiceBridge.dynamicPreferencesOrNull()?.edit()
-                                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
-                                    ?.commit()
+                        var enabledNow = false
+                        if (publishedNow && requestAutomatic &&
+                            mutable.value.aa.buildFingerprintSha256 == fingerprint) {
+                            // Consent is build-scoped and is only enabled AFTER
+                            // successful profile readback + slot activation.
+                            val localSaved = mediaLabPreferences.edit()
+                                .putString("auto-selected:$fingerprint", "true").commit()
+                            if (localSaved) {
+                                enabledNow = withContext(Dispatchers.IO) {
+                                    ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                                        ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "true")
+                                        ?.commit() == true
+                                }
+                                if (!enabledNow) {
+                                    mediaLabPreferences.edit()
+                                        .putString("auto-selected:$fingerprint", "false").commit()
+                                    withContext(Dispatchers.IO) {
+                                        ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                                            ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
+                                            ?.commit()
+                                    }
+                                }
                             }
-                            mutable.value = mutable.value.copy(mediaLabAutoEnabled = false)
                         }
-                        true to publishedNow
-                    } else false to false
+                        mutable.value = mutable.value.copy(mediaLabAutoEnabled = enabledNow)
+                        Triple(true, publishedNow, enabledNow)
+                    }
                 }
             }
             mutable.value = mutable.value.copy(message = when {
-                !stored -> "Could not persist the verified Media Startup proof; existing runtime profile unchanged."
-                published && requestAutomatic ->
-                    "Compatibility verified. Automatic media opening is enabled for this Android Auto build. Restart Android Auto, then reconnect while parked."
-                published ->
-                    "Opening routes verified, but the automatic trigger was not found. Manual route tests are available."
-                else -> "Compatibility proof saved, but the profile was NOT published. Automatic opening remains off. Check LSPosed."
+                !stored -> "Could not save the Media Startup compatibility proof. Automatic opening is unchanged."
+                !published -> "Compatibility proof saved, but its profile was NOT published. Automatic opening remains off. Check LSPosed."
+                automaticEnabled -> "Compatibility verified. Automatic media opening is ON for this build. Restart Android Auto, then reconnect while parked."
+                requestAutomatic -> "Routes are ready, but automatic opening could not be enabled. Check LSPosed or use advanced options."
+                else -> "Opening routes verified, but no unique automatic trigger was found. Manual testing is available."
             })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {
