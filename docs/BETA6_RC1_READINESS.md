@@ -24,7 +24,7 @@ This document does not authorize a release, tag, merge or signing.
       notification disappears. Check battery behavior.
 - [ ] Confirm normal task switch does not destroy the ViewModel scan job.
       **Do not** expect continuation after user force-stop, task removal,
-      process kill, reboot, OS foreground-service timeout or the two-hour
+      process kill, reboot, OS foreground-service timeout or the five-minute
       wakelock timeout. A durable worker/job migration is out of scope.
 - [ ] Confirm streamed deep-resolve entries already committed remain after
       deliberate analysis interruption; rerunning does not duplicate records.
@@ -58,5 +58,7 @@ This document does not authorize a release, tag, merge or signing.
 A foreground service plus partial wakelock is a targeted **screen-off CPU
 continuity improvement**, not durable background execution. The actual scan
 coroutine remains owned by the ViewModel. Android battery policy, task removal,
-force stop or process death can end the job. A wake lock lasts at most two
-hours; the app intentionally releases it as soon as analysis ends.
+force stop or process death can end the job. A wake lock lasts at most five
+minutes without renewal; the app intentionally releases it as soon as analysis ends.
+Confirm that scans exceeding five minutes remain usable with the display on
+and that the wake lock is no longer held past the timeout.
