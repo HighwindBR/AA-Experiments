@@ -544,6 +544,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             // A future build has a different fingerprint and requires a new click.
             val requestAutomatic = MediaStartupConsentPolicy.allowAutoAfterExplicitResolution(
                 evidence.status, evidence.roles)
+            var consentRollbackFailed = false
             val (stored, published, automaticEnabled) = profileRefreshMutex.withLock {
                 if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
                     mutable.value.aa.baseSha256 != hash || !mutable.value.aa.runtimeTarget) {
@@ -579,13 +580,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                                         ?.commit() == true
                                 }
                                 if (!enabledNow) {
-                                    mediaLabPreferences.edit()
+                                    val localRollback = mediaLabPreferences.edit()
                                         .putString("auto-selected:$fingerprint", "false").commit()
-                                    withContext(Dispatchers.IO) {
+                                    val remoteRollback = withContext(Dispatchers.IO) {
                                         ServiceBridge.dynamicPreferencesOrNull()?.edit()
                                             ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
-                                            ?.commit()
+                                            ?.commit() == true
                                     }
+                                    consentRollbackFailed = !localRollback || !remoteRollback
                                 }
                             }
                         }
@@ -595,9 +597,10 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             mutable.value = mutable.value.copy(message = when {
-                !stored -> "Could not save the Media Startup compatibility proof. Automatic opening is unchanged."
+                !stored -> "Could not save Media Startup setup. Automatic opening was not enabled."
                 !published -> "Compatibility proof saved, but its profile was NOT published. Automatic opening remains off. Check LSPosed."
                 automaticEnabled -> "Compatibility verified. Automatic media opening is ON for this build. Restart Android Auto, then reconnect while parked."
+                consentRollbackFailed -> "Media-opening consent could not be enabled or safely rolled back. Check LSPosed preferences before reconnecting."
                 requestAutomatic -> "Routes are ready, but automatic opening could not be enabled. Check LSPosed or use advanced options."
                 else -> "Opening routes verified, but no unique automatic trigger was found. Manual testing is available."
             })
