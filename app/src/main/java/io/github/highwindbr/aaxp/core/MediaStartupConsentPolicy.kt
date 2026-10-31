@@ -14,5 +14,9 @@ object MediaStartupConsentPolicy {
         status: MediaStartupSemanticResolver.Status,
         roles: Map<String, String>
     ): Boolean = status == MediaStartupSemanticResolver.Status.KNOWN_BUILD_VALIDATED &&
-        roles["activity.firstProjected"]?.isNotBlank() == true
+        roles["activity.firstProjected"]?.isNotBlank() == true &&
+        (roles["launch.auxiliary"]?.isNotBlank() == true ||
+            roles["launch.startCarActivity"]?.isNotBlank() == true) &&
+        (roles["launch.navigationObserver"]?.isNotBlank() == true ||
+            roles["launch.startCarActivity"]?.isNotBlank() == true)
 }
