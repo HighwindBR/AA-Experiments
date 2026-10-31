@@ -61,7 +61,7 @@ byte/short/char/int-compatible INT, LONG, FLOAT, DOUBLE and STRING. Complex obje
 IPC-derived values, incomplete enum domains and Protobuf values without a sufficiently proven
 schema are not exposed for editing merely because the scanner can identify or describe them.
 
-This separation is intentional. AA Experiments favors **precision over recall**: cataloguing tens
+This separation is intentional. **AA Experiments** favors **precision over recall**: cataloguing tens
 of thousands of candidates is useful for analysis and rediscovery, but exposing only the subset
 that can be mapped with sufficient confidence reduces the risk of hooking an unrelated method,
 returning an invalid type or corrupting Android Auto behavior.
