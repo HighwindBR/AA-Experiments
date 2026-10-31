@@ -407,21 +407,23 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             mutable.value = mutable.value.copy(message = "Read-only VTC protocol tracing is pinned to the inspected Android Auto 18.0 base APK.")
             return@launch
         }
-        val ok = withContext(Dispatchers.IO) {
-            ServiceBridge.dynamicPreferencesOrNull()?.edit()
-                ?.putString(io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY,
-                    enabled.toString())?.commit() == true
+        val result = writePreferencesAndPublish {
+            withContext(Dispatchers.IO) {
+                check(ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY,
+                        enabled.toString())?.commit() == true) {
+                    "LSPosed remote preferences unavailable."
+                }
+            }
         }
-        if (!ok) {
-            mutable.value = mutable.value.copy(message = "Cannot update VTC trace: LSPosed remote preferences unavailable.")
-            return@launch
-        }
-        refreshOverridesAndProfile()
-        mutable.value = mutable.value.copy(message = if (enabled)
-            "VTC read-only trace enabled. Restart Android Auto, then inspect LSPosed module logs."
-        else "VTC trace disabled. Existing hooks fail open; restart AA to unload them.")
+        mutable.value = mutable.value.copy(message = when {
+            result.isFailure -> "Cannot update VTC trace: ${result.exceptionOrNull()?.message}"
+            result.getOrThrow() != ProfileMutationCoordinator.Outcome.PUBLISHED ->
+                "VTC trace preference saved, but runtime profile was NOT published. Check LSPosed."
+            enabled -> "VTC read-only trace enabled and published. Restart Android Auto, then inspect LSPosed module logs."
+            else -> "VTC trace disabled and profile published. Restart AA to unload existing hooks."
+        })
     }
-
 
     /** Media Startup diagnostic opt-in; profile scope and pinned SHA stay unchanged. */
     fun setMediaStartupTrace(enabled: Boolean) = viewModelScope.launch {
@@ -432,24 +434,26 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 "Media Startup observation requires the exact inspected Android Auto 18.1 base APK.")
             return@launch
         }
-        val ok = withContext(Dispatchers.IO) {
-            ServiceBridge.dynamicPreferencesOrNull()?.edit()
-                ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY,
-                    enabled.toString())
-                ?.apply {
-                    if (!enabled) putString(
-                        io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
-                }?.commit() == true
+        val result = writePreferencesAndPublish {
+            withContext(Dispatchers.IO) {
+                check(ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupTrace.KEY,
+                        enabled.toString())
+                    ?.apply {
+                        if (!enabled) putString(
+                            io.github.highwindbr.aaxp.runtime.MediaStartupAutoGate.KEY, "false")
+                    }?.commit() == true) {
+                    "LSPosed remote preferences unavailable."
+                }
+            }
         }
-        if (!ok) {
-            mutable.value = mutable.value.copy(message =
-                "Cannot update Media Startup trace: LSPosed preferences unavailable.")
-            return@launch
-        }
-        refreshOverridesAndProfile()
-        mutable.value = mutable.value.copy(message = if (enabled)
-            "Read-only Media Startup trace enabled. Restart Android Auto; inspect LSPosed logs."
-        else "Media Startup trace disabled. Restart Android Auto to unload its hooks.")
+        mutable.value = mutable.value.copy(message = when {
+            result.isFailure -> "Cannot update Media Startup trace: ${result.exceptionOrNull()?.message}"
+            result.getOrThrow() != ProfileMutationCoordinator.Outcome.PUBLISHED ->
+                "Media Startup trace preference saved, but runtime profile was NOT published. Check LSPosed."
+            enabled -> "Media Startup trace enabled and published. Restart Android Auto and inspect LSPosed logs."
+            else -> "Media Startup trace disabled and profile published. Restart Android Auto to unload its hooks."
+        })
     }
 
     /**
