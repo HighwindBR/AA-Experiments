@@ -465,7 +465,7 @@ private val AaDarkScheme = darkColorScheme(
                     }
                 }
 
-                Text("Keep AA Experiments open while the catalog is being prepared.",
+                Text("You can switch apps or turn off the screen while analysis runs. Do not force-stop or remove AA Experiments from Recents.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
 
