@@ -465,10 +465,6 @@ private val AaDarkScheme = darkColorScheme(
                     }
                 }
 
-                Text("You can switch apps or turn off the screen while analysis runs. Do not force-stop or remove AA Experiments from Recents.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-
                 if (onCancel != null) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onCancel) { Text("Cancel after current") }
