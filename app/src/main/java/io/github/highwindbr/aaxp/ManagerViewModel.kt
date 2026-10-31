@@ -87,6 +87,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
     private val mediaLabPreferences = application.getSharedPreferences("media_startup_pf6_lab", Context.MODE_PRIVATE)
     // All profile computations, writes and build-state handoffs share one coordinator.
     private val profileRefreshMutex = ProfileRefreshGate()
+    private val profileMutationCoordinator = ProfileMutationCoordinator(profileRefreshMutex)
     // Only one expensive catalog/DEX operation may own the foreground service.
     private val analysisOperationGate = AnalysisOperationGate()
     private val catalogExportGate = AnalysisOperationGate()
@@ -804,7 +805,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
 
     fun setDynamicOverride(identifier: DiscoveredIdentifier, rawInput: String?) = viewModelScope.launch {
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key, message = null)
-        val result = withContext(Dispatchers.IO) { runCatching {
+        val result = writePreferencesAndPublish { withContext(Dispatchers.IO) {
             require(mutable.value.aa.runtimeTarget) { "Imported archives are read-only; refresh the installed Android Auto before editing." }
             val build = checkNotNull(mutable.value.aa.buildFingerprintSha256) { "No installed Android Auto build" }
             val current = checkNotNull(database.details(build, identifier.key)) { "Flag absent from current build" }
@@ -838,8 +839,14 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             }
             require(editor.commit()) { "Framework rejected the preference update" }
         } }
-        if (result.isFailure) mutable.value = mutable.value.copy(saveState = SaveState.FAILED, message = "Override rejected: ${result.exceptionOrNull()?.message}")
-        else { mutable.value = mutable.value.copy(saveState = SaveState.SAVED); refreshOverridesAndProfile() }
+        when {
+            result.isFailure -> mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+                message = "Override rejected: ${result.exceptionOrNull()?.message}")
+            result.getOrThrow() == ProfileMutationCoordinator.Outcome.PUBLISHED ->
+                mutable.value = mutable.value.copy(saveState = SaveState.SAVED, message = "Override saved and runtime profile published. Restart Android Auto to apply.")
+            else -> mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+                message = "Override saved, but runtime profile was NOT published. Check LSPosed and retry publication.")
+        }
     }
 
     private fun deltaSummary(items: List<EditableCatalogDelta>) = CatalogChangeSummary(
@@ -1090,7 +1097,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             return@launch
         }
         mutable.value = mutable.value.copy(saveState = SaveState.SAVING, saveTargetKey = identifier.key)
-        val result = withContext(Dispatchers.IO) { runCatching {
+        val result = writePreferencesAndPublish { withContext(Dispatchers.IO) {
             val id = checkNotNull(database.details(build, identifier.key))
             require(AdvancedOverridePolicy.issue(id) == null) { AdvancedOverridePolicy.issue(id) ?: "Not eligible" }
             require(probeKeyForBuild(build) != id.key) { "Disarm the read-only probe first." }
@@ -1113,12 +1120,15 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 "Unable to atomically preserve the baseline."
             }
         } }
-        if (result.isSuccess) {
-            refreshOverridesAndProfile()
-            mutable.value = mutable.value.copy(saveState = SaveState.SAVED,
-                message = "Advanced value saved. Restart Android Auto and inspect the LSPosed events.")
-        } else mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
-            message = "Advanced override rejected: ${result.exceptionOrNull()?.message}")
+        when {
+            result.isFailure -> mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+                message = "Advanced override rejected: ${result.exceptionOrNull()?.message}")
+            result.getOrThrow() == ProfileMutationCoordinator.Outcome.PUBLISHED ->
+                mutable.value = mutable.value.copy(saveState = SaveState.SAVED,
+                    message = "Advanced value saved and profile published. Restart Android Auto and inspect LSPosed events.")
+            else -> mutable.value = mutable.value.copy(saveState = SaveState.FAILED,
+                message = "Advanced value saved, but runtime profile was NOT published. Check LSPosed and retry.")
+        }
     }
 
     fun pauseAdvancedOverride(key: String) = setAdvancedActivity(key, false)
@@ -1422,9 +1432,26 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { mutable.value=mutable.value.copy(saveState=SaveState.FAILED,message="Import failed: ${it.message}") }
     }
 
-    private suspend fun refreshOverridesAndProfile() = profileRefreshMutex.withLock {
+    /**
+     * Keep the preference commit and profile publication in one serialized scope.
+     * A saved value remains recoverable when publication fails, but is not reported
+     * as applied until the verified slot pointer is committed.
+     */
+    private suspend fun writePreferencesAndPublish(write: suspend () -> Unit):
+        Result<ProfileMutationCoordinator.Outcome> = try {
+        Result.success(profileMutationCoordinator.execute(write) { refreshOverridesAndProfileLocked() })
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
+    }
+
+    private suspend fun refreshOverridesAndProfile(): Boolean =
+        profileRefreshMutex.withLock { refreshOverridesAndProfileLocked() }
+
+    private suspend fun refreshOverridesAndProfileLocked(): Boolean {
         val aa = mutable.value.aa
-        if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return@withLock
+        if (!aa.runtimeTarget || aa.baseSha256 == null || aa.buildFingerprintSha256 == null) return false
         val result = withContext(Dispatchers.IO) { runCatching {
             // A transient LSPosed disconnection must not publish an empty profile.
             // The last selected verified slot remains active until reconnection.
@@ -1605,7 +1632,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         // Build state is handed off under the same mutex: stale queued refreshes
         // cannot overwrite an imported archive or a newly installed AA build.
         if (mutable.value.aa.buildFingerprintSha256 != aa.buildFingerprintSha256 ||
-            !mutable.value.aa.runtimeTarget) return@withLock
+            !mutable.value.aa.runtimeTarget) return false
         result.onSuccess { outcome -> mutable.value=mutable.value.copy(dynamicOverrides=outcome.active,
             suspendedOverrides=outcome.suspended, probeTargetKey=probeKeyForBuild(aa.buildFingerprintSha256),
             experimentalSnapshot=outcome.experimental, experimentalProfileReady=outcome.experimentalReady,
@@ -1620,6 +1647,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             profilePublished=outcome.published,
             message=outcome.error?.let { "Dynamic profile was not published: ${it.message}" }) }
             .onFailure { mutable.value=mutable.value.copy(profilePublished=false,message="Dynamic profile was not published: ${it.message}") }
+        return result.getOrNull()?.published == true
     }
 
     private fun csv(value: String) = "\"${value.replace("\"", "\"\"")}\""
