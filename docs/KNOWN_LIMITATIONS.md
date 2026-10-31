@@ -24,6 +24,17 @@
   Do not experiment with these values during active projection or
   while driving.
 
+- **Beta5 automatic Media startup** is opt-in and tied to the exact
+  Android Auto build. The RC1 was reported functional during a parked
+  vehicle test on 2026-10-30, but every A/B route, alternate media app,
+  Android Auto revision and head unit has not been independently certified.
+  Android Auto's own controller can reject the opening request even when
+  hooks and selected-component checks succeed. The feature never starts
+  audio playback or bypasses vehicle restrictions. If a build-specific
+  first-activity role cannot be proven, automatic opening is disabled.
+  Legacy PF4 remains Spotify-only and pinned to a previously reviewed
+  build; it is separate from the dynamically resolved route.
+
 - The About screen states **LSPosed runtime API 101** (the module's
   supported API), while Status may report **API 102** from the
   connected framework service. These describe different sides of the

@@ -44,18 +44,20 @@ part of the distributed application. AI-assisted changes were reviewed before in
 physical-device, LSPosed/Android Auto, and vehicle head-unit testing were performed manually by the
 developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 
-## Beta5 RC1 — development candidate
+## Beta5 — automatic media startup
 
-The unmerged beta5 RC1 branch is validating optional automatic opening of the
-**media app already selected in Android Auto** through two dynamically resolved
-controller routes. Root + LSPosed and an explicit per-build opt-in are required.
-The runtime cancels when the projection changes, navigation is detected or the
-resolver is not sufficiently confident. This feature does not start audio, nor
-does method dispatch guarantee the app is visible in the car.
+In **Settings → Media → Media startup**, AA Experiments can optionally open
+the media app **already selected in Android Auto** when projection starts.
+Two dynamically resolved launch routes are available (A: auxiliary, B: direct).
+Enable it explicitly for each supported Android Auto build; it is OFF by
+default. Root + LSPosed and a structurally verified, exact-build startup
+profile are required. The feature never starts audio playback, and it does
+not bypass driving restrictions or guarantee UI visibility on every head unit.
 
-This is **not a published release**. See the
-[beta5 RC1 validation matrix](docs/BETA5_RC1.md) for pending vehicle and
-cross-build acceptance criteria.
+The original experiment catalog, typed normal/Advanced overrides and
+build-scoped recovery remain available. See
+[beta5 release notes](docs/RELEASE_NOTES_1.0.0-beta5.md) and
+[known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## Documentation
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.0-beta5 — final release preparation
+
+- Promote the validated beta5-RC1 media startup implementation without
+  changing the selected-component hook logic. Media startup lives in
+  **Settings → Media**, not Diagnostics.
+- Support the Android Auto-selected media player through structurally
+  resolved A/B routes, subject to per-build explicit opt-in, single-attempt
+  session safeguards and safe rejection of unverified builds.
+- Keep legacy Spotify-only PF4 separate and OFF while dynamic hooks run.
+  Automatic audio playback and driving-restriction bypass are not provided.
+- Freeze final app metadata as `1.0.0-beta5` / `versionCode=178` to allow
+  in-place upgrade from RC1 (177); package remains
+  `io.github.highwindbr.aaxp`.
+- Prepare exact beta5 tag, private 256 MiB/frozen corpus gates, signed APK
+  and pinned beta4 certificate comparison. **Official publication is pending
+  final gate verification and maintainer approval.**
+- Record the reported parked-vehicle RC1 acceptance without asserting
+  independent proof for every player/route/cross-build combination.
+
 ## Beta5 RC1 UI refinement — Media startup is now first-class Settings
 
 - Move Media startup out of Diagnostics developer tools into

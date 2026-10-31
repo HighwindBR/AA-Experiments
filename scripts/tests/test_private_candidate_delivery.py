@@ -5,7 +5,7 @@ import unittest
 
 from scripts.private_candidate_delivery import (
     APK_NAME, BETA5_BRANCH, BETA5_APK_NAME, BETA5_RC1_BRANCH,
-    BETA5_RC1_APK_NAME, candidate_for_ref,
+    BETA5_RC1_APK_NAME, BETA5_FINAL_BRANCH, BETA5_FINAL_APK_NAME, candidate_for_ref,
     draft_tag, github, require_private_destination, verify_apk_checksum,
 )
 
@@ -57,6 +57,30 @@ class PrivateDeliveryTest(unittest.TestCase):
             sidecar.write_text(f"{digest}  {BETA5_APK_NAME}\n")
             with self.assertRaises(ValueError):
                 verify_apk_checksum(apk, BETA5_RC1_APK_NAME)
+
+    def test_beta5_final_private_candidate_has_exact_branch_version_and_name(self):
+        expected = (BETA5_FINAL_APK_NAME, "aaxp-private-beta5-final", "1.0.0-beta5")
+        self.assertEqual(candidate_for_ref(BETA5_FINAL_BRANCH), expected)
+        self.assertEqual(draft_tag("2048", "3", BETA5_FINAL_BRANCH),
+                         "aaxp-private-beta5-final-run-2048-attempt-3")
+        for invalid in (BETA5_FINAL_BRANCH + "-unverified", "refs/tags/v1.0.0-beta5",
+                        "refs/heads/main"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    candidate_for_ref(invalid)
+        with tempfile.TemporaryDirectory() as directory:
+            apk = Path(directory) / BETA5_FINAL_APK_NAME
+            payload = b"test-only private beta5 fixture"
+            apk.write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+            sidecar = Path(str(apk) + ".sha256")
+            sidecar.write_text(f"{digest}  {BETA5_FINAL_APK_NAME}\n")
+            self.assertEqual(verify_apk_checksum(apk, BETA5_FINAL_APK_NAME), digest)
+            with self.assertRaises(ValueError):
+                verify_apk_checksum(apk, BETA5_RC1_APK_NAME)
+            sidecar.write_text(f"{digest}  {BETA5_RC1_APK_NAME}\n")
+            with self.assertRaises(ValueError):
+                verify_apk_checksum(apk, BETA5_FINAL_APK_NAME)
 
     def test_destination_must_be_separate_and_private(self):
         require_private_destination(

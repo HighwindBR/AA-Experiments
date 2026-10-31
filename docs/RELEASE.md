@@ -16,24 +16,55 @@ A public beta requires:
    Individual downstream effects of 900+ flags are *not* a release gate.
 4. A signed `assembleRelease` APK with v2 signature verification,
    expected package name/versionCode/versionName and the **same signing
-   certificate** as the official beta3 package (for beta4).
+   certificate** as the SHA-256-verified previous official beta
+   (beta3 for beta4, beta4 for beta5).
 5. User review of release notes and known limitations, explicit approval
    to merge/tag/publish, and availability of the private fixture runner.
 6. The tag's own gates must succeed before a GitHub Release is created.
 
 The existing publication workflow is `.github/workflows/private-release.yml`.
 It is **not** triggered by a feature-branch commit. Only an explicit
-tag push for `v1.0.0-beta3` or `v1.0.0-beta4` can publish.
+tag push for `v1.0.0-beta3`, `v1.0.0-beta4` or `v1.0.0-beta5`
+can publish.
 A manual `workflow_dispatch` runs checks but never publishes an APK
 in the public source repository. An explicitly opted-in signed-candidate
 job may instead attach the signed test APK to an **unpublished draft**
 inside a **separate private repository**, never to public Actions artifacts.
 
 The signed tag job uses the repository's existing release keystore
-secrets. For beta4, it also downloads the official beta3 APK from
-GitHub Releases, verifies its pinned SHA-256, and compares the signing
-certificate SHA-256 digest with the new signed APK. Any difference
-blocks publication instead of breaking in-place upgrades.
+secrets. For beta4/beta5, it downloads the exact preceding official
+APK from GitHub Releases, verifies its pinned SHA-256, and compares the
+signing certificate SHA-256 digest against the new signed APK. Any
+difference blocks publication instead of breaking in-place upgrades.
+
+## Beta5 final — release candidate closure (not yet published)
+
+- RC1 source baseline: `e8286335b8261d4e8e249049b27324b27a989578`.
+  The maintainer reported the RC1 functional test on a parked vehicle
+  successful on 2026-10-30. Do not infer that each optional route/player,
+  failure scenario and second Android Auto build was independently checked.
+- Source freeze is on `release/1.0.0-beta5`, branching from that validated
+  RC1 commit. Final application identity is `1.0.0-beta5` /
+  `versionCode=178`, with the existing package ID and signing key.
+  RC1 had versionCode 177; the increased code permits normal upgrades.
+- The official APK would be `AAExperiments-1.0.0-beta5.apk` with
+  `AAExperiments-1.0.0-beta5.apk.sha256`. No extra LICENSE or notices
+  should be attached as Release assets; both remain in source and APK.
+- Obtain public unit/lint/debug CI and **all four** private fixture gates
+  on the final branch. The private runner and fixed SHA-256 fixture
+  manifest remain release dependencies. If needed, use the manual
+  `workflow_dispatch` on that exact branch with `run_private_gates`,
+  `build_signed_candidate`, and optionally
+  `deliver_private_candidate` for an unpublished private draft.
+- The signed candidate must have APK Signature Scheme v2 and the same
+  certificate as the checksum-verified official beta4. Confirm version
+  metadata and installation over the beta4/RC1 package; preserve data.
+- Review [beta5 release readiness](BETA5_RELEASE_READINESS.md) and
+  [beta5 release notes](RELEASE_NOTES_1.0.0-beta5.md), then obtain explicit
+  maintainer approval before merging, tagging or publishing.
+- An explicitly approved `v1.0.0-beta5` tag will trigger another
+  standalone release gate sequence. Any failure must prevent publication.
+  Verify APK, SHA-256 asset, title and release notes afterward.
 
 ## Beta4 pre-release workflow
 
