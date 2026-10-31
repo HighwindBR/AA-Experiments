@@ -85,23 +85,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          script: |
-            set -eu
-            gradle --no-daemon --max-workers=1 :app:assembleDebug :app:assembleDebugAndroidTest
-            adb wait-for-device
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            # The Gradle UTP APK installer fails to load kotlin.enums.EnumEntriesKt
-            # on AGP 8.7.3 before tests start; direct instrumentation bypasses
-            # only that host-side runner. Insist on all THREE real SQLite tests.
-            adb shell am instrument -w \
-              -e class io.github.highwindbr.aaxp.discovery.CatalogDatabaseInstrumentedTest \
-              io.github.highwindbr.aaxp.test/androidx.test.runner.AndroidJUnitRunner \
-              | tee beta6-sqlite-instrumentation.log
-            grep -Eq '^OK \(3 tests\)' beta6-sqlite-instrumentation.log
-            if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=|Process crashed' beta6-sqlite-instrumentation.log; then
-              exit 1
-            fi
+          script: bash scripts/run-beta6-sqlite-instrumentation.sh
       - name: Save database test reports
         if: always()
         uses: actions/upload-artifact@v4
