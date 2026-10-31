@@ -6,13 +6,13 @@
 - Automatic crash-loop attribution is not implemented. Hooks fail open, profiles are tied to the complete installed-build fingerprint, and incompatible overrides are suspended before publication.
 - Deep value-flow analysis intentionally suspends ambiguous, shared-infrastructure and unsupported object/callback paths instead of guessing.
 - Numeric enums and Protobuf messages remain read-only until their complete accepted domain or schema is proven.
-- Resources are catalogued for diagnostics but are not directly editable through the modern API 101 runtime path.
+- Resources are catalogued for diagnostics but are not directly editable through the API 101 runtime path.
 - A force-stop, reboot or OS process termination interrupts active work; catalog writes and directed results already committed remain preserved.
 - Release signing requires the CI secrets documented in the workflow. Debug builds use an automatically generated disposable debug key.
 
 - The two-slot publication and shared refresh coordinator received signed-device LSPosed smoke testing in the beta4 preflight14 sequence. Deliberate destructive interruption between remote file writes, read-back and pointer commit has **not** been reproduced on the user's configured device; tests cover injected failures at the storage interface.
 
-- Historical beta4 visual checks covered light/dark themes, enlarged text and display zoom on the Galaxy S24+. They do not certify the current candidate's UI; the former Diagnostics developer-tools panel has since been removed. **Landscape, TalkBack and other screen-reader behavior** still require candidate-specific validation.
+- **Landscape, TalkBack and other screen-reader behavior** still require candidate-specific validation.
 
 - A complete recovery bundle contains raw normal/Advanced/Experimental values (including STRING content); it is not encrypted or authenticated. Store it securely and do not import untrusted JSON. Full recovery requires an exact matching Android Auto build; it is not a cross-version migration tool. It excludes Media Startup routes/consent, appearance, catalog cache and LSPosed setup.
 - Streaming full-catalog export is bounded in memory but may still take time on slower devices or document providers. If the provider fails, incomplete destination files must be discarded. A cancel/progress UI for very long exports remains future work.
@@ -25,21 +25,15 @@
   while driving.
 
 - **Automatic Media Startup** is opt-in and tied to the exact
-  Android Auto build. The historical beta5 RC1 was reported functional during a parked
-  vehicle test on 2026-10-30, but every A/B route, alternate media app,
-  Android Auto revision and head unit has not been independently certified.
-  Android Auto's own controller can reject the opening request even when
-  hooks and selected-component checks succeed. The feature never starts
-  audio playback or bypasses vehicle restrictions. If a build-specific
+  Android Auto build. Android Auto's own controller can reject the opening request even when
+  hooks and selected-component checks succeed. The feature may not starts
+  audio playback and never bypasses vehicle restrictions. If a build-specific
   first-activity role cannot be proven, automatic opening is disabled.
-  Legacy PF4 remains Spotify-only and pinned to a previously reviewed
-  build; it is separate from the dynamically resolved routes. The current
-  candidate supports either structurally proven route independently; unavailable
-  routes are disabled. Candidate-specific physical checks remain in
-  [readiness](BETA6_RC1_READINESS.md).
+  The current build supports either structurally proven route independently; unavailable
+  routes are disabled. 
 
 - The About screen states **LSPosed runtime API 101** (the module's
-  supported API), while Status may report **API 102** from the
+  supported API), while Status may report newer API from the
   connected framework service. These describe different sides of the
   integration, not necessarily a service-version mismatch. Verify
   actual `PROFILE_ACCEPTED` and hook events to assess compatibility.
