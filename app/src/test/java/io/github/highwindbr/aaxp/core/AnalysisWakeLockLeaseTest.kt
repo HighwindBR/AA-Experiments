@@ -22,6 +22,10 @@ class AnalysisWakeLockLeaseTest {
         }
     }
 
+    @Test fun wakeLockIsCappedAtFiveMinutes() {
+        assertEquals(300_000L, AnalysisWakeLockLease.MAX_HOLD_MILLIS)
+    }
+
     @Test fun acquiresOnceAndReleasesOnCompletion() {
         val power = FakeLock()
         val lease = AnalysisWakeLockLease(power)
@@ -29,7 +33,7 @@ class AnalysisWakeLockLeaseTest {
         lease.start()
         assertTrue(power.isHeld)
         assertEquals(1, power.acquisitions)
-        assertEquals(AnalysisWakeLockLease.MAX_HOLD_MILLIS, power.lastTimeout)
+        assertEquals(300_000L, power.lastTimeout)
         lease.stop()
         lease.stop()
         assertFalse(power.isHeld)
