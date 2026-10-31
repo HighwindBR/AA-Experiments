@@ -463,7 +463,7 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         val base = aa.basePath
         if (!aa.runtimeTarget || base == null) {
             mutable.value = mutable.value.copy(message =
-                "PF5 requires an installed Android Auto base APK; imported archives are not executable.")
+                "Compatibility checks require the installed Android Auto APK, not an imported archive.")
             return@launch
         }
         if (!analysisOperationGate.tryBegin()) {
@@ -480,13 +480,13 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 mutable.value.aa.buildFingerprintSha256 == aa.buildFingerprintSha256) {
                 mutable.value = mutable.value.copy(
                     mediaSemanticReport = outcome.summary(),
-                    message = "PF5 offline Media Startup analysis: ${outcome.status}. Runtime mappings were not changed.")
+                    message = "Media Startup compatibility: ${outcome.status}. Opening settings were not changed.")
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
             mutable.value = mutable.value.copy(message =
-                "PF5 scan failed safely: ${failure.javaClass.simpleName}")
+                "Compatibility scan could not finish: ${failure.javaClass.simpleName}")
         } finally {
             mutable.value = mutable.value.copy(mediaSemanticAnalysisRunning = false)
             analysisOperationGate.finish()
@@ -539,8 +539,11 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 put("buildFingerprintSha256", fingerprint)
                 put("roles", JSONObject(evidence.roles))
             }
-            // Media opt-in and lab proof live in two stores. Hold the shared
-            // refresh lock through both writes and verified profile publication.
+            // This explicit button is both a compatibility request and an
+            // opt-in for this exact build. Never enable without a proven
+            // projected-activity trigger; future builds require a new tap.
+            val requestAutomatic = MediaStartupConsentPolicy.allowAutoAfterExplicitResolution(
+                evidence.status, evidence.roles)
             val (stored, published) = profileRefreshMutex.withLock {
                 if (mutable.value.aa.buildFingerprintSha256 != fingerprint ||
                     mutable.value.aa.baseSha256 != hash || !mutable.value.aa.runtimeTarget) {
@@ -554,19 +557,34 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                             ?.commit() == true
                     }
                     val saved = disabledAuto && mediaLabPreferences.edit()
-                        .putString("auto-selected:$fingerprint", "false")
+                        .putString("auto-selected:$fingerprint", requestAutomatic.toString())
                         .putString(fingerprint, lab.toString()).commit()
                     if (saved) {
                         mutable.value = mutable.value.copy(mediaSemanticReport = evidence.summary())
-                        true to refreshOverridesAndProfileLocked()
+                        val publishedNow = refreshOverridesAndProfileLocked()
+                        if (!publishedNow && requestAutomatic) {
+                            // A profile that could not be published must not leave
+                            // unattended opening armed in remote preferences.
+                            mediaLabPreferences.edit()
+                                .putString("auto-selected:$fingerprint", "false").commit()
+                            withContext(Dispatchers.IO) {
+                                ServiceBridge.dynamicPreferencesOrNull()?.edit()
+                                    ?.putString(io.github.highwindbr.aaxp.runtime.MediaStartupDynamicAuto.KEY, "false")
+                                    ?.commit()
+                            }
+                            mutable.value = mutable.value.copy(mediaLabAutoEnabled = false)
+                        }
+                        true to publishedNow
                     } else false to false
                 }
             }
             mutable.value = mutable.value.copy(message = when {
                 !stored -> "Could not persist the verified Media Startup proof; existing runtime profile unchanged."
-                published -> "Media Startup profile published. Restart Android Auto; test A/B while parked. Automatic opening stays OFF until opt-in." +
-                    if ("activity.firstProjected" in evidence.roles) " ActivityTracker resolved." else " ActivityTracker unresolved; manual-only."
-                else -> "Media Startup proof saved, but runtime profile was NOT published. Check LSPosed before restarting AA."
+                published && requestAutomatic ->
+                    "Compatibility verified. Automatic media opening is enabled for this Android Auto build. Restart Android Auto, then reconnect while parked."
+                published ->
+                    "Opening routes verified, but the automatic trigger was not found. Manual route tests are available."
+                else -> "Compatibility proof saved, but the profile was NOT published. Automatic opening remains off. Check LSPosed."
             })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {
