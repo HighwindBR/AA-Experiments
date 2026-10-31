@@ -1594,11 +1594,26 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
             val prefs = checkNotNull(ServiceBridge.dynamicPreferencesOrNull()) {
                 "Remote preferences unavailable; preserving last published profile"
             }
-            val allPrefs = prefs.all
-            val protocolTraceOn =
-                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.isSupported(aa.baseSha256) &&
-                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
-                    allPrefs[io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY] as? String)
+            val allPrefs = prefs.all.toMutableMap()
+            // Retire the two historical diagnostics no longer reachable from
+            // the UI. Disable persisted VTC trace before publishing a new
+            // profile; disarm old DOUBLE read-only probes without affecting
+            // unrelated probes or experiment baselines.
+            val obsoleteTraceKey =
+                io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.KEY
+            if (io.github.highwindbr.aaxp.runtime.VideoTimingProtocolTrace.enabled(
+                    allPrefs[obsoleteTraceKey] as? String)) {
+                check(prefs.edit().putString(obsoleteTraceKey, "false").commit()) {
+                    "Could not disable retired Video Timing trace"
+                }
+                allPrefs[obsoleteTraceKey] = "false"
+            }
+            if (probePreferences.getString("key", null) in GetterProbePolicy.doubleCandidates.keys) {
+                check(probePreferences.edit().clear().commit()) {
+                    "Could not disarm retired DOUBLE probe"
+                }
+            }
+            val protocolTraceOn = false
             val mediaStartupTraceOn =
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.isSupported(aa.baseSha256) &&
                 io.github.highwindbr.aaxp.runtime.MediaStartupTrace.enabled(
