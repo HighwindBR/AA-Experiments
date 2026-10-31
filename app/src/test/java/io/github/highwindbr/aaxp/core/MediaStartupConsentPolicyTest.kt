@@ -12,8 +12,8 @@ class MediaStartupConsentPolicyTest {
             Status.KNOWN_BUILD_VALIDATED, withTrigger))
     }
 
-    @Test fun unreviewedBuildNeedsAnExplicitTapButCanBeEnabledAfterProof() {
-        assertTrue(MediaStartupConsentPolicy.allowAutoAfterExplicitResolution(
+    @Test fun unreviewedBuildNeverAutoEnablesDuringCompatibilityScan() {
+        assertFalse(MediaStartupConsentPolicy.allowAutoAfterExplicitResolution(
             Status.REVIEW_ONLY, withTrigger))
     }
 
