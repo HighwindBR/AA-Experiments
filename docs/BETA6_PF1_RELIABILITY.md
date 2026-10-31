@@ -25,6 +25,8 @@ signing secrets or media-startup semantics change.
 
 - Add a shared `ProfileMutationCoordinator` around preference commit plus verified profile publication, using the existing `ProfileRefreshGate`.
 - Normal and Advanced value editors now return distinct outcomes for persisted preferences and fully published profiles; failed profile publication is not presented as a successfully applied value.
+- Keep complete recovery commit and profile republishing in the same locked scope, while retaining restored records if publication fails.
+- Use the same coordinator and explicit publication result for VTC and Media Startup diagnostic trace controls.
 - Add JVM concurrency and failure-injection tests (commit error, publish error, saved-but-not-published, ordered commits).
 - This is **incremental**: remaining Advanced pause/restore, Experimental, reset, import and Media Startup preference paths still need to be migrated or explicitly audited for competing operations. Do not claim global write serialization yet.
 
@@ -33,14 +35,15 @@ signing secrets or media-startup semantics change.
 Public GitHub Actions: `:app:testDebugUnitTest`, `:app:lintRelease`,
 `:app:assembleDebug`; follow the workflow runs on the draft beta6 PR.
 
-The private 256 MiB fixtures and on-device signed testing remain deferred
-until the beta5 runner is available. A public green CI is not a release
+The private 256 MiB fixtures and on-device signed testing have not been run
+for beta6 yet. They remain required before beta6 release. A public green CI is not a release
 sign-off.
 
 ## Later PF1 tasks (not yet implemented)
 
-1. Coordinate shared-preference writes with publication and expose an explicit
-   publication outcome; avoid success messages after publication failure.
+1. Complete coordination of the remaining preference paths: Advanced pause/resume/restore,
+   Experimental, reset, import, and Media Startup A/B opt-in. Cover concurrent calls
+   and failure messages with regression tests.
 2. Keep the installed catalog pinned independently of read-only imported
    archives and add instrumentation regressions for pruning and restoration.
 3. Exercise complete recovery against simulated failures and reconnects,
