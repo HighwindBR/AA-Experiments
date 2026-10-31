@@ -52,7 +52,7 @@ object MediaStartupSemanticResolver {
         val autoLaunchAllowed: Boolean = false
     ) {
         fun summary(): String = buildString {
-            append("PF5 semantic DEX analysis: ").append(status.name).append('\n')
+            append("Media Startup DEX compatibility: ").append(status.name).append('\n')
             append("Base SHA-256: ").append(baseSha256).append('\n')
             roles.toSortedMap().forEach { (role, method) ->
                 append(role).append(": ").append(method).append('\n')
@@ -61,7 +61,7 @@ object MediaStartupSemanticResolver {
                 append("Unresolved: ").append(missing.joinToString(", ")).append('\n')
             }
             append(explanation).append('\n')
-            append("PF5 discovery grants no runtime permission by itself; PF6.1 manual lab is a separate explicit opt-in.")
+            append("Analysis alone does not enable runtime hooks. Enable opening explicitly for this Android Auto build.")
         }
     }
 
@@ -168,8 +168,8 @@ object MediaStartupSemanticResolver {
         }
         return Evidence(status, baseHash, roles, missing,
             when (status) {
-                Status.KNOWN_BUILD_VALIDATED -> "Anchor/ABI proof corroborates the already field-tested AA 18.1. Existing pinned PF4 path stays unchanged."
-                Status.REVIEW_ONLY -> "Unique launch candidate on an unreviewed build. ActivityTracker: ${if (firstActivity != null) "UNIQUE" else if (activityCandidates.size > 1) "AMBIGUOUS" else "MISSING"}. Only a separately armed experimental lab may execute."
+                Status.KNOWN_BUILD_VALIDATED -> "Anchor and method signatures match the previously validated Android Auto build. Legacy launch behavior remains unchanged."
+                Status.REVIEW_ONLY -> "A unique launch candidate was found on a build that has not been field-tested. Automatic trigger: ${if (firstActivity != null) "UNIQUE" else if (activityCandidates.size > 1) "AMBIGUOUS" else "MISSING"}. Explicit per-build activation is required."
                 Status.AMBIGUOUS -> "Several internal methods match. Refusing to select a controller."
                 Status.UNSUPPORTED -> "Required lifecycle or launch evidence was not proven. No active remapping."
                 Status.ERROR -> "Unreadable DEX."
