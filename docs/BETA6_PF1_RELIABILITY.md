@@ -62,7 +62,8 @@ signing secrets or media-startup semantics change.
 ## Verification
 
 Public GitHub Actions: `:app:testDebugUnitTest`, `:app:lintRelease`,
-`:app:assembleDebug`; follow the workflow runs on the draft beta6 PR.
+`:app:assembleDebug`, and `:app:assembleDebugAndroidTest` (compile-only);
+follow the workflow runs on the draft beta6 PR.
 
 The private 256 MiB fixtures and on-device signed testing have not been run
 for beta6 yet. They remain required before beta6 release. A public green CI is not a release
