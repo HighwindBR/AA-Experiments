@@ -229,7 +229,12 @@ private val AaDarkScheme = darkColorScheme(
     }
     Scaffold(
         topBar = { TopAppBar(title = { Row(verticalAlignment = Alignment.CenterVertically) { Image(painterResource(R.drawable.app_icon), null, Modifier.size(32.dp), contentScale = ContentScale.Fit); Spacer(Modifier.width(10.dp)); Text("AA Experiments", fontWeight = FontWeight.SemiBold) } }, actions = { if (tab == 0) IconButton(model::refreshInstallation) { Icon(Icons.Default.Refresh, "Refresh status") } }) },
-        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) -> NavigationBarItem(tab == index, { tab = index }, { Icon(icon, label) }, label = { Text(label) }) } } },
+        bottomBar = { NavigationBar { destinations.forEach { (label, icon, index) ->
+            NavigationBarItem(tab == index, {
+                settingsPageName = settingsPageAfterTabSelection(tab, index, settingsPage).name
+                tab = index
+            }, { Icon(icon, label) }, label = { Text(label) })
+        } } },
         snackbarHost = { SnackbarHost(feedbackHost) }
     ) { padding -> Box(Modifier.padding(padding).fillMaxSize()) { when (tab) {
         0 -> StatusScreen(state, model) { chosen -> experimentFilterName = chosen.name; tab = 1 }
@@ -261,6 +266,12 @@ private val AaDarkScheme = darkColorScheme(
         state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0
     val runtime = runtimeReadiness(state.aa, state.framework,
         state.dynamicOverrides.size + activeAdvanced + oldExperimental, state.profilePublished)
+    val mediaConfigured = MediaStartupPresentation.hasMediaConfiguration(
+        state.mediaLabArmed, state.mediaStartupAutoEnabled)
+    val mediaSummary = MediaStartupPresentation.summary(
+        state.mediaLabArmed, state.mediaLabRouteAAvailable, state.mediaLabRouteBAvailable,
+        state.mediaLabRoute, state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+        state.profilePublished)
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
     item { ScreenTitle("Status", "Environment, resolver and runtime readiness") }
     item { Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) { Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -299,7 +310,13 @@ private val AaDarkScheme = darkColorScheme(
         Text("Resolver & runtime", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         CompactStatusRow(Icons.Default.Storage, "Base APK", state.aa.baseSha256?.let { it.take(16) + "…" } ?: "Not available")
         CompactStatusRow(Icons.Default.Search, "Inventory", if (state.aa.runtimeTarget) "Installed Android Auto" else "Imported archive")
-        RuntimeBanner(runtime)
+        RuntimeBanner(runtime, mediaConfigured, state.profilePublished)
+        if (mediaConfigured) {
+            CompactStatusRow(Icons.Default.PlayCircle, "Media opening", mediaSummary)
+            Text("Media opening is separate from flag overrides; this status does not confirm head-unit visibility.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Text("Identifiers: ${state.aa.editableCount} editable · ${state.dynamicOverrides.size} modified", style = MaterialTheme.typography.bodySmall)
         state.probeTargetKey?.let { key ->
             Text("Read-only getter probe armed: ${technicalDisplay(key)} (restart AA to install)",
@@ -446,10 +463,18 @@ private val AaDarkScheme = darkColorScheme(
 
 @Composable private fun ScreenTitle(title: String, subtitle: String? = null) { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 @Composable private fun MiniStatus(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, ok: Boolean) { Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainer) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, Modifier.size(22.dp), tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); Spacer(Modifier.width(8.dp)); Column { Text(title, style = MaterialTheme.typography.labelMedium); Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium) } } } }
-@Composable private fun RuntimeBanner(runtime: RuntimeReadiness) {
+@Composable private fun RuntimeBanner(
+    runtime: RuntimeReadiness,
+    mediaConfigured: Boolean = false,
+    profilePublished: Boolean = false
+) {
     val concise = when (runtime.kind) {
         RuntimeReadinessKind.READY_AWAITING_PROCESS -> "Ready — waiting for Android Auto"
-        RuntimeReadinessKind.NO_OVERRIDES -> "Idle — no active overrides"
+        RuntimeReadinessKind.NO_OVERRIDES -> when {
+            mediaConfigured && profilePublished -> "Media opening configured · no flag overrides"
+            mediaConfigured -> "Media setup saved · profile not published"
+            else -> "Idle — no active overrides"
+        }
         else -> runtime.label
     }
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
@@ -1756,7 +1781,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     SettingsRow(
                         Icons.Default.Upload, "Export complete backup",
-                        "Recommended · Normal, Advanced, Experimental and saved baselines",
+                        "Normal, Advanced and Experimental overrides · includes baselines",
                         enabled = state.framework.connected && state.aa.runtimeTarget
                     ) { fullExport.launch("aa-experiments-full-recovery.json") }
                 }
@@ -1766,7 +1791,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     SettingsRow(
                         Icons.Default.Download, "Restore complete backup",
-                        "Replaces saved records · Exact AA build and RESTORE ALL confirmation required",
+                        "Replaces overrides and baselines · same AA build only",
                         enabled = state.framework.connected && state.aa.runtimeTarget
                     ) { fullImport.launch(arrayOf("application/json", "text/plain")) }
                 }
@@ -1775,7 +1800,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().clickable { legacyBackupExpanded = !legacyBackupExpanded }
+                            Modifier.fillMaxWidth().semantics {
+                                role = Role.Button
+                                stateDescription = if (legacyBackupExpanded) "Expanded" else "Collapsed"
+                            }.clickable { legacyBackupExpanded = !legacyBackupExpanded }
                                 .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1808,7 +1836,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().clickable { dangerZoneExpanded = !dangerZoneExpanded }
+                            Modifier.fillMaxWidth().semantics {
+                                role = Role.Button
+                                stateDescription = if (dangerZoneExpanded) "Expanded" else "Collapsed"
+                            }.clickable { dangerZoneExpanded = !dangerZoneExpanded }
                                 .padding(horizontal = 16.dp, vertical = 16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1834,9 +1865,14 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
                     }
                 }
             }
-            item { Text("Full recovery backups are build-specific. Keep these files private and export again before major changes.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                Text("Backup scope: saved flag overrides, suspended records, Advanced and Experimental baselines. Does not include Media Startup routes or consent, app appearance, catalog cache, LSPosed setup or Android Auto settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Backups are tied to the exact Android Auto build. Keep files private and export again before major changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp), verticalArrangement=Arrangement.spacedBy(10.dp)){
             item{ScreenTitle("Settings", "Appearance, media and advanced tools")}
@@ -1850,9 +1886,17 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
                 SettingsRow(Icons.Default.PlayCircle, "Media startup",
                     when {
-                        state.mediaLabAutoEnabled -> "Automatic opening on · Route ${state.mediaLabRoute}"
-                        state.mediaLabArmed -> "Automatic opening off · Routes A/B available"
-                        state.mediaStartupAutoEnabled -> "Legacy Spotify opening enabled"
+                        state.mediaLabAutoEnabled -> MediaStartupPresentation.summary(
+                            state.mediaLabArmed, state.mediaLabRouteAAvailable,
+                            state.mediaLabRouteBAvailable, state.mediaLabRoute,
+                            state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+                            state.profilePublished)
+                        state.mediaLabArmed -> MediaStartupPresentation.summary(
+                            state.mediaLabArmed, state.mediaLabRouteAAvailable,
+                            state.mediaLabRouteBAvailable, state.mediaLabRoute,
+                            state.mediaLabAutoEnabled, state.mediaStartupAutoEnabled,
+                            state.profilePublished)
+                        state.mediaStartupAutoEnabled -> "Legacy Spotify opening on"
                         else -> "Automatically open your selected media app"
                     }) { onPage(SettingsPage.MEDIA) }
             }}
@@ -1867,7 +1911,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version $appVersionName · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
-    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently removes all active and suspended normal overrides, Experimental records and Advanced baseline snapshots. Export normal overrides does NOT back up Advanced or Experimental records, so those baselines cannot be recovered from that JSON. Continue only if you intend to discard them all.")})
+    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently deletes normal, Advanced and Experimental overrides and their saved baselines. It does not reset Media Startup preferences, appearance or catalog data. Export a complete override backup first if you may need to restore these values.")})
     recoveryPending?.let { (raw, preview) ->
         AlertDialog(
             onDismissRequest = { recoveryPending = null; recoveryAcknowledgement = "" },
