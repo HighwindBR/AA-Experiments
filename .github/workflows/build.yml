@@ -56,10 +56,10 @@ jobs:
         with: { gradle-version: '8.9' }
       - run: gradle --no-daemon --max-workers=1 :app:assembleDebug :app:assembleDebugAndroidTest
 
-  # Opt-in RC preflight: run real SQLite v7->v8 migration/pruning tests.
-  # Only PR #13 with the temporary label runs this expensive emulator gate.
+  # Opt-in Beta6 preflight: run real SQLite v7->v8 migration/pruning tests.
+  # Temporarily enabled for PR #14 so the stable-promotion candidate gets the same emulator gate.
   beta6-sqlite-emulator:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 13 && contains(github.event.pull_request.labels.*.name, 'beta6-instrumentation')
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 14
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
