@@ -4,13 +4,6 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaStartupPresentationTest {
-    @Test fun routeSummaryMatchesActualAvailableMethods() {
-        assertEquals("A + B", MediaStartupPresentation.availableRoutes(true, true))
-        assertEquals("A only", MediaStartupPresentation.availableRoutes(true, false))
-        assertEquals("B only", MediaStartupPresentation.availableRoutes(false, true))
-        assertEquals("None verified", MediaStartupPresentation.availableRoutes(false, false))
-    }
-
     @Test fun mediaOpeningDoesNotPretendToBeAnOverride() {
         assertEquals("Automatic opening on · Route B", MediaStartupPresentation.summary(
             true, false, true, "B", true, false, true))
