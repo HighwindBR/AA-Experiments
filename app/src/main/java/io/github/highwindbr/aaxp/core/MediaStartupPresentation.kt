@@ -12,6 +12,12 @@ object MediaStartupPresentation {
         else -> "None verified"
     }
 
+    fun routeDetails(hasA: Boolean, hasB: Boolean, selected: String): String =
+        "Available routes: " + listOfNotNull(
+            if (hasA) "A · Auxiliary" else null,
+            if (hasB) "B · Direct" else null
+        ).joinToString("  ·  ") + "   |   Selected: $selected"
+
     fun summary(
         armed: Boolean,
         hasA: Boolean,
