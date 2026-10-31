@@ -97,7 +97,7 @@ jobs:
               -e class io.github.highwindbr.aaxp.discovery.CatalogDatabaseInstrumentedTest \
               io.github.highwindbr.aaxp.test/androidx.test.runner.AndroidJUnitRunner \
               | tee beta6-sqlite-instrumentation.log
-            grep -Eq '^OK \\(3 tests\\)' beta6-sqlite-instrumentation.log
+            grep -Eq '^OK \(3 tests\)' beta6-sqlite-instrumentation.log
             if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|shortMsg=|Process crashed' beta6-sqlite-instrumentation.log; then
               exit 1
             fi
