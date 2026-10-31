@@ -1,6 +1,6 @@
 # AA Experiments
 
-AA Experiments is an independent Android manager and LSPosed API 101 module for researching
+AA Experiments is an independent Android manager and LSPosed module for researching
 Android Auto configuration experiments. It scans installed or imported APK/APKM/APKS packages,
 proves compatible scalar getters, and publishes only active overrides for the exact installed
 base-and-split build fingerprint. It never patches, resigns, installs or writes into Android Auto.
@@ -10,16 +10,16 @@ remain searchable but read-only. An editable experiment is technically hookable;
 promise that every value is safe or that a server/head unit will enable the feature.
 
 AA Experiments was designed to be resilient to Android Auto updates. Originally developed against
-Android Auto 17.8, testing of the completed module later showed that its discovery mechanism can
-identify flags in Android Auto versions dating back to 2.0 (2016). This is encouraging evidence
-that the module may keep discovering flags in future releases, potentially remaining useful for
-years without developer updates. Discovery alone does not guarantee that every flag can be safely
+Android Auto 17.8, testing of the completed module later showed that **its discovery mechanism can
+identify flags in Android Auto versions dating back to 2.0 (2016)**. This is encouraging evidence
+that the module may keep discovering flags in future releases, **potentially remaining useful for
+years without developer updates**. Discovery alone does not guarantee that every flag can be safely
 resolved or overridden as Android Auto internals evolve.
 
 ## Requirements
 
 - Android 8.1 or newer
-- LSPosed with modern API 101 and Android Auto in module scope
+- LSPosed with API 101 and Android Auto in module scope
 - JDK 17, Android SDK platform 36/build-tools 35.0.0 and Gradle 8.9 for local source builds
 
 A normal source build does **not** require any proprietary Android Auto APKM fixture. Build and
@@ -39,7 +39,7 @@ analytics, advertising, tracking, or OpenAI runtime integration, and the app its
 scan results, experiment values, Android Auto metadata, LSPosed information, or device data to the
 developer or to OpenAI.
 
-OpenAI Codex was used as a programming and code-analysis assistant during development. Codex is not
+OpenAI Codex was used as a programming and code-analysis assistant during development. Codex is **not**
 part of the distributed application. AI-assisted changes were reviewed before inclusion, while
 physical-device, LSPosed/Android Auto, and vehicle head-unit testing were performed manually by the
 developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
@@ -60,25 +60,9 @@ For a practical overview of the breadth of Android Auto behavior that can be cus
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Changelog and release history](CHANGELOG.md)
 
-Use only while parked and disconnected from active projection. If Android Auto becomes unstable,
-restore all overrides in the Manager or disable the module in LSPosed. This project is not
-affiliated with Google, Android Auto or LSPosed.
-
-## Roadmap
-
-### Reliability and compatibility
-
-- Physical lifecycle, live-listener and rapid snapshot-swap validation.
-- Compatibility reports across Android Auto, ROM, device and LSPosed versions.
-- Explicit recovery documentation and release-key/fixture operations.
-
-### Later
-
-- Canonical logical identities for imported splits.
-- Structurally proven safety decisions.
-- Numeric enum domains and schema-backed Protobuf editing.
-- Object/callback/IPC provenance and negotiated snapshots.
-- Reverse observability or crash attribution only when a reliable channel exists.
+For safety reasons, modify only while parked and disconnected from active projection. 
+If Android Auto becomes unstable, restore all overrides in the Manager or disable the module in LSPosed. 
+This project is not affiliated with Google, Android Auto or LSPosed.
 
 ## License
 
