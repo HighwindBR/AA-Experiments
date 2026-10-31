@@ -449,24 +449,41 @@ public final class AndroidAutoModule extends XposedModule {
             Method teardown = resolveLabMethod(loader, lab.role("projection.teardown"));
             Method media = resolveLabMethod(loader, lab.role("media.selectedApp"));
             Method factory = resolveLabMethod(loader, lab.role("launch.controllerFactory"));
-            Method auxiliary = resolveLabMethod(loader, lab.role("launch.auxiliary"));
-            Method direct = resolveLabMethod(loader, lab.role("launch.startCarActivity"));
+            Method auxiliary = lab.role("launch.auxiliary") == null ? null :
+                    resolveLabMethod(loader, lab.role("launch.auxiliary"));
+            Method direct = lab.role("launch.startCarActivity") == null ? null :
+                    resolveLabMethod(loader, lab.role("launch.startCarActivity"));
+            MediaStartupLabProfile.Target navigationRole =
+                    direct == null ? lab.role("launch.navigationObserver") :
+                    lab.role("launch.startCarActivity");
+            Method navigation = navigationRole == null ? null :
+                    resolveLabMethod(loader, navigationRole);
             MediaStartupLabProfile.Target ctorTarget = lab.role("launch.optionsNoArgConstructor");
-            Class<?> optionsType = Class.forName(ctorTarget.javaOwner(), false, loader);
-            Constructor<?> options = optionsType.getDeclaredConstructor();
+            Class<?> optionsType = ctorTarget == null ? null :
+                    Class.forName(ctorTarget.javaOwner(), false, loader);
+            Constructor<?> options = optionsType == null ? null :
+                    optionsType.getDeclaredConstructor();
+            Class<?> controller = factory.getDeclaringClass();
             if (!Modifier.isStatic(factory.getModifiers()) ||
-                    !factory.getReturnType().equals(direct.getDeclaringClass()) ||
-                    Modifier.isStatic(direct.getModifiers()) ||
-                    Modifier.isStatic(auxiliary.getModifiers()) ||
-                    !direct.getParameterTypes()[1].equals(optionsType) ||
-                    options.getParameterCount() != 0 ||
-                    factory.getDeclaringClass() != direct.getDeclaringClass() ||
-                    auxiliary.getDeclaringClass() != direct.getDeclaringClass()) {
-                throw new IllegalArgumentException("PF6 cross-role reflection mismatch");
+                    !factory.getReturnType().equals(controller) ||
+                    (auxiliary == null && direct == null) ||
+                    (auxiliary != null && (Modifier.isStatic(auxiliary.getModifiers()) ||
+                        auxiliary.getDeclaringClass() != controller)) ||
+                    (direct != null && (Modifier.isStatic(direct.getModifiers()) ||
+                        direct.getDeclaringClass() != controller || optionsType == null ||
+                        !direct.getParameterTypes()[1].equals(optionsType))) ||
+                    (navigation != null && (Modifier.isStatic(navigation.getModifiers()) ||
+                        navigation.getDeclaringClass() != controller || optionsType == null ||
+                        !navigation.getParameterTypes()[1].equals(optionsType))) ||
+                    (options != null && options.getParameterCount() != 0)) {
+                throw new IllegalArgumentException("Media route reflection mismatch");
             }
-            // Keep private members accessible without changing runtime hooks.
-            factory.setAccessible(true); auxiliary.setAccessible(true);
-            direct.setAccessible(true); options.setAccessible(true);
+            // Never reflect an absent route: one verified opening method is sufficient.
+            factory.setAccessible(true);
+            if (auxiliary != null) auxiliary.setAccessible(true);
+            if (direct != null) direct.setAccessible(true);
+            if (navigation != null) navigation.setAccessible(true);
+            if (options != null) options.setAccessible(true);
             MediaStartupLabGate gate = new MediaStartupLabGate(
                     overrideSnapshot.get(MediaStartupLabGate.REQUEST_KEY));
             Handler handler = new Handler(Looper.getMainLooper());
@@ -539,7 +556,9 @@ public final class AndroidAutoModule extends XposedModule {
                                     if (session >= 0) scheduleDynamicSelectedMediaAuto(session);
                                     return original;
                                 });
-                        hook(direct).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                        if (navigation == null)
+                            throw new IllegalArgumentException("Navigation observer not proven");
+                        hook(navigation).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                                 .intercept(chain -> {
                                     Object original = chain.proceed();
                                     automatic.onNavigation();
@@ -558,7 +577,9 @@ public final class AndroidAutoModule extends XposedModule {
                             "reason", "activity_role_or_mode_missing");
                 }
                 event(Log.INFO, "MEDIA_PF6_LAB_ARMED", null,
-                        "hooks", String.valueOf(installed), "routes", "A_B",
+                        "hooks", String.valueOf(installed), "routes",
+                        auxiliary != null && direct != null ? "A_B" :
+                            auxiliary != null ? "A" : "B",
                         "mode", mediaLabAutoAvailable ? "MANUAL_PLUS_OPT_IN_AUTO" : "MANUAL_ONLY");
             }
         } catch (Throwable failure) {
@@ -596,8 +617,10 @@ public final class AndroidAutoModule extends XposedModule {
         try {
             SharedPreferences prefs = remotePreferences;
             if (prefs == null) return;
-            String preferred = prefs.getString(MediaStartupLabGate.ROUTE_KEY, "A");
-            if (!"A".equals(preferred) && !"B".equals(preferred)) {
+            String preferred = MediaStartupRoutePolicy.select(
+                    prefs.getString(MediaStartupLabGate.ROUTE_KEY, "A"),
+                    mediaLabHelper != null, mediaLabDirect != null);
+            if (preferred == null) {
                 event(Log.WARN, "MEDIA_PF6_REQUEST_REJECTED", null,
                         "reason", "invalid_route_preference");
                 return;
@@ -652,8 +675,12 @@ public final class AndroidAutoModule extends XposedModule {
         Intent intent = new Intent(MediaStartupLaunchGate.MEDIA_ACTION);
         intent.setComponent(component);
         if (route == MediaStartupLabGate.Route.A) {
+            if (mediaLabHelper == null)
+                throw new IllegalStateException("Auxiliary route is not verified");
             mediaLabHelper.invoke(controller, intent);
         } else {
+            if (mediaLabDirect == null || mediaLabOptions == null)
+                throw new IllegalStateException("Direct route is not verified");
             Object options = mediaLabOptions.newInstance();
             mediaLabDirect.invoke(controller, intent, options);
         }
@@ -689,8 +716,10 @@ public final class AndroidAutoModule extends XposedModule {
                     "reason", "manual_attempt_or_media_changed");
             return;
         }
-        String preferred = overrideSnapshot.get(MediaStartupLabGate.ROUTE_KEY);
-        if (!"A".equals(preferred) && !"B".equals(preferred)) {
+        String preferred = MediaStartupRoutePolicy.select(
+                overrideSnapshot.get(MediaStartupLabGate.ROUTE_KEY),
+                mediaLabHelper != null, mediaLabDirect != null);
+        if (preferred == null) {
             event(Log.WARN, "MEDIA_PF6_AUTO_SKIPPED", null,
                     "reason", "invalid_preferred_route");
             return;
