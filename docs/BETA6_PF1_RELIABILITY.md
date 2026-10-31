@@ -28,7 +28,11 @@ signing secrets or media-startup semantics change.
 - Keep complete recovery commit and profile republishing in the same locked scope, while retaining restored records if publication fails.
 - Use the same coordinator and explicit publication result for VTC and Media Startup diagnostic trace controls.
 - Add JVM concurrency and failure-injection tests (commit error, publish error, saved-but-not-published, ordered commits).
-- This is **incremental**: remaining Advanced pause/restore, Experimental, reset, import and Media Startup preference paths still need to be migrated or explicitly audited for competing operations. Do not claim global write serialization yet.
+- Advanced pause/resume, individual and bulk restore, legacy LONG handoff, Experimental apply/pause/restore, read-only probe selection, suspended-override removal, normal JSON import and destructive reset now share the same write-and-publish gate. Bulk operations retain their restored/imported item counts.
+- Media Startup arm/disarm now holds the gate from remote/local preference commits through profile publication. Route A/B and the PF4/PF6 automatic opt-ins use the same gate to avoid stale preference interleaving without adding extra profile publications.
+- Manual PF3/PF6 *requests* are one-off commands delivered directly to the active runtime, not configuration mutations; they remain outside profile publication. Their session and replay guards remain unchanged.
+- This still does **not** make two distinct SharedPreferences stores an atomic transaction. Failure-safe remote rollback is attempted when per-build media consent fails to persist locally, and rollback failure is surfaced explicitly.
+- JVM tests cover ordered concurrent writes, commit rejection, publish failure, saved-but-unpublished outcomes, and retained item counts. Android/LSPosed integration still requires signed-device smoke.
 
 ## Verification
 
@@ -41,9 +45,8 @@ sign-off.
 
 ## Later PF1 tasks (not yet implemented)
 
-1. Complete coordination of the remaining preference paths: Advanced pause/resume/restore,
-   Experimental, reset, import, and Media Startup A/B opt-in. Cover concurrent calls
-   and failure messages with regression tests.
+1. Audit remaining local display-only preferences and session command paths, and run targeted
+   physical tests for Media Startup A/B opt-in and disarm on a parked head unit.
 2. Keep the installed catalog pinned independently of read-only imported
    archives and add instrumentation regressions for pruning and restoration.
 3. Exercise complete recovery against simulated failures and reconnects,
