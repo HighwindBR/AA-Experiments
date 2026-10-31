@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Extension
@@ -78,7 +77,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -2176,10 +2174,9 @@ private class TouchMenuPositionProvider(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Text("Available routes: " + listOfNotNull(
-                        if (state.mediaLabRouteAAvailable) "A · Auxiliary" else null,
-                        if (state.mediaLabRouteBAvailable) "B · Direct" else null
-                    ).joinToString("  ·  ") + "   |   Selected: ${state.mediaLabRoute}",
+                    Text(MediaStartupPresentation.routeDetails(
+                            state.mediaLabRouteAAvailable, state.mediaLabRouteBAvailable,
+                            state.mediaLabRoute),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (state.mediaLabAutoEnabled) {
