@@ -2,6 +2,7 @@ package io.github.highwindbr.aaxp
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
@@ -25,10 +26,18 @@ class AnalysisKeepAliveService : Service() {
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Catalog analysis", NotificationManager.IMPORTANCE_LOW)
         )
+        val returnToApp = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         startForeground(NOTIFICATION_ID, NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.app_icon)
             .setContentTitle("AA Experiments")
-            .setContentText("Analyzing Android Auto · CPU awake while scanning")
+            .setContentText("Android Auto analysis is running")
+            .setContentIntent(returnToApp)
             .setOngoing(true)
             .setSilent(true)
             .build())
