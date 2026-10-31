@@ -1,7 +1,10 @@
 # AA Experiments
 
-AA Experiments is an independent Android manager and LSPosed module for researching
-Android Auto configuration experiments. It scans installed or imported APK/APKM/APKS packages,
+**AA Experiments** is an independent Android manager and LSPosed module that lets you **edit Android Auto’s 
+experimental flags** to customize its behavior and **enable features** that are still being tested or have 
+not yet been publicly released. 
+
+It scans installed or imported APK/APKM/APKS packages,
 proves compatible scalar getters, and publishes only active overrides for the exact installed
 base-and-split build fingerprint. It never patches, resigns, installs or writes into Android Auto.
 
@@ -9,7 +12,7 @@ Nothing is overridden by default. Ambiguous, sensitive, unsupported and schema-u
 remain searchable but read-only. An editable experiment is technically hookable; it is not a
 promise that every value is safe or that a server/head unit will enable the feature.
 
-AA Experiments was designed to be resilient to Android Auto updates. Originally developed against
+**AA Experiments** was designed to be resilient to Android Auto updates. Originally developed against
 Android Auto 17.8, testing of the completed module later showed that **its discovery mechanism can
 identify flags in Android Auto versions dating back to 2.0 (2016)**. This is encouraging evidence
 that the module may keep discovering flags in future releases, **potentially remaining useful for
@@ -34,7 +37,7 @@ gradle --no-daemon --max-workers=1 :app:testDebugUnitTest :app:assembleDebug
 
 ## Privacy and development transparency
 
-AA Experiments performs its scans and analysis locally. It has no developer-operated backend,
+**AA Experiments** performs its scans and analysis locally. It has no developer-operated backend,
 analytics, advertising, tracking, or OpenAI runtime integration, and the app itself does not send
 scan results, experiment values, Android Auto metadata, LSPosed information, or device data to the
 developer or to OpenAI.
@@ -68,8 +71,8 @@ This project is not affiliated with Google, Android Auto or LSPosed.
 
 Copyright (C) 2026 HighwindBR and contributors.
 
-AA Experiments is free software licensed under the **GNU General Public License, version 3 or (at
-your option) any later version** (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
+**AA Experiments** is free software licensed under the GNU General Public License, version 3 or (at
+your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
 
 Third-party components remain under their respective licenses; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
