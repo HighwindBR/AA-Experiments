@@ -44,6 +44,13 @@ part of the distributed application. AI-assisted changes were reviewed before in
 physical-device, LSPosed/Android Auto, and vehicle head-unit testing were performed manually by the
 developer. See [Privacy](PRIVACY.md) for the precise scope of these statements.
 
+## Beta6 — reliability hardening and planned stable promotion
+
+Beta6 is the implementation baseline for the planned stable promotion.
+The maintenance pass is intentionally limited to cleanup and consistency;
+it does not add new app behavior. Stable promotion remains subject to
+release gates and maintainer approval. See [Release process](docs/RELEASE.md).
+
 ## Beta5 — automatic media startup
 
 In **Settings → Media → Media startup**, AA Experiments can optionally open
