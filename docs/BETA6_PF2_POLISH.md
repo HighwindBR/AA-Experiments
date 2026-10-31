@@ -68,3 +68,35 @@ publish this work while UI, build and device gates are pending.
   build with probes armed, single-tap automatic setup, disconnected LSPosed,
   failed profile publication, unchanged build recheck, and Android Auto update.
 - Check Media Startup on a parked head unit before considering beta6 RC.
+
+## Second PF2 slice: Status, backups, navigation and accessibility
+
+- The Status runtime banner no longer says "no active overrides" without
+  qualification when a separate Media Startup runtime feature is configured.
+  It reports the media profile independently from flag override counts.
+- A single pure presentation helper provides installed-route summaries
+  (A+B, A-only, B-only), selected route and published/unpublished states.
+  The Settings summary no longer claims both A/B routes are available for
+  single-route profiles.
+- The complete recovery JSON remains **override-only**: normal, Advanced,
+  Experimental and stored baselines. Clarify explicitly that it does not
+  export Media Startup consent/routes, the catalog cache, theme, LSPosed setup,
+  or Android Auto preferences. No backup schema changes were made.
+- Tabs reset the previously open Settings subpage on tab switches; tapping
+  the selected Settings tab preserves its current screen. Nested Back remains
+  unchanged. Pure navigation tests cover both directions.
+- Expanding Backup legacy options and Danger zone now provides an explicit
+  accessible Expanded/Collapsed state.
+- JVM regression tests cover single-route status, unpublished media profiles,
+  legacy-only state and Settings tab reentry.
+
+## Remaining PF2 checks before RC
+
+- Confirm UI behavior with the signed beta6 debug/release candidate on
+  phone: status with zero flag overrides + armed media, A-only/B-only
+  Settings summary, theme/light-dark, large text, screen rotation and
+  TalkBack on expandable Backup/Danger cards.
+- Run instrumented SQLite tests and beta6 private 256 MiB fixtures; public
+  CI only compiles instrumented tests.
+- Validate Media Startup consent and selected player on a **parked** head unit.
+  A successful invocation alone is not evidence the player opened visually.
