@@ -1,6 +1,6 @@
 # Development
 
-This document covers cloning or forking AA Experiments, building a debug APK, running the public
+This document covers cloning or forking **AA Experiments**, building a debug APK, running the public
 test suite, signing local builds and understanding the optional private Android Auto fixtures.
 
 ## Prerequisites
@@ -65,7 +65,7 @@ For an isolated emulator with ADB and the build prerequisites available:
 bash scripts/run-beta6-sqlite-instrumentation.sh
 ```
 
-Use only a disposable emulator with no AA Experiments user data. The tests
+Use only a disposable emulator with no **AA Experiments** user data. The tests
 delete `catalog-v1.db` and clear retention preferences in their target
 application. The script installs disposable-key debug APKs and should not be
 used on the configured phone or a release-key installation.
@@ -123,7 +123,7 @@ You do not need the project's frozen APKMs to:
 - clone or fork the repository;
 - run `:app:assembleDebug`;
 - install your own debug build;
-- use AA Experiments against Android Auto installed on a device; or
+- use **AA Experiments** against Android Auto installed on a device; or
 - import an APK/APKM/APKS archive that you provide yourself.
 
 The frozen Android Auto archives under `fixtures/apks/` are regression fixtures used to reproduce
@@ -158,7 +158,7 @@ ref restrictions and non-publishing manual dispatch are documented in
 
 ### Why the 256 MiB memory gates matter
 
-AA Experiments analyzes large Android Auto DEX sets and may build catalogs containing tens of
+**AA Experiments** analyzes large Android Auto DEX sets and may build catalogs containing tens of
 thousands of identifiers, occurrences, getter candidates, consumer relationships and resolver
 metadata. These operations can create significant temporary memory pressure even when the final
 catalog itself is much smaller.
