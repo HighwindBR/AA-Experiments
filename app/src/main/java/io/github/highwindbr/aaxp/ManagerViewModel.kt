@@ -1508,13 +1508,27 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
         }.onFailure { mutable.value = mutable.value.copy(saveState = SaveState.FAILED, message = "Import failed: ${it.message}") }
     }
 
+    /** Prevent queued edits from writing into a catalog that changed before the lock. */
+    private fun requireCurrentInstalledBuild(expected: String?) {
+        require(expected != null && mutable.value.aa.runtimeTarget &&
+            mutable.value.aa.buildFingerprintSha256 == expected) {
+            "Installed Android Auto build changed before saving; reopen the current catalog."
+        }
+    }
+
     private suspend fun <T> writePreferencesAndPublishWithResult(write: suspend () -> T):
-        Result<Pair<T, ProfileMutationCoordinator.Outcome>> = try {
-        Result.success(profileMutationCoordinator.executeWithResult(write) { refreshOverridesAndProfileLocked() })
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (failure: Exception) {
-        Result.failure(failure)
+        Result<Pair<T, ProfileMutationCoordinator.Outcome>> {
+        val expectedBuild = mutable.value.aa.buildFingerprintSha256
+        return try {
+            Result.success(profileMutationCoordinator.executeWithResult({
+                requireCurrentInstalledBuild(expectedBuild)
+                write()
+            }) { refreshOverridesAndProfileLocked() })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
 
     /**
@@ -1523,12 +1537,18 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
      * as applied until the verified slot pointer is committed.
      */
     private suspend fun writePreferencesAndPublish(write: suspend () -> Unit):
-        Result<ProfileMutationCoordinator.Outcome> = try {
-        Result.success(profileMutationCoordinator.execute(write) { refreshOverridesAndProfileLocked() })
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (failure: Exception) {
-        Result.failure(failure)
+        Result<ProfileMutationCoordinator.Outcome> {
+        val expectedBuild = mutable.value.aa.buildFingerprintSha256
+        return try {
+            Result.success(profileMutationCoordinator.execute({
+                requireCurrentInstalledBuild(expectedBuild)
+                write()
+            }) { refreshOverridesAndProfileLocked() })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
     }
 
     private suspend fun refreshOverridesAndProfile(): Boolean =
