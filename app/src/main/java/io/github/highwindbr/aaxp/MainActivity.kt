@@ -2305,7 +2305,13 @@ private class TouchMenuPositionProvider(
     val clipboard = LocalClipboardManager.current
     var expanded by remember { mutableStateOf<String?>(null) }
     var restoreAdvancedConfirm by remember { mutableStateOf(false) }
-    val activeAdvanced = state.advancedRecords.count {\n        it.active && it.buildFingerprint == state.aa.buildFingerprintSha256\n    }\n    val oldExperimental = if (state.experimentalSnapshot?.active == true &&\n        state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0\n    val runtime = runtimeReadiness(state.aa, state.framework,\n        state.dynamicOverrides.size + activeAdvanced + oldExperimental, state.profilePublished)
+    val activeAdvanced = state.advancedRecords.count {
+        it.active && it.buildFingerprint == state.aa.buildFingerprintSha256
+    }
+    val oldExperimental = if (state.experimentalSnapshot?.active == true &&
+        state.experimentalSnapshot.buildFingerprint == state.aa.buildFingerprintSha256) 1 else 0
+    val runtime = runtimeReadiness(state.aa, state.framework,
+        state.dynamicOverrides.size + activeAdvanced + oldExperimental, state.profilePublished)
     fun copy(value: String) = clipboard.setText(AnnotatedString(value))
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { SubpageHeader("Diagnostics", "Installation, resolver and runtime", onBack) }
