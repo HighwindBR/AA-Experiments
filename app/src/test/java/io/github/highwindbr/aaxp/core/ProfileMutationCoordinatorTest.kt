@@ -36,6 +36,25 @@ class ProfileMutationCoordinatorTest {
         assertEquals(listOf("first saved", "first published", "second saved", "second published"), events)
     }
 
+    @Test fun countedRestoreResultSurvivesPublication() = runBlocking {
+        var commitCount = 0
+        val gate = ProfileMutationCoordinator(ProfileRefreshGate())
+        val (restored, outcome) = gate.executeWithResult(
+            write = { commitCount++; 4 },
+            publish = { true }
+        )
+        assertEquals(4, restored)
+        assertEquals(1, commitCount)
+        assertEquals(ProfileMutationCoordinator.Outcome.PUBLISHED, outcome)
+    }
+
+    @Test fun countedRestoreResultSurvivesPublicationFailure() = runBlocking {
+        val (restored, outcome) = ProfileMutationCoordinator(ProfileRefreshGate())
+            .executeWithResult(write = { 7 }, publish = { false })
+        assertEquals(7, restored)
+        assertEquals(ProfileMutationCoordinator.Outcome.SAVED_NOT_PUBLISHED, outcome)
+    }
+
     @Test fun savedValueWithFailedPublicationIsNotReportedAsPublished() = runBlocking {
         var persisted = false
         val outcome = ProfileMutationCoordinator(ProfileRefreshGate()).execute(
