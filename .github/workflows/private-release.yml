@@ -2,6 +2,7 @@ name: Private release gates
 
 on:
   push:
+    branches: ['main']
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -28,6 +29,49 @@ env:
   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=1
 
 jobs:
+  bootstrap-stable-1-0-0:
+    # One-shot tagging path. GITHUB_TOKEN tag pushes do NOT start push workflows;
+    # dispatch the fully gated signing workflow explicitly against the new tag.
+    if: >-
+      github.repository == 'HighwindBR/AA-Experiments' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.head_commit.message == 'ci(release): bootstrap stable 1.0.0 tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release identity and reject an existing tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Eq 'versionCode +180' app/build.gradle
+          grep -Eq "versionName +'1.0.0'" app/build.gradle
+          test -s docs/RELEASE_NOTES_1.0.0.md
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.0.0" >/dev/null 2>&1; then
+            echo "::error::Stable tag already exists. Refusing to replace or republish it."
+            exit 1
+          fi
+      - name: Tag stable and dispatch official gated publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a v1.0.0 -m 'AA Experiments 1.0.0 stable'
+          git push origin refs/tags/v1.0.0
+          gh workflow run private-release.yml --repo "$GITHUB_REPOSITORY" --ref v1.0.0 \
+            --raw-field run_private_gates=true \
+            --raw-field build_signed_candidate=false \
+            --raw-field deliver_private_candidate=false
+
   release-unit-tests:
     runs-on: ubuntu-latest
     steps:
@@ -69,7 +113,8 @@ jobs:
         github.ref == 'refs/tags/v1.0.0-beta5' ||
         github.ref == 'refs/tags/v1.0.0')) ||
       (github.event_name == 'workflow_dispatch' && inputs.run_private_gates &&
-       (github.ref == 'refs/heads/main' ||
+       (github.ref == 'refs/tags/v1.0.0' ||
+        github.ref == 'refs/heads/main' ||
         github.ref == 'refs/heads/release/1.0.0-beta3' ||
         github.ref == 'refs/heads/feature/beta4-getter-probe-preflight' ||
         github.ref == 'refs/heads/release/1.0.0-beta4' ||
@@ -281,13 +326,19 @@ jobs:
           python3 scripts/private_candidate_delivery.py
 
   signed-release:
-    # Publishing is tag-triggered ONLY, never by a dispatch on a feature/RC branch.
+    # Official tag push or explicit guarded dispatch on the stable tag only.
+    # Neither dispatching a feature branch nor signing a candidate can publish.
     if: >-
-      github.event_name == 'push' &&
-      (github.ref == 'refs/tags/v1.0.0-beta3' ||
-       github.ref == 'refs/tags/v1.0.0-beta4' ||
-       github.ref == 'refs/tags/v1.0.0-beta5' ||
-       github.ref == 'refs/tags/v1.0.0')
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/tags/v1.0.0-beta3' ||
+        github.ref == 'refs/tags/v1.0.0-beta4' ||
+        github.ref == 'refs/tags/v1.0.0-beta5' ||
+        github.ref == 'refs/tags/v1.0.0')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/tags/v1.0.0' &&
+       inputs.run_private_gates &&
+       !inputs.build_signed_candidate &&
+       !inputs.deliver_private_candidate)
     needs: [release-unit-tests, release-lint, private-release-gates]
     runs-on: ubuntu-latest
     permissions:
