@@ -13,7 +13,8 @@ object ArchiveInputResolver {
     const val MAX_ARCHIVE_BYTES = 256L * 1024 * 1024
     const val MAX_EXTRACTED_APK_BYTES = 256L * 1024 * 1024
     const val MAX_TOTAL_EXTRACTED_BYTES = 512L * 1024 * 1024
-    const val MAX_APK_ENTRIES = 32
+    // Upper bound for modern language/config split sets; byte budgets remain independent.
+    const val MAX_APK_ENTRIES = 128
 
     data class ResolvedArchive(val base: File, val splits: List<File>)
 
@@ -58,8 +59,11 @@ object ArchiveInputResolver {
                 val entries = zip.entries().asSequence()
                     .filter { !it.isDirectory && it.name.endsWith(".apk", ignoreCase = true) }
                     .toList()
-                require(entries.isNotEmpty() && entries.size <= MAX_APK_ENTRIES) {
-                    "APK set has no APKs or exceeds the split count limit"
+                require(entries.isNotEmpty()) {
+                    "APK set contains no APK files"
+                }
+                require(entries.size <= MAX_APK_ENTRIES) {
+                    "APK set contains ${entries.size} APK files; maximum is $MAX_APK_ENTRIES"
                 }
                 val baseEntry = entries.firstOrNull { it.name == "base.apk" || it.name.endsWith("/base.apk") }
                     ?: error("Archive does not contain base.apk")

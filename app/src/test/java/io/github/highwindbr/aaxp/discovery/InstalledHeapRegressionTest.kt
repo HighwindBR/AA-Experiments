@@ -6,9 +6,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.zip.ZipFile
 
 /** Run with -Daa.test.heap=256m to mirror the manager process heap on the device. */
 class InstalledHeapRegressionTest {
+    @Test fun frozenStableApkmSplitCountFitsConfiguredBudget() {
+        val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
+        val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")
+        val count = ZipFile(archive).use { zip ->
+            zip.entries().asSequence()
+                .count { !it.isDirectory && it.name.endsWith(".apk", ignoreCase = true) }
+        }
+        assertTrue("Frozen 17.8 APKM unexpectedly has only $count APK entries", count > 32)
+        assertTrue(
+            "Frozen 17.8 APKM contains $count APK entries; configured maximum is ${ArchiveInputResolver.MAX_APK_ENTRIES}",
+            count <= ArchiveInputResolver.MAX_APK_ENTRIES)
+    }
+
     @Test fun stableInstalledCatalogFitsSingleProcessHeap() {
         val root = fixtureRootOrSkip("aa-17.8.663814.apkm")
         val archive = File(root, "fixtures/apks/aa-17.8.663814.apkm")

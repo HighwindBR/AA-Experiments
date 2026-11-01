@@ -2,6 +2,8 @@ name: Private release gates
 
 on:
   push:
+    # Temporary trusted-branch verification before the 1.0.0 stable promotion.
+    branches: ['maintenance/group-a-stable']
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -64,7 +66,8 @@ jobs:
   private-release-gates:
     if: >-
       (github.event_name == 'push' &&
-       (github.ref == 'refs/tags/v1.0.0-beta3' ||
+       (github.ref == 'refs/heads/maintenance/group-a-stable' ||
+        github.ref == 'refs/tags/v1.0.0-beta3' ||
         github.ref == 'refs/tags/v1.0.0-beta4' ||
         github.ref == 'refs/tags/v1.0.0-beta5' ||
         github.ref == 'refs/tags/v1.0.0')) ||
@@ -90,6 +93,18 @@ jobs:
           cp -a "$PRIVATE_FIXTURES_DIR"/. fixtures/apks/
       - name: Require exact private regression fixtures
         run: sha256sum -c fixtures/SHA256SUMS
+      - name: Report verified APKM entry counts
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          for path in sorted(Path("fixtures/apks").glob("*.apkm")):
+              with ZipFile(path) as archive:
+                  count = sum(not info.is_dir() and info.filename.lower().endswith(".apk")
+                              for info in archive.infolist())
+              print(f"{path.name}: {count} APK entries")
+          PY
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v4

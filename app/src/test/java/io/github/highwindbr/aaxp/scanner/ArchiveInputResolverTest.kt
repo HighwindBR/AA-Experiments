@@ -70,6 +70,36 @@ class ArchiveInputResolverTest {
         assertArrayEquals(byteArrayOf(2), resolved.splits.single().readBytes())
     }
 
+    @Test fun modernApkmWithMoreThan32SplitsIsSupported() {
+        val entries = (1..40).map {
+            "split-$it.apk" to byteArrayOf(it.toByte())
+        } + ("base.apk" to byteArrayOf(99))
+        val input = archive(*entries.toTypedArray())
+        val resolved = ArchiveInputResolver.resolve(input, File(directory, "unpacked"))
+        assertEquals(40, resolved.splits.size)
+        assertArrayEquals(byteArrayOf(99), resolved.base.readBytes())
+        assertArrayEquals(byteArrayOf(40), resolved.splits.last().readBytes())
+    }
+
+    @Test fun apkmAtEntryLimitIsAccepted() {
+        val entries = (1 until ArchiveInputResolver.MAX_APK_ENTRIES).map {
+            "split-$it.apk" to byteArrayOf(1)
+        } + ("base.apk" to byteArrayOf(2))
+        val resolved = ArchiveInputResolver.resolve(
+            archive(*entries.toTypedArray()), File(directory, "unpacked"))
+        assertEquals(ArchiveInputResolver.MAX_APK_ENTRIES - 1, resolved.splits.size)
+    }
+
+    @Test fun apkmWithoutApkEntriesHasSpecificError() {
+        val input = archive("metadata.txt" to byteArrayOf(1))
+        val output = File(directory, "unpacked")
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            ArchiveInputResolver.resolve(input, output)
+        }
+        assertEquals("APK set contains no APK files", error.message)
+        assertTrue(output.listFiles().isNullOrEmpty())
+    }
+
     @Test fun missingBaseCannotCreateAProfile() {
         val input = archive("config.arm64.apk" to byteArrayOf(2))
         val output = File(directory, "unpacked")
@@ -85,9 +115,12 @@ class ArchiveInputResolverTest {
         } + ("base.apk" to byteArrayOf(2))
         val input = archive(*entries.toTypedArray())
         val output = File(directory, "unpacked")
-        assertThrows(IllegalArgumentException::class.java) {
+        val error = assertThrows(IllegalArgumentException::class.java) {
             ArchiveInputResolver.resolve(input, output)
         }
+        assertEquals(
+            "APK set contains ${ArchiveInputResolver.MAX_APK_ENTRIES + 1} APK files; maximum is ${ArchiveInputResolver.MAX_APK_ENTRIES}",
+            error.message)
         assertTrue(output.listFiles().isNullOrEmpty())
     }
 }
