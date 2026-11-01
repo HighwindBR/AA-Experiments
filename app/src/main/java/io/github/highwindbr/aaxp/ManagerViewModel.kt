@@ -611,7 +611,8 @@ class ManagerViewModel(application: Application) : AndroidViewModel(application)
                 automaticEnabled -> "Compatibility verified. Automatic media opening is ON for this build. Restart Android Auto, then reconnect while parked."
                 consentRollbackFailed -> "Media-opening consent could not be enabled or safely rolled back. Check LSPosed preferences before reconnecting."
                 requestAutomatic -> "Routes are ready, but automatic opening could not be enabled. Check LSPosed or use advanced options."
-                else -> "Opening routes verified, but no unique automatic trigger was found. Manual testing is available."
+                mutable.value.mediaLabAutoCapable -> "Opening routes and automatic trigger verified. Confirm automatic opening to enable it for this build."
+                else -> "Opening routes verified, but automatic opening requirements could not be verified. Manual testing is available."
             })
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (e: Exception) {

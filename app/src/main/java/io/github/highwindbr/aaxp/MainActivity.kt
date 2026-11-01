@@ -2073,7 +2073,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf6AutoConfirm = false },
             title = { Text("Automatically open the selected media app?") },
-            text = { Text("Off by default for each Android Auto build. On the NEXT connection, route ${state.mediaLabRoute} will try to open the app already selected in Android Auto (for example, Spotify or YouTube Music), once after the first projected activity settles. Navigation or a changed session cancels the attempt. This does not start audio or bypass car restrictions. Only use while parked.") },
+            text = { Text("Off by default for each Android Auto build. On the NEXT connection, route ${state.mediaLabRoute} will try to open the app already selected in Android Auto (for example, Spotify or YouTube Music), once after the first projected activity settles. Navigation or a changed session cancels the attempt. No playback command is sent; audio behavior depends on Android Auto and the player. Car restrictions still apply. Only use while parked.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf6AutoConfirm = false
@@ -2105,7 +2105,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf4Confirmation = false },
             title = { Text("Enable legacy Spotify auto-open?") },
-            text = { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. It does not change audio playback or bypass Android Auto restrictions. You can turn it off here.") },
+            text = { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. No playback command is sent; audio behavior depends on Android Auto and Spotify. Android Auto restrictions still apply. You can turn it off here.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf4Confirmation = false
@@ -2121,7 +2121,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf3Confirmation = false },
             title = { Text("Open Spotify once for testing?") },
-            text = { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or start playback. Inspect the logs to confirm the result.") },
+            text = { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or send a playback command. Audio behavior depends on Android Auto and Spotify. Inspect the logs to confirm the result.") },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf3Confirmation = false
@@ -2157,7 +2157,7 @@ private class TouchMenuPositionProvider(
                 },
                 Icons.Default.PlayCircle, mediaExpanded,
                 { mediaExpanded = !mediaExpanded }) {
-                Text("Opens the media app already selected in Android Auto. It does not start playback.",
+                Text("Opens the media app already selected in Android Auto without sending a playback command. Audio may start or resume according to Android Auto and the player.",
                     style = MaterialTheme.typography.bodyMedium)
                 if (!state.mediaLabArmed) {
                     Text("Requires root, LSPosed and a compatible Android Auto build.",
@@ -2193,7 +2193,7 @@ private class TouchMenuPositionProvider(
                             Text("Enable automatic opening")
                         }
                     } else {
-                        Text("The opening routes were found, but the automatic trigger could not be verified. Manual tests remain available.",
+                        Text("The opening routes were found, but automatic opening requirements could not be verified. Manual tests remain available.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
