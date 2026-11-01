@@ -16,7 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -65,10 +64,8 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -97,11 +94,13 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import io.github.highwindbr.aaxp.core.*
 import io.github.highwindbr.aaxp.discovery.*
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -115,19 +114,6 @@ class MainActivity : ComponentActivity() {
 private enum class ThemeMode { SYSTEM, LIGHT, DARK }
 private enum class AccentPalette { LAB_GREEN, MATERIAL_YOU }
 private enum class ExperimentFilter { ALL, MODIFIED, SUSPENDED, ADDED, REMOVED, CHANGED }
-private val AaGreen = Color(0xFF006D3F)
-private val AaGreenDark = Color(0xFF72D99A)
-
-private val AaLightScheme = lightColorScheme(
-    primary = AaGreen, onPrimary = Color.White, primaryContainer = Color(0xFFA0F4BA), onPrimaryContainer = Color(0xFF00210F),
-    secondary = Color(0xFF4E6354), tertiary = Color(0xFF3A6470), background = Color(0xFFF7FBF5),
-    surface = Color(0xFFF7FBF5), surfaceVariant = Color(0xFFDDE5DC), error = Color(0xFFBA1A1A)
-)
-private val AaDarkScheme = darkColorScheme(
-    primary = AaGreenDark, onPrimary = Color(0xFF00391D), primaryContainer = Color(0xFF00522D), onPrimaryContainer = Color(0xFF8DD8A8),
-    secondary = Color(0xFFB5CCBA), tertiary = Color(0xFFA1CEDA), background = Color(0xFF101510),
-    surface = Color(0xFF101510), surfaceVariant = Color(0xFF414941), error = Color(0xFFFFB4AB)
-)
 @Composable private fun ManagerRoot(model: ManagerViewModel) {
     val context = LocalContext.current; val prefs = remember { context.getSharedPreferences("manager_ui", 0) }
     var theme by remember { mutableStateOf(runCatching { ThemeMode.valueOf(prefs.getString("theme_mode", prefs.getString("theme", "SYSTEM"))!!) }.getOrDefault(ThemeMode.SYSTEM)) }
@@ -136,7 +122,7 @@ private val AaDarkScheme = darkColorScheme(
     val dark = theme == ThemeMode.DARK || (theme == ThemeMode.SYSTEM && isSystemInDarkTheme())
     val colors = if (accent == AccentPalette.MATERIAL_YOU && Build.VERSION.SDK_INT >= 31) {
         if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    } else if (dark) AaDarkScheme else AaLightScheme
+    } else if (dark) GreenLabDark else GreenLabLight
     val view = LocalView.current
     SideEffect {
         val window = (context as? MainActivity)?.window ?: return@SideEffect
@@ -147,7 +133,13 @@ private val AaDarkScheme = darkColorScheme(
             isAppearanceLightNavigationBars = !dark
         }
     }
-    MaterialTheme(colorScheme = colors) { ManagerApp(model, theme, { theme = it; prefs.edit().putString("theme_mode", it.name).apply() }, accent) { accent = it; prefs.edit().putString("accent_palette", it.name).apply() } }
+    MaterialTheme(colorScheme = colors) {
+        Surface(Modifier.fillMaxSize(), color = colors.background, contentColor = colors.onBackground) {
+            ManagerApp(model, theme, { theme = it; prefs.edit().putString("theme_mode", it.name).apply() }, accent) {
+                accent = it; prefs.edit().putString("accent_palette", it.name).apply()
+            }
+        }
+    }
 }
 
 @Composable private fun ManagerApp(model: ManagerViewModel, theme: ThemeMode, onTheme: (ThemeMode) -> Unit, accent: AccentPalette, onAccent: (AccentPalette) -> Unit) {
@@ -244,7 +236,7 @@ private val AaDarkScheme = darkColorScheme(
     if (advancedOptInWarning) AlertDialog(
         onDismissRequest = { advancedOptInWarning = false },
         title = { Text("Enable Advanced Overrides?") },
-        text = { Text("Eligible Advanced flags will appear in Experiments with an ADVANCED label. Only structurally verified getters passing the safety policy are listed. Experimental values can crash Android Auto and each write still needs confirmation. Hiding Advanced later will NOT pause or remove existing overrides.") },
+        text = { ScrollableDialogBody { Text("Eligible Advanced flags will appear in Experiments with an ADVANCED label. Only structurally verified getters passing the safety policy are listed. Experimental values can crash Android Auto and each write still needs confirmation. Hiding Advanced later will NOT pause or remove existing overrides.") } },
         confirmButton = { TextButton({
             advancedOptInWarning = false; setAdvancedAccess(true)
         }) { Text("Enable Advanced") } },
@@ -415,7 +407,7 @@ private val AaDarkScheme = darkColorScheme(
     Dialog(onDismissRequest = {}) {
         Card(Modifier.fillMaxWidth()) {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 22.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("Analyzing Android Auto",
@@ -492,7 +484,7 @@ private val AaDarkScheme = darkColorScheme(
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.PlayCircle, null, tint = if (runtime.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Column { Text("Runtime", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(concise, fontWeight = FontWeight.SemiBold); Text("Details in Settings → Diagnostics", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
 }
 
-@Composable private fun StatusDot(ok: Boolean) = Surface(Modifier.size(12.dp), shape = MaterialTheme.shapes.extraLarge, color = if (ok) AaGreen else MaterialTheme.colorScheme.error) {}
+@Composable private fun StatusDot(ok: Boolean) = Surface(Modifier.size(12.dp), shape = MaterialTheme.shapes.extraLarge, color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) {}
 @Composable private fun CompactStatusRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, value: String, tint: Color = MaterialTheme.colorScheme.primary) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp)); Spacer(Modifier.width(12.dp)); Text(title, Modifier.weight(1f), fontWeight = FontWeight.Medium); Text(value, style = MaterialTheme.typography.bodySmall) }
 }
@@ -622,7 +614,7 @@ private val AaDarkScheme = darkColorScheme(
             items(live, key = { it.key }) { identifier ->
                 CompactExperimentCard(identifier, state.dynamicOverrides[identifier.key],
                     if (!identifier.editable) state.advancedRecords.firstOrNull { it.key == identifier.key } else null,
-                    !identifier.editable) { onOpen(identifier) }
+                    !identifier.editable, state.aa.buildFingerprintSha256) { onOpen(identifier) }
             }
             items(deltas, key = { "delta:" + it.kind.name + ":" + it.key }) { delta ->
                 EditableDeltaCard(delta) { selectedDelta = delta }
@@ -630,7 +622,7 @@ private val AaDarkScheme = darkColorScheme(
         }
     }
     if (filtersOpen) ModalBottomSheet(onDismissRequest = { filtersOpen = false }) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding(),
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Filter experiments", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             if (availableFilters.size > 1) {
@@ -757,7 +749,7 @@ private fun suspendedName(entry: SuspendedOverride): String =
 
 @Composable private fun SuspendedExperimentCard(entry: SuspendedOverride, onOpen: () -> Unit) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.error)
             Spacer(Modifier.width(10.dp))
@@ -838,12 +830,16 @@ private fun suspendedName(entry: SuspendedOverride): String =
             }
         },
         confirmButton = {
-            TextButton({ confirmDiscard = true }) { Text("Discard override", color = MaterialTheme.colorScheme.error) }
-        },
-        dismissButton = { TextButton(onDismiss) { Text("Keep suspended") } })
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onDismiss, Modifier.fillMaxWidth()) { Text("Keep suspended") }
+                TextButton({ confirmDiscard = true }, Modifier.fillMaxWidth()) {
+                    Text("Discard override", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        })
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
         title = { Text("Discard saved override?") },
-        text = { Text("This permanently deletes the stored value. Keeping it suspended is safer if a future Android Auto update restores compatibility.") },
+        text = { ScrollableDialogBody { Text("This permanently deletes the stored value. Keeping it suspended is safer if a future Android Auto update restores compatibility.") } },
         confirmButton = { TextButton({
             confirmDiscard = false
             onDiscard(entry.preferenceKey)
@@ -949,7 +945,7 @@ private fun suspendedName(entry: SuspendedOverride): String =
     }
     if (bulkRestoreWarning) AlertDialog(onDismissRequest = { bulkRestoreWarning = false },
         title = { Text("Restore all current-build baselines?") },
-        text = { Text("Restores the exact previous normal override or its absence, while leaving historical records from other Android Auto builds preserved. Restart Android Auto afterward.") },
+        text = { ScrollableDialogBody { Text("Restores the exact previous normal override or its absence, while leaving historical records from other Android Auto builds preserved. Restart Android Auto afterward.") } },
         confirmButton = { TextButton({
             bulkRestoreWarning = false; model.restoreAllAdvanced()
         }) { Text("Restore") } },
@@ -959,7 +955,7 @@ private fun suspendedName(entry: SuspendedOverride): String =
         pendingCatalogExport = request
         exporter.launch(request.fileName)
     }
-    if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    if (filtersOpen) ModalBottomSheet(onDismissRequest={ filtersOpen=false }) { Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=20.dp).navigationBarsPadding(), verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("Catalog filters", style=MaterialTheme.typography.titleLarge, fontWeight=FontWeight.Bold)
         CompactEnumFilter("Kind", kind, listOf(null)+IdentifierKind.entries, { kind=it }, Modifier.fillMaxWidth())
         CompactEnumFilter("Value type", type, listOf(null)+DiscoveredType.entries, { type=it }, Modifier.fillMaxWidth())
@@ -987,37 +983,35 @@ private fun suspendedName(entry: SuspendedOverride): String =
     var scope by remember { mutableStateOf(ExportScope.EDITABLE) }; var format by remember { mutableStateOf(ExportFormat.JSON) }
     var methods by remember { mutableStateOf(false) }; var defaults by remember { mutableStateOf(true) }; var overrides by remember { mutableStateOf(true) }
     AlertDialog(onDismiss, confirmButton = { TextButton({ onExport(scope, format, methods, defaults, overrides); onDismiss() }) { Text("Create file") } },
-        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }, title = { Text("Export catalog") }, text = { Column {
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } }, title = { Text("Export catalog") }, text = { ScrollableDialogBody { Column {
             Text("Scope"); SingleChoiceSegmentedButtonRow { ExportScope.entries.forEachIndexed { i, v -> SegmentedButton(scope == v, { scope = v }, shape = SegmentedButtonDefaults.itemShape(i, ExportScope.entries.size)) { Text(if (v == ExportScope.ALL_DISCOVERIES) "ALL" else v.name) } } }
             Spacer(Modifier.height(8.dp)); Text("Format"); Row { ExportFormat.entries.forEach { v -> FilterChip(format == v, { format = v }, { Text(v.name) }); Spacer(Modifier.width(6.dp)) } }
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(defaults, { defaults = it }); Text("Defaults") }
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(overrides, { overrides = it }); Text("Overrides") }
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(methods, { methods = it }); Text("Methods and consumers (slower)") }
-        } })
+        } } })
 }
 
 @Composable private fun CompactExperimentCard(identifier: DiscoveredIdentifier,
     override: TypedOverride?, advancedRecord: AdvancedOverrideRecord?,
-    isAdvanced: Boolean, onOpen: () -> Unit) {
-    val isCustom = (override != null && identifier.inferredType != DiscoveredType.BOOLEAN) ||
-        (advancedRecord?.active == true)
+    isAdvanced: Boolean, currentBuild: String?, onOpen: () -> Unit) {
+    val advancedStatus = advancedOverrideStatus(advancedRecord, currentBuild)
+    val isCustom = if (isAdvanced) advancedStatus == AdvancedOverrideStatus.ACTIVE
+        else override != null && identifier.inferredType != DiscoveredType.BOOLEAN
     val stateLabel = when {
-        isAdvanced && advancedRecord == null -> "DEFAULT"
-        isAdvanced && advancedRecord?.active == false -> "PAUSED"
-        isAdvanced && advancedRecord != null -> "ACTIVE"
+        isAdvanced -> advancedStatus.name
         override == null -> "DEFAULT"
         identifier.inferredType == DiscoveredType.BOOLEAN -> override.encodedValue.uppercase()
         else -> "CUSTOM"
     }
-    val stateColor = when {
-        isCustom -> MaterialTheme.colorScheme.primary
-        override?.encodedValue == "true" -> MaterialTheme.colorScheme.primary
-        override?.encodedValue == "false" -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val colors = MaterialTheme.colorScheme
+    val (stateColor, stateContent) = when {
+        isAdvanced && advancedStatus == AdvancedOverrideStatus.SUSPENDED -> colors.errorContainer to colors.onErrorContainer
+        isAdvanced && advancedStatus != AdvancedOverrideStatus.ACTIVE -> colors.surfaceVariant to colors.onSurfaceVariant
+        isCustom || override?.encodedValue == "true" -> colors.primary to colors.onPrimary
+        override?.encodedValue == "false" -> colors.secondary to colors.onSecondary
+        else -> colors.surfaceVariant to colors.onSurfaceVariant
     }
-    val stateContent = if (override == null && advancedRecord == null)
-        MaterialTheme.colorScheme.onSurfaceVariant else if (override?.encodedValue == "false")
-        MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onPrimary
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
             if (isCustom) Box(Modifier.width(4.dp).fillMaxHeight().background(MaterialTheme.colorScheme.primary))
@@ -1039,8 +1033,8 @@ private fun suspendedName(entry: SuspendedOverride): String =
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (advancedRecord != null) "Experimental · ${advancedRecord.type}"
                          else if (override != null) "Modified" else "", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    Surface(modifier = Modifier.width(92.dp), color = stateColor, contentColor = stateContent, shape = MaterialTheme.shapes.medium) {
-                        Text(stateLabel, Modifier.fillMaxWidth().padding(vertical = 4.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                    Surface(modifier = Modifier.widthIn(min = 92.dp), color = stateColor, contentColor = stateContent, shape = MaterialTheme.shapes.medium) {
+                        Text(stateLabel, Modifier.padding(horizontal = 8.dp, vertical = 4.dp), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                     }
                     Icon(Icons.Default.ChevronRight, "Open experiment", Modifier.size(22.dp))
                 }
@@ -1123,7 +1117,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
     val staleSafetyVerdict = isAdvanced &&
         identifier.reason?.startsWith("Read-only safety policy:") == true &&
         SafetyPolicy.blockedReason(identifier.key) == null
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).navigationBarsPadding().imePadding()) {
         Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 64.dp).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to experiments", tint = MaterialTheme.colorScheme.onBackground) }
             Text("Experiment details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
@@ -1136,7 +1130,9 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 MetaChip(friendly(identifier.resolution.name), MaterialTheme.colorScheme.tertiaryContainer)
                 if (isAdvanced) MetaChip("ADVANCED", MaterialTheme.colorScheme.errorContainer)
                 if (isAdvanced && advancedRecord != null)
-                    MetaChip(if (advancedRecord.active) "Active" else "Paused", MaterialTheme.colorScheme.primaryContainer)
+                    MetaChip(friendly(advancedOverrideStatus(advancedRecord, advancedBuild).name),
+                        if (advancedOverrideStatus(advancedRecord, advancedBuild) == AdvancedOverrideStatus.ACTIVE)
+                            MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
                 if (!isAdvanced && override != null) MetaChip("Modified", MaterialTheme.colorScheme.primaryContainer)
                 if (elevatedRisk != null) MetaChip("ELEVATED RISK", MaterialTheme.colorScheme.errorContainer)
                 MetaChip(friendly(identifier.runtimeConsumerStatus.name), MaterialTheme.colorScheme.surfaceVariant)
@@ -1151,14 +1147,13 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                 ValueRow("Default value", identifier.compiledDefault ?: "Not inferred")
                 ValueRow("Runtime verification", "Check LSPosed logs")
                 if (isAdvanced) {
-                    val belongs = advancedRecord?.buildFingerprint == advancedBuild
-                    val activeRecord = advancedRecord?.takeIf { belongs && it.active }
-                    ValueRow("Experimental value", advancedRecord?.value ?: "Not set", activeRecord != null)
-                    ValueRow("State", when {
-                        advancedRecord == null -> "Default / original"
-                        !belongs -> "Suspended for another build"
-                        advancedRecord.active -> "Active · restart AA"
-                        else -> "Paused · original baseline"
+                    val status = advancedOverrideStatus(advancedRecord, advancedBuild)
+                    ValueRow("Experimental value", advancedRecord?.value ?: "Not set", status == AdvancedOverrideStatus.ACTIVE)
+                    ValueRow("State", when (status) {
+                        AdvancedOverrideStatus.DEFAULT -> "Default / original"
+                        AdvancedOverrideStatus.SUSPENDED -> "Suspended · current build not matched"
+                        AdvancedOverrideStatus.ACTIVE -> "Active · restart AA"
+                        AdvancedOverrideStatus.PAUSED -> "Paused · original baseline"
                     })
                     ValueRow("Baseline", advancedRecord?.previousOverride ?: "Absent / system-managed")
                 } else {
@@ -1269,7 +1264,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
             AlertDialog(
                 onDismissRequest = { pendingElevatedValue = null; elevatedAcknowledgement = "" },
                 title = { Text("Confirm elevated-risk override") },
-                text = {
+                text = { ScrollableDialogBody {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Key: ${identifier.key}")
                         Text("New value: $valueToConfirm")
@@ -1282,7 +1277,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
                             label = { Text("Confirmation") }, singleLine = true
                         )
                     }
-                },
+                } },
                 confirmButton = {
                     TextButton({
                         pendingElevatedValue = null
@@ -1301,7 +1296,7 @@ private fun isNumericZero(value: String): Boolean = value.trim().matches(Regex("
     }
 }
 
-@Composable private fun DetailDisclosure(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable ColumnScope.() -> Unit) { Card(Modifier.fillMaxWidth()) { Column { Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 2) }; Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if (expanded) "Collapse" else "Expand") }; if (expanded) { HorizontalDivider(); Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content) } } } }
+@Composable private fun DetailDisclosure(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, expanded: Boolean, onToggle: () -> Unit, content: @Composable ColumnScope.() -> Unit) { Card(Modifier.fillMaxWidth()) { Column { Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onToggle).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.SemiBold); Text(subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 2) }; Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }; if (expanded) { HorizontalDivider(); Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content) } } } }
 @Composable private fun TechnicalBlock(label: String, value: String) { Column(verticalArrangement = Arrangement.spacedBy(2.dp)) { Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) } }
 @Composable private fun DiagnosticSectionTitle(value: String) { Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) }
 @Composable private fun EvidenceTechnicalBlock(label: String, value: String) { Column(verticalArrangement = Arrangement.spacedBy(1.dp)) { Text(label, style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp), color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace); Text(value, style = MaterialTheme.typography.labelSmall.copy(lineHeight = 15.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace) } }
@@ -1630,18 +1625,18 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     if (longHandoffStage == 1) AlertDialog(
         onDismissRequest = { longHandoffStage = 0 },
         title = { Text("Review controlled LONG handoff") },
-        text = { Text("This test is limited to Assistant__icon_experiment_variant on the inspected AA 18.0 build. Both hooks return 3. The saved normal LONG:3 remains intact, while only one mapping per getter is published. Pause and Restore return hook ownership to the normal mapping. Restart Android Auto after changes.") },
+        text = { ScrollableDialogBody { Text("This test is limited to Assistant__icon_experiment_variant on the inspected AA 18.0 build. Both hooks return 3. The saved normal LONG:3 remains intact, while only one mapping per getter is published. Pause and Restore return hook ownership to the normal mapping. Restart Android Auto after changes.") } },
         confirmButton = { TextButton({ longHandoffStage = 2 }) { Text("Continue") } },
         dismissButton = { TextButton({ longHandoffStage = 0 }) { Text("Cancel") } }
     )
     if (longHandoffStage == 2) AlertDialog(
         onDismissRequest = { longHandoffStage = 0 },
         title = { Text("Final confirmation") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { ScrollableDialogBody { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Type HANDOFF 3 to switch hook ownership without changing the effective LONG value.")
             OutlinedTextField(handoffAcknowledgement, { handoffAcknowledgement = it },
                 label = { Text("HANDOFF 3") }, singleLine = true)
-        } },
+        } } },
         confirmButton = { TextButton({
             longHandoffStage = 0
             onStartLongHandoff()
@@ -1651,7 +1646,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     if (longHandoffRestoreWarning) AlertDialog(
         onDismissRequest = { longHandoffRestoreWarning = false },
         title = { Text("Restore the normal getter hook?") },
-        text = { Text("Only the experimental handoff record is removed. The original normal LONG:3 preference remains stored byte-for-byte; restart Android Auto to install its original hook.") },
+        text = { ScrollableDialogBody { Text("Only the experimental handoff record is removed. The original normal LONG:3 preference remains stored byte-for-byte; restart Android Auto to install its original hook.") } },
         confirmButton = { TextButton({
             longHandoffRestoreWarning = false
             onRestoreHandoff(LongHandoffPolicy.KEY)
@@ -1661,7 +1656,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     experimentalConfirmation?.let { newValue ->
         AlertDialog(onDismissRequest = { experimentalConfirmation = null },
             title = { Text("Confirm experimental return value") },
-            text = {
+            text = { ScrollableDialogBody {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(technicalDisplay(identifier.key), fontFamily = FontFamily.Monospace)
                     Text("BOOLEAN · getter ${identifier.getterCandidates.singleOrNull()?.methodName}()Z")
@@ -1670,7 +1665,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
                     Text("New experimental value: $newValue")
                     Text("The meaning of this kill switch is unverified. It can disable Android Auto features or require stopping its process. This change is for the current Android Auto build only.")
                 }
-            },
+            } },
             confirmButton = { TextButton({
                 experimentalConfirmation = null
                 onExperimentalSet(identifier, newValue)
@@ -1680,7 +1675,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
     if (restoreExperimentConfirmation) AlertDialog(
         onDismissRequest = { restoreExperimentConfirmation = false },
         title = { Text("Restore original override state?") },
-        text = { Text("The original saved override will be restored byte-for-byte, or removed if no override existed. Restart Android Auto afterward.") },
+        text = { ScrollableDialogBody { Text("The original saved override will be restored byte-for-byte, or removed if no override existed. Restart Android Auto afterward.") } },
         confirmButton = { TextButton({
             restoreExperimentConfirmation = false
             onExperimentalRestore()
@@ -1688,7 +1683,7 @@ private fun readableMetadataValue(value: String): String = value.split('|').join
         dismissButton = { TextButton({ restoreExperimentConfirmation = false }) { Text("Cancel") } })
     if (probeConfirmation) AlertDialog(onDismissRequest = { probeConfirmation = false },
         title = { Text("Arm read-only getter probe?") },
-        text = { Text("Only the selected getter will be traced for this exact Android Auto build. No value will be changed. A new Android Auto process is required. Confirm only while parked and not projecting.") },
+        text = { ScrollableDialogBody { Text("Only the selected getter will be traced for this exact Android Auto build. No value will be changed. A new Android Auto process is required. Confirm only while parked and not projecting.") } },
         confirmButton = {
             TextButton({
                 probeConfirmation = false
@@ -1730,7 +1725,27 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
             .getOrNull() ?: "unknown"
     }
-    val backupExport=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")){ uri->uri?.let { context.contentResolver.openOutputStream(it)?.use { out->out.write(model.exportDynamicJson().toByteArray()) } } }
+    val exportScope = rememberCoroutineScope()
+    fun exportBackup(uri: Uri, complete: Boolean) {
+        exportScope.launch {
+            try {
+                // Snapshot manager state on Main; document-provider I/O runs off the UI thread.
+                val data = if (complete) model.exportCompleteRecoveryJson() else model.exportDynamicJson()
+                withContext(Dispatchers.IO) {
+                    writeExportDocument(data) { context.contentResolver.openOutputStream(uri, "wt") }
+                }
+                model.reportRecoveryMessage(if (complete) "Full recovery bundle exported. Keep this file private."
+                    else "Normal backup exported. Keep this file private.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                model.reportRecoveryMessage("${if (complete) "Full recovery" else "Normal backup"} export failed: ${error.message}")
+            }
+        }
+    }
+    val backupExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { exportBackup(it, complete = false) }
+    }
     val backupImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             runCatching { readRecoveryDocument(context, it) }
@@ -1743,18 +1758,7 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
     var recoveryPending by remember { mutableStateOf<Pair<String, FullRecoveryBundle.Parsed>?>(null) }
     var recoveryAcknowledgement by remember { mutableStateOf("") }
     val fullExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let {
-            runCatching {
-                val data = model.exportCompleteRecoveryJson()
-                context.contentResolver.openOutputStream(it, "wt").use { output ->
-                    checkNotNull(output) { "Recovery destination is not writable" }
-                    output.write(data.toByteArray(Charsets.UTF_8))
-                    output.flush()
-                }
-            }.onSuccess {
-                model.reportRecoveryMessage("Full recovery bundle exported. Keep this file private.")
-            }.onFailure { ex -> model.reportRecoveryMessage("Full recovery export failed: ${ex.message}") }
-        }
+        uri?.let { exportBackup(it, complete = true) }
     }
     val fullImport = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -1893,8 +1897,10 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{SectionLabel("Appearance")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Column{
                 AnchoredPreferenceDropdown(Icons.Default.DarkMode, "Theme", "Choose the app theme mode", listOf("Follow system", "Light", "Dark"), theme.ordinal) { onTheme(ThemeMode.entries[it]) }
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp))
-                AnchoredPreferenceDropdown(Icons.Default.Palette, "Accent color", "Choose the app accent palette", listOf("Lab Green", "Material You"), accent.ordinal) { onAccent(AccentPalette.entries[it]) }
+                if (Build.VERSION.SDK_INT >= 31) {
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
+                    AnchoredPreferenceDropdown(Icons.Default.Palette, "Accent color", "Choose the app accent palette", listOf("Green Lab", "Material You"), accent.ordinal) { onAccent(AccentPalette.entries[it]) }
+                }
             }}}
             item{SectionLabel("Media")}
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){
@@ -1925,19 +1931,19 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
             item{Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)){Row(Modifier.fillMaxWidth().clickable{onPage(SettingsPage.ABOUT)}.padding(horizontal=16.dp,vertical=12.dp),verticalAlignment=Alignment.CenterVertically){Image(painterResource(R.drawable.app_icon),"AA Experiments icon",Modifier.size(42.dp));Spacer(Modifier.width(14.dp));Column(Modifier.weight(1f)){Text("AA Experiments",fontWeight=FontWeight.Medium);Text("Version $appVersionName · HighwindBR",style=MaterialTheme.typography.bodySmall)};Icon(Icons.Default.ChevronRight,null)}}}
         }
     }
-    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={Text("This permanently deletes normal, Advanced and Experimental overrides and their saved baselines. It does not reset Media Startup preferences, appearance or catalog data. Export a complete override backup first if you may need to restore these values.")})
+    if(restoreConfirm) AlertDialog({restoreConfirm=false},confirmButton={TextButton({model.restoreAllDynamic();restoreConfirm=false}){Text("Delete all")}},dismissButton={TextButton({restoreConfirm=false}){Text("Cancel")}},title={Text("Reset all overrides?")},text={ ScrollableDialogBody {Text("This permanently deletes normal, Advanced and Experimental overrides and their saved baselines. It does not reset Media Startup preferences, appearance or catalog data. Export a complete override backup first if you may need to restore these values.")} })
     recoveryPending?.let { (raw, preview) ->
         AlertDialog(
             onDismissRequest = { recoveryPending = null; recoveryAcknowledgement = "" },
             title = { Text("Restore COMPLETE recovery bundle?") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { ScrollableDialogBody { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("This replaces all normal, suspended, Advanced and Experimental records for the EXACT installed Android Auto build.")
                 Text("${preview.normal} normal, ${preview.advanced} Advanced, ${preview.experimental} Experimental records. ${preview.activeAdvanced + preview.activeExperimental} active special overrides may restart with their saved values.")
                 Text("The previous saved baselines will be replaced too. Do not restore an untrusted backup, and do not restart Android Auto while driving.",
                     color = MaterialTheme.colorScheme.error)
                 OutlinedTextField(recoveryAcknowledgement, { recoveryAcknowledgement = it },
                     label = { Text("Type RESTORE ALL") }, singleLine = true)
-            } },
+            } } },
             confirmButton = { TextButton({
                 model.restoreCompleteRecoveryJson(raw)
                 recoveryPending = null
@@ -1953,19 +1959,18 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
 
 @Composable private fun SectionLabel(text: String) = Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
-@Composable private fun AboutScreen(versionName: String, onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version $versionName", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android Auto experiment inspector and LSPosed runtime manager. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
+@Composable private fun AboutScreen(versionName: String, onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version $versionName", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android manager and LSPosed module for editing Android Auto experimental flags and enabling supported features that are unreleased or under testing. Availability depends on the installed Android Auto build. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
-private class TouchMenuPositionProvider(
-    private val pressOffset: IntOffset,
+private class PreferenceMenuPositionProvider(
     private val selectedIndex: Int,
     private val marginPx: Int,
     private val itemHeightPx: Int
 ) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        val touchX = anchorBounds.left + pressOffset.x
-        val touchY = anchorBounds.top + pressOffset.y
-        val desiredX = touchX - popupContentSize.width / 2
-        val desiredY = touchY - selectedIndex * itemHeightPx - itemHeightPx / 2
+        val anchorX = anchorBounds.center.x
+        val anchorY = anchorBounds.center.y
+        val desiredX = anchorX - popupContentSize.width / 2
+        val desiredY = anchorY - selectedIndex * itemHeightPx - itemHeightPx / 2
         return IntOffset(
             desiredX.coerceIn(marginPx, (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)),
             desiredY.coerceIn(marginPx, (windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx))
@@ -1982,7 +1987,6 @@ private class TouchMenuPositionProvider(
     onSelected: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    var pressOffset by remember { mutableStateOf(IntOffset.Zero) }
     val safeIndex = selectedIndex.coerceIn(items.indices)
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
@@ -1992,16 +1996,12 @@ private class TouchMenuPositionProvider(
     Box {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 72.dp)
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "$title, ${items[safeIndex]}. Double tap to select another option."
-                    onClick { pressOffset = IntOffset.Zero; open(); true }
-                }
-                .pointerInput(items, safeIndex) { detectTapGestures { point -> pressOffset = IntOffset(point.x.toInt(), point.y.toInt()); open() } }
+                .clickable(role = Role.Button) { open() }
+                .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, fontWeight = FontWeight.Medium)
@@ -2011,12 +2011,12 @@ private class TouchMenuPositionProvider(
             Text(items[safeIndex], modifier = Modifier.widthIn(min = 88.dp, max = 128.dp), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
         }
         if (expanded) Popup(
-            popupPositionProvider = TouchMenuPositionProvider(pressOffset, safeIndex, margin, itemHeight),
+            popupPositionProvider = PreferenceMenuPositionProvider(safeIndex, margin, itemHeight),
             onDismissRequest = { expanded = false },
             properties = PopupProperties(focusable = true)
         ) {
             Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 6.dp, shadowElevation = 6.dp) {
-                Column(Modifier.width(if ((items.maxOfOrNull { it.length } ?: 0) > 11) 204.dp else 184.dp).padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.width(if ((items.maxOfOrNull { it.length } ?: 0) > 11) 204.dp else 184.dp).heightIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items.forEachIndexed { index, text ->
                         val selected = index == safeIndex
                         Surface(
@@ -2073,7 +2073,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf6AutoConfirm = false },
             title = { Text("Automatically open the selected media app?") },
-            text = { Text("Off by default for each Android Auto build. On the NEXT connection, route ${state.mediaLabRoute} will try to open the app already selected in Android Auto (for example, Spotify or YouTube Music), once after the first projected activity settles. Navigation or a changed session cancels the attempt. No playback command is sent; audio behavior depends on Android Auto and the player. Car restrictions still apply. Only use while parked.") },
+            text = { ScrollableDialogBody { Text("Off by default for each Android Auto build. On the NEXT connection, route ${state.mediaLabRoute} will try to open the app already selected in Android Auto (for example, Spotify or YouTube Music), once after the first projected activity settles. Navigation or a changed session cancels the attempt. No playback command is sent; audio behavior depends on Android Auto and the player. Car restrictions still apply. Only use while parked.") } },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf6AutoConfirm = false
@@ -2089,7 +2089,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf6Confirmation = false },
             title = { Text("Test the selected media launch route?") },
-            text = { Text("Only while parked, with Android Auto visible. This sends ONE request to the already selected media app using route ${state.mediaLabRoute}. The Android Auto controller may reject it, and a method return does not prove the app appeared on the head unit.") },
+            text = { ScrollableDialogBody { Text("Only while parked, with Android Auto visible. This sends ONE request to the already selected media app using route ${state.mediaLabRoute}. The Android Auto controller may reject it, and a method return does not prove the app appeared on the head unit.") } },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf6Confirmation = false
@@ -2105,7 +2105,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf4Confirmation = false },
             title = { Text("Enable legacy Spotify auto-open?") },
-            text = { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. No playback command is sent; audio behavior depends on Android Auto and Spotify. Android Auto restrictions still apply. You can turn it off here.") },
+            text = { ScrollableDialogBody { Text("Available only for a previously validated Android Auto build. On the NEXT projection session, if Spotify is the active media app and no other navigation is observed, the module will attempt to open Spotify once after a short delay. No playback command is sent; audio behavior depends on Android Auto and Spotify. Android Auto restrictions still apply. You can turn it off here.") } },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf4Confirmation = false
@@ -2121,7 +2121,7 @@ private class TouchMenuPositionProvider(
         AlertDialog(
             onDismissRequest = { spotifyPf3Confirmation = false },
             title = { Text("Open Spotify once for testing?") },
-            text = { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or send a playback command. Audio behavior depends on Android Auto and Spotify. Inspect the logs to confirm the result.") },
+            text = { ScrollableDialogBody { Text("While parked and connected to Android Auto, request the selected Spotify screen once. This does not enable automatic opening or send a playback command. Audio behavior depends on Android Auto and Spotify. Inspect the logs to confirm the result.") } },
             confirmButton = {
                 TextButton(onClick = {
                     spotifyPf3Confirmation = false
@@ -2207,18 +2207,18 @@ private class TouchMenuPositionProvider(
                     if (state.mediaLabArmed) {
                         Text("Opening route", style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { onMediaLabRoute("A") },
+                            FilterChip(selected = state.mediaLabRoute == "A",
+                                onClick = { if (state.mediaLabRoute != "A") onMediaLabRoute("A") },
                                 modifier = Modifier.weight(1f),
-                                enabled = state.framework.connected && state.mediaLabRouteAAvailable &&
-                                    state.mediaLabRoute != "A") {
-                                Text(if (state.mediaLabRoute == "A") "✓ A · Auxiliary" else "A · Auxiliary")
-                            }
-                            OutlinedButton(onClick = { onMediaLabRoute("B") },
+                                enabled = state.framework.connected && state.mediaLabRouteAAvailable,
+                                label = { Text("A · Auxiliary") },
+                                leadingIcon = if (state.mediaLabRoute == "A") ({ Icon(Icons.Default.Check, null) }) else null)
+                            FilterChip(selected = state.mediaLabRoute == "B",
+                                onClick = { if (state.mediaLabRoute != "B") onMediaLabRoute("B") },
                                 modifier = Modifier.weight(1f),
-                                enabled = state.framework.connected && state.mediaLabRouteBAvailable &&
-                                    state.mediaLabRoute != "B") {
-                                Text(if (state.mediaLabRoute == "B") "✓ B · Direct" else "B · Direct")
-                            }
+                                enabled = state.framework.connected && state.mediaLabRouteBAvailable,
+                                label = { Text("B · Direct") },
+                                leadingIcon = if (state.mediaLabRoute == "B") ({ Icon(Icons.Default.Check, null) }) else null)
                         }
                         TextButton(onClick = onMediaLabArm,
                             enabled = state.framework.connected && !state.mediaSemanticAnalysisRunning) {
@@ -2414,7 +2414,7 @@ private class TouchMenuPositionProvider(
     if (restoreAdvancedConfirm) AlertDialog(
         onDismissRequest = { restoreAdvancedConfirm = false },
         title = { Text("Restore current-build Advanced baselines?") },
-        text = { Text("Restore the exact previous normal override, or its absence. Records from other Android Auto builds will remain suspended. Restart Android Auto afterward.") },
+        text = { ScrollableDialogBody { Text("Restore the exact previous normal override, or its absence. Records from other Android Auto builds will remain suspended. Restart Android Auto afterward.") } },
         confirmButton = { TextButton({
             restoreAdvancedConfirm = false
             onRestoreAllAdvanced()
@@ -2424,7 +2424,7 @@ private class TouchMenuPositionProvider(
 }
 
 @Composable private fun DiagnosticSection(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, expanded: Boolean, onToggle: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column { Row(Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(14.dp)); Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, style = MaterialTheme.typography.bodySmall) }; Icon(if(expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if(expanded) "Collapse $title" else "Expand $title") }; if(expanded) { HorizontalDivider(); Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content) } } }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) { Column { Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onToggle).semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Icon(icon, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(14.dp)); Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(subtitle, style = MaterialTheme.typography.bodySmall) }; Icon(if(expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null) }; if(expanded) { HorizontalDivider(); Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content) } } }
 }
 @Composable private fun DiagnosticValue(label: String, value: String, onCopy: (() -> Unit)? = null) { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Column(Modifier.weight(1f)) { Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary); Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = if (value.length > 20 || label.contains("SHA") || label.contains("APK")) FontFamily.Monospace else FontFamily.Default) }; onCopy?.let { IconButton(it) { Icon(Icons.Default.ContentCopy, "Copy $label") } } } }
 @Composable private fun DiagnosticCount(label: String, value: Int) { if (value != 0) DiagnosticValue(label, value.toString()) }
