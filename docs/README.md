@@ -23,13 +23,13 @@ published binaries and version-specific release notes.
 
 ## Current candidate and implementation records
 
-[Candidate readiness](BETA6_RC1_READINESS.md) records automated evidence by
+[Stable candidate readiness](STABLE_1.0.0_READINESS.md) records automated evidence by
 commit/run and keeps pending physical, private-fixture and signing gates explicit.
 Implementation records explain changes; they are not release approval.
 
 - [Beta6 — Reliability PF1 (development only)](BETA6_PF1_RELIABILITY.md)
 - [Beta6 — PF2: Media Startup UX and legacy diagnostics cleanup](BETA6_PF2_POLISH.md)
-- [Beta6 RC1 — release-gate checklist (NOT approved)](BETA6_RC1_READINESS.md)
+- [Beta6 RC1 — historical preflight checklist](BETA6_RC1_READINESS.md)
 
 ## Changelog, release notes and distribution
 
@@ -38,6 +38,7 @@ contains no beta changelog. Release notes describe their named version.
 
 - [AA Experiments](../distribution/lsposed/README.md)
 - [AA Experiments 1.0.0-beta4](../distribution/lsposed/RELEASE_NOTES_169-1.0.0-beta4.md)
+- [AA Experiments 1.0.0 stable](RELEASE_NOTES_1.0.0.md)
 - [AA Experiments 1.0.0-beta1](RELEASE_NOTES_1.0.0-beta1.md)
 - [AA Experiments 1.0.0-beta2](RELEASE_NOTES_1.0.0-beta2.md)
 - [AA Experiments 1.0.0-beta3](RELEASE_NOTES_1.0.0-beta3.md)

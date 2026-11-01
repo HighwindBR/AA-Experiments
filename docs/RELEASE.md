@@ -6,16 +6,12 @@ A successful build does not authorize a merge, tag, signed candidate or publicat
 
 ## Current candidate
 
-The Beta6 implementation is maintained on `feature/beta6-reliability` (PR #13).
-`maintenance/group-a-stable` (PR #14) adds cleanup and documentation on that baseline.
-The application still declares `1.0.0-beta6-preflight1` / versionCode `179`;
-it is not an approved stable release.
-
-Use [candidate readiness](BETA6_RC1_READINESS.md) for recorded CI evidence and
-outstanding device, private-fixture and signing gates. Historical beta3–beta5
-procedures are preserved in [release history](history/RELEASE_HISTORY.md).
+The stable candidate is `1.0.0` / versionCode `180` on
+`maintenance/group-a-stable` (PR #14), built on the Beta6 reliability work.
+The published predecessor is `1.0.0-beta5` / `178`; the tested preflight used `179`.
+See [stable readiness](STABLE_1.0.0_READINESS.md) for exact evidence and remaining gates.
 The [official releases](https://github.com/HighwindBR/AA-Experiments/releases)
-are the authority for published artifacts; beta5 is already published.
+remain the authority for publication status.
 
 ## Required gates for a public candidate
 
@@ -47,33 +43,19 @@ testing; testing one build does not prove a subsequently rebuilt APK has identic
 
 ## What the workflows currently allow
 
-[Private release gates](../.github/workflows/private-release.yml) listens for
-`v*` tags, but its private and publication jobs accept only
-`v1.0.0-beta3`, `v1.0.0-beta4` and `v1.0.0-beta5`.
-A different tag can start public jobs while private/signing jobs are skipped;
-that is not release approval.
+[Private release gates](../.github/workflows/private-release.yml) accepts the exact
+stable tag `v1.0.0` and retains the historical beta3/beta4/beta5 tag rules.
+The trusted `maintenance/group-a-stable` branch is explicitly allowed for manual
+private gates and signed candidate builds (`1.0.0`, code `180`). Historical
+allowlisted branches remain in the workflow; arbitrary branches and PR events
+cannot access the private/signing jobs.
 
-Manual private-fixture runs currently accept only:
-
-- `main`
-- `release/1.0.0-beta3`
-- `feature/beta4-getter-probe-preflight`
-- `release/1.0.0-beta4`
-- `feature/beta5-media-startup-preflight1`
-- `feature/beta5-rc1`
-- `release/1.0.0-beta5`
-
-The signed-development-candidate job accepts only the beta4 feature branch
-and the three beta5 branches above. Its version and predecessor checks are
-also explicit. **Neither Beta6 nor Group A is currently allowlisted for private
-gates or signed candidates.** A manual dispatch on either branch can therefore
-finish public jobs without running the required private job.
-
-Before stable promotion, a separately reviewed workflow change must reconcile
-the approved source ref, final version/code, allowed tag, predecessor APK/hash,
-signing comparison, release-note path and any private-delivery script guards.
-Do not reuse an old tag or build an older branch to claim the candidate passed.
-This documentation update does not enable those paths.
+Both the stable candidate and tagged release must match the certificate of the
+official beta5 APK, whose SHA-256 is pinned to
+`bd03c9dd388b148bdda2a933949e25056eaf504579197157af8b9bda3ec135e8`.
+The exact tag checks code `180`, package identity, v2 signing and
+`docs/RELEASE_NOTES_1.0.0.md`. Manual candidate delivery stays private and is
+guarded separately from public tag-triggered publication.
 
 See [Private runner handoff](PRIVATE_RUNNER_CHECKLIST.md) for trusted-runner
 requirements. Never run untrusted pull-request code on the private runner.

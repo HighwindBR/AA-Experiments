@@ -16,6 +16,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -64,6 +67,10 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.roundToInt
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -1961,14 +1968,15 @@ private fun readRecoveryDocument(context: android.content.Context, uri: Uri): St
 @Composable private fun SubpageHeader(title: String, subtitle: String? = null, onBack: () -> Unit) { Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }; Column { Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold); subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall) } } } }
 @Composable private fun AboutScreen(versionName: String, onBack: () -> Unit) { Column(Modifier.fillMaxSize()) { SubpageHeader("About", null, onBack); HorizontalDivider(); LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) { item { Image(painterResource(R.drawable.app_icon), "AA Experiments icon", Modifier.size(104.dp)) }; item { Text("AA Experiments", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }; item { Text("Version $versionName", style = MaterialTheme.typography.bodyMedium) }; item { Text("Independent Android manager and LSPosed module for editing Android Auto experimental flags and enabling supported features that are unreleased or under testing. Availability depends on the installed Android Auto build. Developed by HighwindBR.", style = MaterialTheme.typography.bodyLarge) }; item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { TechnicalBlock("Package", "io.github.highwindbr.aaxp"); TechnicalBlock("Runtime API", "LSPosed API 101"); Text("This project is not affiliated with Google, Android Auto or LSPosed.", style = MaterialTheme.typography.bodySmall) } } } } } }
 
-private class PreferenceMenuPositionProvider(
+internal class PreferenceMenuPositionProvider(
+    private val touchOffset: IntOffset?,
     private val selectedIndex: Int,
     private val marginPx: Int,
     private val itemHeightPx: Int
 ) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-        val anchorX = anchorBounds.center.x
-        val anchorY = anchorBounds.center.y
+        val anchorX = touchOffset?.let { anchorBounds.left + it.x } ?: anchorBounds.center.x
+        val anchorY = touchOffset?.let { anchorBounds.top + it.y } ?: anchorBounds.center.y
         val desiredX = anchorX - popupContentSize.width / 2
         val desiredY = anchorY - selectedIndex * itemHeightPx - itemHeightPx / 2
         return IntOffset(
@@ -1987,15 +1995,32 @@ private class PreferenceMenuPositionProvider(
     onSelected: (Int) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var pendingTouch by remember { mutableStateOf<Offset?>(null) }
+    var menuTouch by remember { mutableStateOf<IntOffset?>(null) }
     val safeIndex = selectedIndex.coerceIn(items.indices)
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val margin = with(density) { 8.dp.roundToPx() }
     val itemHeight = with(density) { 52.dp.roundToPx() }
-    fun open() { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); expanded = true }
+    fun open() {
+        menuTouch = pendingTouch?.let { IntOffset(it.x.roundToInt(), it.y.roundToInt()) }
+        pendingTouch = null
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        expanded = true
+    }
     Box {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 72.dp)
+                // Observe coordinates without consuming gestures. Clickable retains
+                // scroll cancellation, keyboard focus and accessibility activation.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        pendingTouch = awaitFirstDown(requireUnconsumed = false,
+                            pass = PointerEventPass.Initial).position
+                        if (waitForUpOrCancellation(pass = PointerEventPass.Initial) == null)
+                            pendingTouch = null
+                    }
+                }
                 .clickable(role = Role.Button) { open() }
                 .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2011,7 +2036,7 @@ private class PreferenceMenuPositionProvider(
             Text(items[safeIndex], modifier = Modifier.widthIn(min = 88.dp, max = 128.dp), textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
         }
         if (expanded) Popup(
-            popupPositionProvider = PreferenceMenuPositionProvider(safeIndex, margin, itemHeight),
+            popupPositionProvider = PreferenceMenuPositionProvider(menuTouch, safeIndex, margin, itemHeight),
             onDismissRequest = { expanded = false },
             properties = PopupProperties(focusable = true)
         ) {

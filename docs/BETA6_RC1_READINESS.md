@@ -1,4 +1,7 @@
-# Beta6 RC1 — release-gate checklist (NOT approved)
+# Beta6 RC1 — historical preflight checklist
+
+Superseded for current promotion tracking by [stable 1.0.0 readiness](STABLE_1.0.0_READINESS.md).
+The metadata and unchecked items below describe the earlier preflight record.
 
 Implementation baseline: `feature/beta6-reliability`, PR #13.
 Maintenance candidate: `maintenance/group-a-stable`, PR #14.

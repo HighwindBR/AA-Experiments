@@ -2,9 +2,17 @@
 
 Entries describe their named release or development stage. Historical pending
 statements are not the current release status; use [Release process](docs/RELEASE.md)
-and [candidate readiness](docs/BETA6_RC1_READINESS.md) for ongoing work.
+and [candidate readiness](docs/STABLE_1.0.0_READINESS.md) for ongoing work.
 
-## Unreleased — reliability and maintenance
+## 1.0.0 — stable candidate
+
+- Set versionName `1.0.0` and versionCode `180`, preserving package identity.
+- Complete Green Lab light/dark roles, correct Advanced state labels and contrast,
+  make long dialogs/filters scrollable, and handle backup export failures.
+- Restore touch-positioned appearance menus while retaining keyboard accessibility.
+- Prepare exact stable signing/publication gates against the SHA-256-pinned beta5 APK.
+
+### Reliability and maintenance
 
 - Harden archive input limits, catalog retention and v7-to-v8 cache migration.
 - Coordinate preference writes and profile publication; discard stale UI queries.
@@ -15,8 +23,7 @@ and [candidate readiness](docs/BETA6_RC1_READINESS.md) for ongoing work.
 - Refresh current guides and distinguish historical records from candidate evidence.
 - Record actual SQLite emulator execution separately from APK compilation and physical validation.
 
-These changes are not a stable release announcement. Private-fixture, signed-upgrade,
-physical and publication gates remain documented in candidate readiness.
+Publication and final gate results are tracked in [stable readiness](docs/STABLE_1.0.0_READINESS.md).
 
 ## 1.0.0-beta5 — release
 

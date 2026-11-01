@@ -24,11 +24,10 @@ First check the ref allowlist in
 [private-release.yml](../.github/workflows/private-release.yml).
 Its current branches are listed in [Release process](RELEASE.md).
 
-**The Beta6 and Group A branches are not currently allowed.** Selecting
-`feature/beta6-reliability` or `maintenance/group-a-stable` in a manual
-dispatch will not execute the private-fixture job. A reviewed workflow update
-is required to test those candidates through this workflow. Testing `main`
-or an older beta branch does not establish candidate coverage.
+The reviewed `maintenance/group-a-stable` branch is allowed for the `1.0.0` /
+`180` candidate. `feature/beta6-reliability` is not allowlisted. Always verify
+the run's head SHA; testing `main` or an older beta branch does not establish
+candidate coverage. See [stable readiness](STABLE_1.0.0_READINESS.md).
 
 ## Run an allowed candidate's gates
 
