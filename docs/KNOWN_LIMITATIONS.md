@@ -26,8 +26,9 @@
 
 - **Automatic Media Startup** is opt-in and tied to the exact
   Android Auto build. Android Auto's own controller can reject the opening request even when
-  hooks and selected-component checks succeed. The feature may not starts
-  audio playback and never bypasses vehicle restrictions. If a build-specific
+  hooks and selected-component checks succeed. The module requests opening without
+  sending an audio playback command; whether audio starts or resumes depends on
+  Android Auto and the media app. It never bypasses vehicle restrictions. If a build-specific
   first-activity role cannot be proven, automatic opening is disabled.
   The current build supports either structurally proven route independently; unavailable
   routes are disabled. 

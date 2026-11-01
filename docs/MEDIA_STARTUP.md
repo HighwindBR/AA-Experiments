@@ -1,9 +1,10 @@
 # Media Startup
 
 Media Startup can open the media app already selected in Android Auto when
-projection starts. It may not start audio playback, launch arbitrary packages
-or bypass driving restrictions. Configure it while parked and outside active
-projection; verify the result on a parked head unit.
+projection starts. It requests opening without sending an audio playback command.
+Whether audio starts or resumes depends on Android Auto and the media app.
+It does not launch arbitrary packages or bypass driving restrictions. Configure
+it while parked and outside active projection; verify the result on a parked head unit.
 
 ## Set up automatic opening
 
@@ -11,8 +12,10 @@ projection; verify the result on a parked head unit.
    manager scan the installed Android Auto build.
 2. Open **Settings → Media → Media startup** and select
    **Check compatibility & enable opening**.
-3. Successful compatibility proof leaves automatic
-   opening off until the separate explicit confirmation is accepted.
+3. For a previously validated build with the required structural proof, setup
+   can enable automatic opening after successfully publishing the profile.
+   For an unreviewed build with the required proof, automatic opening stays off
+   until the separate explicit confirmation is accepted.
 4. Read the resulting status. If only manual operation is supported, or the
    profile was saved but not published, automatic opening is unavailable.
 5. Restart Android Auto as instructed, select the desired media app in Android

@@ -58,8 +58,8 @@ The `_kill_switch` suffix does **not** imply a universal TRUE/FALSE convention. 
 This catalog currently contains:
 
 - **154 previously reviewed capability groups, plus the Android Auto 18.0 additions below**
-- **270 documented parameters across the analyzed builds**
-  - 179 Boolean
+- **269 documented parameters across the analyzed builds**
+  - 178 Boolean
   - 8 String
   - 12 Double
   - 71 Long
@@ -1105,7 +1105,7 @@ These flags change application or service initialization timing and cache pre-pr
 
 <table>
 <thead><tr><th>Type</th><th>Parameter</th><th>17.8~17.9</th><th>18.0</th><th>Role</th></tr></thead>
-<tbody><tr><td>BOOLEAN</td><td><code>Performance__skip_priming_connected_car_info_cache_shared_kill_switch</code></td><td>—</td><td><code>true</code></td><td>Controls a shared startup path that skips priming the connected-CarInfo cache. Kill-switch polarity and all side effects require additional consumer-branch verification.</td></tr></tbody>
+<tbody><tr><td>BOOLEAN</td><td><code>Performance__skip_priming_connected_car_info_cache_shared_kill_switch</code></td><td>—</td><td><code>true</code></td><td>Controls a shared startup path that skips priming the connected-CarInfo cache. <strong>Polarity unknown</strong>; the TRUE/FALSE branches and all side effects require additional consumer-branch verification.</td></tr></tbody>
 </table>
 
 
@@ -1114,7 +1114,6 @@ These flags change application or service initialization timing and cache pre-pr
 <table>
   <thead><tr><th> Capability</th><th>Parameter</th><th>17.8</th><th>17.9</th><th>18.0</th><th>What it changes </th></tr></thead>
   <tbody>
-    <tr><td> NavigationClientManager delayed startup</td><td>BOOLEAN — <code>Performance__navigation_client_manager_delayed_start_enabled</code></td><td colspan="3" align="center"><code>false</code></td><td>Moves <code>NavigationClientManager</code> out of the critical startup path. </td></tr>
     <tr><td> Activity pre-warming</td><td>BOOLEAN — <code>Performance__pre_warm_activities_enabled</code></td><td colspan="3" align="center"><code>false</code></td><td>Pre-warms activities for configured regions. </td></tr>
     <tr><td> Launcher shortcut limit</td><td>LONG — <code>LauncherShortcuts__max_shortcuts</code></td><td colspan="3" align="center"><code>32</code></td><td>Sets the maximum number of launcher shortcuts considered by the corresponding path. </td></tr>
     <tr><td> CSAT proof-mode survey selector</td><td>STRING — <code>Csat__proof_mode_survey</code></td><td colspan="2" align="center"><code>enum; default not recorded</code></td><td><code>default not recorded</code></td><td>Forces an internal CSAT survey variant in proof/testing mode. </td></tr>
@@ -1144,10 +1143,11 @@ The catalog also intentionally excludes parameters that were:
 
 ## Known kill-switch polarity gaps
 
-Two retained kill switches still have confirmed relevance but do not have a sufficiently safe TRUE/FALSE branch interpretation in the retained evidence:
+Three retained kill switches still have confirmed relevance but do not have a sufficiently safe TRUE/FALSE branch interpretation in the retained evidence:
 
 - `CarAppLibrary__conversation_item_max_message_lines_kill_switch` — the dynamic `ConversationItem` line-limit capability is confirmed, but the exact polarity of the gate is not.
 - `ProjectionWindowManager__content_window_startup_animation_kill_switch` — its relationship to specialized content-window startup-animation scheduling is confirmed, but the retained evidence is not consistent enough to assign both TRUE/FALSE branches safely.
+- `Performance__skip_priming_connected_car_info_cache_shared_kill_switch` — its role in the shared connected-CarInfo cache startup path is documented, but its TRUE/FALSE branches and side effects still require verification.
 
 These are intentionally marked **polarity unknown** in the catalog rather than inferred from their names.
 
