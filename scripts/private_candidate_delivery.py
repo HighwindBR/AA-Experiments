@@ -38,6 +38,8 @@ def candidate_for_ref(ref: str) -> tuple[str, str, str]:
         return BETA5_RC1_APK_NAME, "aaxp-private-beta5-rc1", "1.0.0-beta5-rc1"
     if ref == BETA5_FINAL_BRANCH:
         return BETA5_FINAL_APK_NAME, "aaxp-private-beta5-final", "1.0.0-beta5"
+    if ref == "refs/heads/maintenance/group-a-stable":
+        return "AAExperiments-1.0.0-candidate.apk", "aaxp-private-stable-1.0.0", "1.0.0"
     raise ValueError("Private delivery is not enabled on this source ref.")
 
 

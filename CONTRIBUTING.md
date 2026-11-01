@@ -8,6 +8,19 @@ gate and full-corpus gate when distributions can change. Precision is preferred 
 ambiguous evidence must remain suspended. Do not commit proprietary Android Auto APKs to a public
 fork. Pull requests should explain the evidence, memory impact and compatibility behavior.
 
+## Documentation and verification
+
+Keep user guides version-neutral and place version history in `CHANGELOG.md` or
+release-specific records. The main README is a project overview, not a beta changelog.
+The [documentation index](docs/README.md) distinguishes current guides from historical
+preflights. Update historical records with context rather than presenting their old
+screen locations or pending checks as current instructions.
+
+Report the commit and actual scope of validation: JVM tests, instrumented Android
+execution, private fixture gates and physical acceptance are separate. Follow
+[Development](docs/DEVELOPMENT.md) for local commands. Private runners accept only
+trusted, reviewed source; see [Release process](docs/RELEASE.md) for ref restrictions.
+
 ## Licensing of contributions
 
 Unless explicitly agreed otherwise in writing, contributions submitted for inclusion in AA

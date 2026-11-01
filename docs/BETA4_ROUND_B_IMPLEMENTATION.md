@@ -1,5 +1,10 @@
 # Beta4 — Round B UI and accessibility implementation
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Development version: `1.0.0-beta4-preflight15` (`versionCode 161`)
 Branch: `feature/beta4-getter-probe-preflight`.
 **No merge, RC tag, release or change to the runtime override engine.**

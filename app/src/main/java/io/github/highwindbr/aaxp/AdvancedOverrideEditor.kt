@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import io.github.highwindbr.aaxp.core.AdvancedOverridePolicy
 import io.github.highwindbr.aaxp.core.AdvancedOverrideRecord
+import io.github.highwindbr.aaxp.core.advancedOverrideStatus
 import io.github.highwindbr.aaxp.discovery.DiscoveredIdentifier
 import io.github.highwindbr.aaxp.discovery.DiscoveredType
 import io.github.highwindbr.aaxp.discovery.SafetyPolicy
@@ -107,7 +108,7 @@ fun AdvancedOverrideEditor(
                         style = MaterialTheme.typography.bodySmall)
                     Text("Previous stored override: ${record?.previousOverride ?: "Absent (or not recorded yet)"}")
                     if (record != null) {
-                        Text("Experimental value: ${record.value} · ${if (record.active) "ACTIVE" else "PAUSED"}")
+                        Text("Experimental value: ${record.value} · ${advancedOverrideStatus(record, build).name}")
                         if (!belongsToBuild) Text(
                             "SUSPENDED — saved for a different Android Auto build. Never reapplied automatically.",
                             color = MaterialTheme.colorScheme.error)
@@ -184,7 +185,7 @@ fun AdvancedOverrideEditor(
     if (phase == 1) AlertDialog(
         onDismissRequest = { phase = 0 },
         title = { Text(if (elevatedRisk == null) "Confirm Advanced override" else "Elevated-risk override — review") },
-        text = { Text("Key: ${identifier.key}\nType: ${expected.name}\nCompiled default: ${identifier.compiledDefault ?: "unknown"}\nNew value: ${if (expected == DiscoveredType.STRING) "<string: ${raw.length} chars>" else selected}\nThe accepted domain and runtime behavior are not proven. Wrong values may break Android Auto." + (if (elevatedRisk != null) "\n\nELEVATED PARKED-MODE RISK: $elevatedRisk" else "")) },
+        text = { ScrollableDialogBody { Text("Key: ${identifier.key}\nType: ${expected.name}\nCompiled default: ${identifier.compiledDefault ?: "unknown"}\nNew value: ${if (expected == DiscoveredType.STRING) "<string: ${raw.length} chars>" else selected}\nThe accepted domain and runtime behavior are not proven. Wrong values may break Android Auto." + (if (elevatedRisk != null) "\n\nELEVATED PARKED-MODE RISK: $elevatedRisk" else "")) } },
         confirmButton = { TextButton({
             // Both normal and elevated-risk Advanced overrides require a second,
             // explicit typed acknowledgement before the value can be saved.
@@ -196,13 +197,13 @@ fun AdvancedOverrideEditor(
     if (phase == 2) AlertDialog(
         onDismissRequest = { phase = 0 },
         title = { Text("Final confirmation") },
-        text = {
+        text = { ScrollableDialogBody {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("This applies only to the identified getter and current AA build. A baseline will be preserved for restoration. Type $requiredConfirmation to proceed.")
                 OutlinedTextField(acknowledgement, { acknowledgement = it },
                     label = { Text("Type $requiredConfirmation") }, singleLine = true)
             }
-        },
+        } },
         confirmButton = {
             TextButton({
                 phase = 0
@@ -214,7 +215,7 @@ fun AdvancedOverrideEditor(
     if (restoreWarning) AlertDialog(
         onDismissRequest = { restoreWarning = false },
         title = { Text("Restore saved baseline?") },
-        text = { Text("This restores the original normal override exactly, or its absence. It does not force the compiled default. Restart Android Auto afterward.") },
+        text = { ScrollableDialogBody { Text("This restores the original normal override exactly, or its absence. It does not force the compiled default. Restart Android Auto afterward.") } },
         confirmButton = { TextButton({
             restoreWarning = false
             onRestore(identifier.key)

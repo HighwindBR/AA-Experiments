@@ -1,5 +1,10 @@
 # Beta4 — Round C data, exports and recovery
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Version:** `1.0.0-beta4-preflight17` · `versionCode 163`
 **Branch:** `feature/beta4-getter-probe-preflight`.
 No main merge, tag, release or changes to the installed user's preferences.

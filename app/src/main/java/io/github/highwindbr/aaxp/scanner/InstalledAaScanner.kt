@@ -39,6 +39,9 @@ class InstalledAaScanner(private val context: Context) {
             database.put(inventory, onProgress)
             summary = checkNotNull(database.summary(identity.fingerprintSha256))
         }
+        // Pin even when the installed build was served from cache. Imported
+        // archives must never evict this live runtime catalog.
+        database.pinInstalledBuild(identity.fingerprintSha256)
         AaInstallation(
             installed = true,
             versionName = info.versionName,

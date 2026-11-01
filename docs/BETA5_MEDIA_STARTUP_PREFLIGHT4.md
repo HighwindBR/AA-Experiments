@@ -1,5 +1,10 @@
 # Beta5 Media Startup — preflight4 (automatic Spotify opening)
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Experimental opt-in, default OFF.** Only for the exact Android Auto 18.1.164344-release.daily base APK previously verified by SHA-256. The public beta4 and PF1/2/3 remain unchanged.
 
 ## What changed from PF3

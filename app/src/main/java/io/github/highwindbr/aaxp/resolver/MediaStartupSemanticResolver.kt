@@ -52,7 +52,7 @@ object MediaStartupSemanticResolver {
         val autoLaunchAllowed: Boolean = false
     ) {
         fun summary(): String = buildString {
-            append("PF5 semantic DEX analysis: ").append(status.name).append('\n')
+            append("Media Startup DEX compatibility: ").append(status.name).append('\n')
             append("Base SHA-256: ").append(baseSha256).append('\n')
             roles.toSortedMap().forEach { (role, method) ->
                 append(role).append(": ").append(method).append('\n')
@@ -61,7 +61,7 @@ object MediaStartupSemanticResolver {
                 append("Unresolved: ").append(missing.joinToString(", ")).append('\n')
             }
             append(explanation).append('\n')
-            append("PF5 discovery grants no runtime permission by itself; PF6.1 manual lab is a separate explicit opt-in.")
+            append("Analysis alone does not enable runtime hooks. Enable opening explicitly for this Android Auto build.")
         }
     }
 
@@ -94,27 +94,53 @@ object MediaStartupSemanticResolver {
         val teardown = lifecycle["teardown"].orEmpty().singleOrNull()
         val lifecycleOwner = ready?.owner?.takeIf { it == end?.owner && it == teardown?.owner }
 
-        val routes = byAnchor("startCarActivity(intent:") {
+        // The direct route is anchored by its log string. The auxiliary route
+        // is independently proven by its typed delegate + options constructor:
+        // neither route's absence invalidates a uniquely proven other route.
+        val directAnchors = byAnchor("startCarActivity(intent:") {
             it.parameters.size == 2 && it.parameters.first() == INTENT &&
                 it.returns == VOID && !it.static &&
                 it.parameters[1].startsWith("L") && it.parameters[1].endsWith(";")
         }
-        val route = routes.singleOrNull()
-        val factory = route?.let { r ->
-            methods.filter { it.owner == r.owner && it.static &&
-                it.parameters.isEmpty() && it.returns == r.owner }.singleOrNull()
-        }
-        val options = route?.parameters?.getOrNull(1)
-        val ctorProven = options != null && options in inventory.noArgConstructors
-        val auxiliaries = route?.let { start ->
-            methods.filter { candidate ->
-                candidate.owner == start.owner && !candidate.static &&
-                    candidate.parameters == listOf(INTENT) && candidate.returns == VOID &&
-                    start.reference() in candidate.invoked &&
-                    "$options-><init>()V" in candidate.invoked
+        val direct = directAnchors.singleOrNull()
+        val possibleHelpers = methods.filter { candidate ->
+            !candidate.static && candidate.parameters == listOf(INTENT) &&
+                candidate.returns == VOID
+        }.mapNotNull { candidate ->
+            val delegates = methods.filter { callee ->
+                !callee.static && callee.owner == candidate.owner &&
+                    callee.parameters.size == 2 && callee.parameters.first() == INTENT &&
+                    callee.returns == VOID && callee.parameters[1] in inventory.noArgConstructors &&
+                    callee.reference() in candidate.invoked &&
+                    "${callee.parameters[1]}-><init>()V" in candidate.invoked
             }
-        }.orEmpty()
-        val auxiliary = auxiliaries.singleOrNull()
+            if (delegates.size == 1) candidate to delegates.single() else null
+        }
+        // Prefer the direct controller owner when B is independently identified;
+        // otherwise require a globally unique typed auxiliary path.
+        val helpers = if (direct != null) possibleHelpers.filter {
+            it.first.owner == direct.owner && it.second.reference() == direct.reference()
+        } else possibleHelpers
+        val helperPair = helpers.singleOrNull()
+        val auxiliary = helperPair?.first
+        val observedDelegate = helperPair?.second
+        val controllerOwner = direct?.owner ?: auxiliary?.owner
+        val factoryCandidates = methods.filter {
+            it.owner == controllerOwner && it.static &&
+                it.parameters.isEmpty() && it.returns == controllerOwner
+        }
+        val factory = factoryCandidates.singleOrNull()
+        val directOptions = direct?.parameters?.getOrNull(1)
+        val auxiliaryOptions = observedDelegate?.parameters?.getOrNull(1)
+        val options = directOptions ?: auxiliaryOptions
+        val bProven = direct != null && factory != null &&
+            directOptions in inventory.noArgConstructors
+        val aProven = auxiliary != null && factory != null &&
+            auxiliaryOptions in inventory.noArgConstructors
+        // In an A-only profile the delegate may still exist without carrying
+        // the direct-route anchor. It is used ONLY to observe navigation,
+        // never to dispatch route B.
+        val navigationObserver = if (bProven) direct else if (aProven) observedDelegate else null
 
         // ActivityTracker implements Android's stable Runnable interface. Verify
         // the controller factory *and* four framework API calls, not the name
@@ -140,36 +166,35 @@ object MediaStartupSemanticResolver {
             ready?.let { put("projection.ready", it.reference()) }
             end?.let { put("projection.end", it.reference()) }
             teardown?.let { put("projection.teardown", it.reference()) }
-            route?.let { put("launch.startCarActivity", it.reference()) }
-            auxiliary?.let { put("launch.auxiliary", it.reference()) }
+            if (bProven) direct?.let { put("launch.startCarActivity", it.reference()) }
+            if (aProven) auxiliary?.let { put("launch.auxiliary", it.reference()) }
+            navigationObserver?.let { put("launch.navigationObserver", it.reference()) }
             firstActivity?.let { put("activity.firstProjected", it.reference()) }
             factory?.let { put("launch.controllerFactory", it.reference()) }
-            if (ctorProven) put("launch.optionsNoArgConstructor", "$options-><init>()V")
+            if ((aProven || bProven) && options != null)
+                put("launch.optionsNoArgConstructor", "$options-><init>()V")
             media?.let { put("media.selectedApp", it.reference()) }
         }
         val missing = buildList {
             if (lifecycleOwner == null) add("consistent lifecycle family (ready/end/teardown)")
-            if (route == null) add("unique Intent-based startCarActivity")
-            if (factory == null) add("unique static controller factory")
-            if (!ctorProven) add("launch options constructor")
-            if (auxiliary == null) add("unique auxiliary Intent launcher with verified delegation")
+            if (factory == null) add("unique controller factory")
+            if (!aProven && !bProven) add("at least one verified media launch route")
             if (media == null) add("unique media selected-app observer")
         }
         val proof = missing.isEmpty()
         val validated = MediaStartupTrace.isSupported(baseHash)
         val status = when {
             !proof -> if (lifecycle.values.any { it.size > 1 } ||
-                routes.size > 1 || auxiliaries.size > 1 ||
-                (route != null && methods.count { it.owner == route.owner && it.static &&
-                    it.parameters.isEmpty() && it.returns == route.owner } > 1))
+                (directAnchors.size > 1 && !aProven) ||
+                (helpers.size > 1 && !bProven) || factoryCandidates.size > 1)
                     Status.AMBIGUOUS else Status.UNSUPPORTED
             validated -> Status.KNOWN_BUILD_VALIDATED
             else -> Status.REVIEW_ONLY
         }
         return Evidence(status, baseHash, roles, missing,
             when (status) {
-                Status.KNOWN_BUILD_VALIDATED -> "Anchor/ABI proof corroborates the already field-tested AA 18.1. Existing pinned PF4 path stays unchanged."
-                Status.REVIEW_ONLY -> "Unique launch candidate on an unreviewed build. ActivityTracker: ${if (firstActivity != null) "UNIQUE" else if (activityCandidates.size > 1) "AMBIGUOUS" else "MISSING"}. Only a separately armed experimental lab may execute."
+                Status.KNOWN_BUILD_VALIDATED -> "Previously validated build; verified launch routes: ${listOfNotNull(if (aProven) "A" else null, if (bProven) "B" else null).joinToString("+")}."
+                Status.REVIEW_ONLY -> "Structurally verified routes: ${listOfNotNull(if (aProven) "A" else null, if (bProven) "B" else null).joinToString("+")}; build not yet field-tested. Automatic trigger: ${if (firstActivity != null) "UNIQUE" else if (activityCandidates.size > 1) "AMBIGUOUS" else "MISSING"}. Explicit per-build activation is required."
                 Status.AMBIGUOUS -> "Several internal methods match. Refusing to select a controller."
                 Status.UNSUPPORTED -> "Required lifecycle or launch evidence was not proven. No active remapping."
                 Status.ERROR -> "Unreadable DEX."
@@ -265,6 +290,56 @@ object MediaStartupSemanticResolver {
                             }
                         }
                         anchored.forEach { selected[it.reference()] = it }
+                        if (!relevantController) {
+                            // Discover a route A that still delegates to a
+                            // typed controller method even when route B's log
+                            // anchor disappeared. Retain only strict, unique
+                            // helper + delegate + constructor ABI evidence.
+                            val structural = rows.mapNotNull { helper ->
+                                if (AccessFlags.STATIC.isSet(helper.accessFlags) ||
+                                    helper.parameterTypes.map { it.toString() } != listOf(INTENT) ||
+                                    helper.returnType != VOID) return@mapNotNull null
+                                val impl = helper.implementation ?: return@mapNotNull null
+                                val calls = impl.instructions.mapNotNull { ins ->
+                                    val mr = (ins as? ReferenceInstruction)?.reference
+                                        as? org.jf.dexlib2.iface.reference.MethodReference
+                                        ?: return@mapNotNull null
+                                    "${mr.definingClass}->${mr.name}(${mr.parameterTypes.joinToString("")})${mr.returnType}"
+                                }.toSet()
+                                val delegated = rows.filter { callee ->
+                                    !AccessFlags.STATIC.isSet(callee.accessFlags) &&
+                                        callee.returnType == VOID &&
+                                        callee.parameterTypes.size == 2 &&
+                                        callee.parameterTypes.first().toString() == INTENT &&
+                                        callee.parameterTypes[1].toString().startsWith("L") &&
+                                        callee.parameterTypes[1].toString().endsWith(";") &&
+                                        "${cls.type}->${callee.name}(${callee.parameterTypes.joinToString("")})V" in calls &&
+                                        "${callee.parameterTypes[1]}-><init>()V" in calls
+                                }
+                                if (delegated.size == 1) Triple(helper, delegated.single(), calls)
+                                else null
+                            }
+                            if (structural.size == 1) {
+                                val (helper, delegate, calls) = structural.single()
+                                val factories = rows.filter { candidate ->
+                                    AccessFlags.STATIC.isSet(candidate.accessFlags) &&
+                                        candidate.parameterTypes.isEmpty() &&
+                                        candidate.returnType == cls.type
+                                }
+                                if (factories.size == 1) {
+                                    val selectedHelper = Method(cls.type, helper.name,
+                                        listOf(INTENT), VOID, false, invoked = calls)
+                                    val selectedDelegate = Method(cls.type, delegate.name,
+                                        delegate.parameterTypes.map { it.toString() }, VOID, false)
+                                    val factory = factories.single()
+                                    val selectedFactory = Method(cls.type, factory.name,
+                                        emptyList(), cls.type, true)
+                                    selected.putIfAbsent(selectedHelper.reference(), selectedHelper)
+                                    selected.putIfAbsent(selectedDelegate.reference(), selectedDelegate)
+                                    selected.putIfAbsent(selectedFactory.reference(), selectedFactory)
+                                }
+                            }
+                        }
                         if (relevantController) {
                             rows.forEach { method ->
                                 // Retain singleton factory plus one-Intent

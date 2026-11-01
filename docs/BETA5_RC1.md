@@ -1,5 +1,10 @@
 # AA Experiments beta5 RC1 — validation and acceptance
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Status:** RC1 reported functional in the vehicle by the maintainer on
 2026-10-30; superseded by the release-preparation branch
 `release/1.0.0-beta5` (`versionCode=178`). The RC1 source branch

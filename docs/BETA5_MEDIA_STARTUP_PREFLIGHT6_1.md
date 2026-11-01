@@ -1,5 +1,10 @@
 # AA Experiments beta5 — Preflight 6.1
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Experimental two-route dynamic Media Startup lab. The previously field-tested PF4 auto-open remains unchanged for AA 18.1 when the PF6.1 lab is disarmed.
 
 ## Implementation

@@ -7,9 +7,10 @@ The manager analyzes installed or imported Android Auto APK/APKM/APKS packages l
 ## Features
 
 - Search and inspect discovered Android Auto experiment flags.
-- Configure eligible BOOLEAN, LONG, DOUBLE and STRING overrides.
+- Configure eligible scalar overrides, subject to the inspected getter type and safety policy.
 - Optional **Advanced Overrides** for a separately reviewed subset of getters, with explicit risk warnings, two-stage confirmation and Pause / Resume / Restore.
-- View read-only getter probes and Video Timing Controller diagnostics.
+- Inspect getter and consumer evidence, with read-only probes where supported by the installed manager version.
+- Optionally open the Android Auto-selected media app on connection, with explicit per-build consent. The module does not send an audio playback command; whether audio starts or resumes depends on Android Auto and the media app.
 - Export large catalogs as JSON or CSV and preserve normal, Advanced and Experimental settings in an exact-build recovery bundle.
 - Review or suspend incompatible mappings rather than silently applying them after Android Auto updates.
 

@@ -1,12 +1,9 @@
 # Experimental BOOLEAN override — beta4 controlled test
 
-> **Historical preflight3–4 test record.** The build numbers and
-> installation instructions below reflect the original experiment and
-> are not the version of the current beta4 development branch.
-> Current signed preflight builds use `app/build.gradle`, and the
-> manager's current Diagnostics and Experiments screens should be
-> followed instead of assuming an old screen location. Historical
-> LSPosed event names and baseline guarantees remain useful evidence.
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
 
 This preflight is **not** the complete Advanced Overrides Mode. It unlocks only
 `PhoneThemeFeature__enable_dynamic_app_icon_shape_by_manufacturer_kill_switch`.

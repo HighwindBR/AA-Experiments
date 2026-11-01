@@ -40,6 +40,45 @@ public class MediaStartupLabProfileTest {
         try{MediaStartupLabProfile.parse(profile,"base","fingerprint");fail();}
         catch(IllegalArgumentException expected){}
     }
+    @Test public void bOnlyProfileIsAcceptedAndAuxiliaryIsAbsent() throws Exception {
+        JSONObject data = profile();
+        data.getJSONObject("roles").remove("launch.auxiliary");
+        MediaStartupLabProfile parsed = MediaStartupLabProfile.parse(data,"base","fingerprint");
+        assertNull(parsed.role("launch.auxiliary"));
+        assertNotNull(parsed.role("launch.startCarActivity"));
+    }
+
+    @Test public void aOnlyProfileRequiresNoDirectRoute() throws Exception {
+        JSONObject data = profile();
+        JSONObject roles = data.getJSONObject("roles");
+        roles.remove("launch.startCarActivity");
+        roles.put("launch.navigationObserver",
+            "Labc/Controller;->k(Landroid/content/Intent;Labc/Options;)V");
+        MediaStartupLabProfile parsed = MediaStartupLabProfile.parse(data,"base","fingerprint");
+        assertNull(parsed.role("launch.startCarActivity"));
+        assertNotNull(parsed.role("launch.auxiliary"));
+        assertNotNull(parsed.role("launch.navigationObserver"));
+    }
+
+    @Test public void aOnlyManualProfileMayOmitNavigationObserver() throws Exception {
+        JSONObject data = profile();
+        JSONObject roles = data.getJSONObject("roles");
+        roles.remove("launch.startCarActivity");
+        roles.remove("launch.optionsNoArgConstructor");
+        MediaStartupLabProfile parsed = MediaStartupLabProfile.parse(data,"base","fingerprint");
+        assertNotNull(parsed.role("launch.auxiliary"));
+        assertNull(parsed.role("launch.navigationObserver"));
+    }
+
+    @Test public void profileWithNoRoutesIsRejected() throws Exception {
+        JSONObject data = profile();
+        JSONObject roles = data.getJSONObject("roles");
+        roles.remove("launch.auxiliary");
+        roles.remove("launch.startCarActivity");
+        try { MediaStartupLabProfile.parse(data,"base","fingerprint"); fail(); }
+        catch (IllegalArgumentException expected) {}
+    }
+
     @Test public void incompatibleRolesRejectBeforeReflection() throws Exception {
         JSONObject x=profile();
         x.getJSONObject("roles").put("launch.auxiliary",

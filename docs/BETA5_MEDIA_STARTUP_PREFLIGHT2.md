@@ -1,5 +1,10 @@
 # Beta5 Media Startup — preflight2: targeted projection observation
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Status:** research-only build, not the automatic Spotify launcher. Use while parked.
 
 ## New evidence from logcat (2026-10-28)

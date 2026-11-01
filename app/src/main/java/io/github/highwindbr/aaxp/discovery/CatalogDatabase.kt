@@ -55,9 +55,14 @@ data class CatalogQuery(
 )
 data class CatalogQueryResult(val items: List<DiscoveredIdentifier>, val total: Int)
 
-class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.db", null, 7) {
+class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.db", null, 8) {
+    private val retentionPrefs = context.applicationContext.getSharedPreferences(
+        "catalog_retention", Context.MODE_PRIVATE
+    )
+    private val installedPinKey = "installed_fingerprint"
+
     override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL("CREATE TABLE builds(base_sha TEXT PRIMARY KEY, generated_at INTEGER NOT NULL, dex_hashes TEXT NOT NULL, identifier_count INTEGER NOT NULL, editable_count INTEGER NOT NULL, error_count INTEGER NOT NULL, resolver_schema INTEGER NOT NULL, base_apk_sha TEXT NOT NULL, version_code INTEGER NOT NULL, package_artifacts TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE builds(base_sha TEXT PRIMARY KEY, generated_at INTEGER NOT NULL, dex_hashes TEXT NOT NULL, identifier_count INTEGER NOT NULL, editable_count INTEGER NOT NULL, error_count INTEGER NOT NULL, resolver_schema INTEGER NOT NULL, base_apk_sha TEXT NOT NULL, version_code INTEGER NOT NULL, package_artifacts TEXT NOT NULL, origin TEXT NOT NULL DEFAULT 'LEGACY')")
         db.execSQL("CREATE TABLE identifiers(id INTEGER PRIMARY KEY AUTOINCREMENT, base_sha TEXT NOT NULL, key TEXT NOT NULL, namespace TEXT NOT NULL, value_type TEXT NOT NULL, compiled_default TEXT, confidence TEXT NOT NULL, reason TEXT, editable INTEGER NOT NULL, preference_key TEXT NOT NULL, occurrence_count INTEGER NOT NULL, kind TEXT NOT NULL, resolution TEXT NOT NULL, runtime_status TEXT NOT NULL, semantics_reviewed INTEGER NOT NULL, editability_reason TEXT, metadata TEXT NOT NULL, storage_type TEXT NOT NULL, semantic_type TEXT NOT NULL, evidence_confidence TEXT NOT NULL, semantics_provenance TEXT NOT NULL, UNIQUE(base_sha,key))")
         db.execSQL("CREATE TABLE getters(identifier_id INTEGER NOT NULL, ordinal INTEGER NOT NULL, dex TEXT NOT NULL, class_name TEXT NOT NULL, method_name TEXT NOT NULL, descriptor TEXT NOT NULL, return_type TEXT NOT NULL, parameter_types TEXT NOT NULL, instruction_count INTEGER NOT NULL, opcode_sha TEXT NOT NULL, is_clinit INTEGER NOT NULL, referenced_fields TEXT NOT NULL, invoked_methods TEXT NOT NULL, PRIMARY KEY(identifier_id,ordinal))")
         db.execSQL("CREATE TABLE consumers(identifier_id INTEGER NOT NULL, ordinal INTEGER NOT NULL, dex TEXT NOT NULL, class_name TEXT NOT NULL, method_name TEXT NOT NULL, descriptor TEXT NOT NULL, return_type TEXT NOT NULL, parameter_types TEXT NOT NULL, instruction_count INTEGER NOT NULL, opcode_sha TEXT NOT NULL, is_clinit INTEGER NOT NULL, referenced_fields TEXT NOT NULL, invoked_methods TEXT NOT NULL, depth INTEGER NOT NULL, link_kind TEXT NOT NULL, path TEXT NOT NULL, semantic_summary TEXT, PRIMARY KEY(identifier_id,ordinal))")
@@ -89,10 +94,24 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
             db.execSQL("ALTER TABLE builds ADD COLUMN version_code INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE builds ADD COLUMN package_artifacts TEXT NOT NULL DEFAULT '[]'")
         }
+        if (oldVersion < 8) {
+            // Existing cache entries have unknown provenance. Treat them as
+            // eligible historical baselines until the installed build is pinned.
+            db.execSQL("ALTER TABLE builds ADD COLUMN origin TEXT NOT NULL DEFAULT 'LEGACY'")
+        }
     }
 
-    fun put(inventory: DexInventory, onProgress: (AnalysisProgress) -> Unit = {}) {
+    fun put(
+        inventory: DexInventory,
+        onProgress: (AnalysisProgress) -> Unit = {},
+        origin: CatalogOrigin = CatalogOrigin.INSTALLED
+    ) {
         val buildKey = inventory.buildFingerprintSha256
+        // Importing the very same APK as the installed build must not relabel
+        // the pinned runtime catalog as an offline-only archive.
+        val effectiveOrigin = if (origin == CatalogOrigin.IMPORTED &&
+            buildKey == retentionPrefs.getString(installedPinKey, null))
+            CatalogOrigin.INSTALLED else origin
         writableDatabase.beginTransaction()
         try {
             writableDatabase.delete("getters", "identifier_id IN (SELECT id FROM identifiers WHERE base_sha=?)", arrayOf(buildKey))
@@ -106,6 +125,7 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
                 put("dex_hashes", encodeMap(inventory.dexSha256)); put("identifier_count", inventory.identifiers.size)
                 put("editable_count", inventory.identifiers.count { it.editable }); put("error_count", inventory.errors.size)
                 put("resolver_schema", SemanticClassifier.SCHEMA_VERSION)
+                put("origin", effectiveOrigin.name)
             })
             onProgress(AnalysisProgress(AnalysisStage.SAVING_CATALOG, 0, inventory.identifiers.size))
             inventory.identifiers.forEachIndexed { index, identifier ->
@@ -150,15 +170,41 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
         pruneToRecentBuilds(buildKey)
     }
 
-    /** Keep the active catalog and one predecessor for the Status comparison. */
-    fun pruneToRecentBuilds(currentBaseSha256: String, maximumBuilds: Int = 2) {
-        val retained = readableDatabase.rawQuery(
-            "SELECT base_sha FROM builds ORDER BY CASE WHEN base_sha=? THEN 0 ELSE 1 END, generated_at DESC LIMIT ?",
-            arrayOf(currentBaseSha256, maximumBuilds.toString())
-        ).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(0)) } }
-        val obsolete = readableDatabase.rawQuery("SELECT base_sha FROM builds", emptyArray()).use { cursor ->
-            buildList { while (cursor.moveToNext()) cursor.getString(0).let { if (it !in retained) add(it) } }
+    /**
+     * Called after a successful installed-AA scan, including when the catalog
+     * was loaded from cache instead of reparsed. The pin is persisted across
+     * offline archive browsing and manager restarts.
+     */
+    fun pinInstalledBuild(fingerprint: String) {
+        require(summary(fingerprint) != null) { "Cannot pin a missing installed catalog" }
+        require(retentionPrefs.edit().putString(installedPinKey, fingerprint).commit()) {
+            "Cannot persist installed catalog retention pin"
         }
+        writableDatabase.update("builds", ContentValues().apply {
+            put("origin", CatalogOrigin.INSTALLED.name)
+        }, "base_sha=?", arrayOf(fingerprint))
+        pruneToRecentBuilds(fingerprint)
+    }
+
+    /** At most three rows: installed, previous installed, and one offline import. */
+    fun pruneToRecentBuilds(currentBaseSha256: String, maximumBuilds: Int = 3) {
+        val rows = readableDatabase.rawQuery(
+            "SELECT base_sha,generated_at,origin FROM builds", emptyArray()
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) add(CatalogRetentionPolicy.Candidate(
+                    c.getString(0), c.getLong(1),
+                    runCatching { CatalogOrigin.valueOf(c.getString(2)) }
+                        .getOrDefault(CatalogOrigin.LEGACY)
+                ))
+            }
+        }
+        val retained = CatalogRetentionPolicy.retained(
+            rows, currentBaseSha256,
+            retentionPrefs.getString(installedPinKey, null),
+            maximumBuilds
+        )
+        val obsolete = rows.map { it.fingerprint }.filterNot(retained::contains)
         if (obsolete.isEmpty()) return
         writableDatabase.beginTransaction()
         try {
@@ -171,8 +217,8 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
             }
             writableDatabase.setTransactionSuccessful()
         } finally { writableDatabase.endTransaction() }
-        // wal_checkpoint returns a result row (busy, log, checkpointed), so Android rejects
-        // it through execSQL(). Consume that row through rawQuery instead.
+        // This procedure is intentionally deferred until after a successful
+        // transaction, and never runs for a no-op retention pass.
         writableDatabase.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyArray()).use { it.moveToFirst() }
         writableDatabase.execSQL("VACUUM")
     }
@@ -182,7 +228,7 @@ class CatalogDatabase(context: Context) : SQLiteOpenHelper(context, "catalog-v1.
     ).use { c -> if (!c.moveToFirst()) null else CatalogSummary(baseSha256, decodeMap(c.getString(1)), c.getLong(0), c.getInt(2), c.getInt(3), c.getInt(4), c.getInt(5), c.getString(6).ifBlank { baseSha256 }, c.getLong(7), decodeMap(c.getString(8))) }
 
     fun previousSummary(baseSha256: String): CatalogSummary? = readableDatabase.rawQuery(
-        "SELECT base_sha,generated_at,dex_hashes,identifier_count,editable_count,error_count,resolver_schema,base_apk_sha,version_code,package_artifacts FROM builds WHERE base_sha<>? ORDER BY generated_at DESC LIMIT 1", arrayOf(baseSha256)
+        "SELECT base_sha,generated_at,dex_hashes,identifier_count,editable_count,error_count,resolver_schema,base_apk_sha,version_code,package_artifacts FROM builds WHERE base_sha<>? AND origin<>'IMPORTED' ORDER BY generated_at DESC LIMIT 1", arrayOf(baseSha256)
     ).use { c -> if (!c.moveToFirst()) null else CatalogSummary(c.getString(0), decodeMap(c.getString(2)), c.getLong(1), c.getInt(3), c.getInt(4), c.getInt(5), c.getInt(6), c.getString(7).ifBlank { c.getString(0) }, c.getLong(8), decodeMap(c.getString(9))) }
 
     fun compatibilityBaselineMappings(baseSha256: String): Pair<CatalogSummary, List<DiscoveredIdentifier>>? {

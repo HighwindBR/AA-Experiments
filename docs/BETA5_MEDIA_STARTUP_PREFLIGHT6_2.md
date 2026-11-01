@@ -1,5 +1,10 @@
 # AA Experiments beta5 — Preflight 6.2
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Based on physically confirmed **both** PF6.1 dynamic launch routes (A auxiliary, B direct controller) on Android Auto 18.1 in the Chevrolet head unit. Branch is a draft, not a release.
 
 ## Discovery and execution

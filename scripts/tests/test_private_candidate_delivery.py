@@ -11,6 +11,15 @@ from scripts.private_candidate_delivery import (
 
 
 class PrivateDeliveryTest(unittest.TestCase):
+    def test_stable_candidate_accepts_only_the_reviewed_branch(self):
+        ref = "refs/heads/maintenance/group-a-stable"
+        self.assertEqual(candidate_for_ref(ref),
+                         ("AAExperiments-1.0.0-candidate.apk", "aaxp-private-stable-1.0.0", "1.0.0"))
+        self.assertEqual(draft_tag("2048", "1", ref), "aaxp-private-stable-1.0.0-run-2048-attempt-1")
+        for invalid in (ref + "-extra", "refs/tags/v1.0.0", "refs/heads/main"):
+            with self.subTest(ref=invalid), self.assertRaises(ValueError):
+                candidate_for_ref(invalid)
+
     def test_exact_beta5_ref_and_checksum_guard(self):
         expected = (BETA5_APK_NAME, "aaxp-private-beta5-preflight1", "1.0.0-beta5-preflight1")
         self.assertEqual(candidate_for_ref(BETA5_BRANCH), expected)

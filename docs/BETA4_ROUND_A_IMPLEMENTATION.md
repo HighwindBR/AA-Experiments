@@ -1,5 +1,10 @@
 # Beta4 — Round A reliability implementation
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 Development version: `1.0.0-beta4-preflight14` (`versionCode 160`)
 Scope: reliability only. No RC, merge, signed release or public publishing.
 

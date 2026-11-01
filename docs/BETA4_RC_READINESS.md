@@ -1,5 +1,10 @@
 # Beta4 — RC readiness and Round D sign-off
 
+> **Historical record.** The version, UI locations, pending tasks and test claims
+> below describe that development stage. Use the [documentation index](README.md)
+> for current guides and [candidate readiness](BETA6_RC1_READINESS.md) for current
+> acceptance requirements. Historical success does not certify a later build.
+
 **Status:** signed preflight22 and UI acceptance passed; maintainer accepted override preservation and waived further screenshots/exports. Final beta4 169 candidate pending signed gates; no publication.
 Branch: `feature/beta4-getter-probe-preflight`.
 Baseline: official `v1.0.0-beta3`; changes in this branch are currently
