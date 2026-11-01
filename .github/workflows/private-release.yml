@@ -2,8 +2,6 @@ name: Private release gates
 
 on:
   push:
-    # Temporary trusted-branch verification before the 1.0.0 stable promotion.
-    branches: ['maintenance/group-a-stable']
     tags: ['v*']
   workflow_dispatch:
     inputs:
@@ -66,8 +64,7 @@ jobs:
   private-release-gates:
     if: >-
       (github.event_name == 'push' &&
-       (github.ref == 'refs/heads/maintenance/group-a-stable' ||
-        github.ref == 'refs/tags/v1.0.0-beta3' ||
+       (github.ref == 'refs/tags/v1.0.0-beta3' ||
         github.ref == 'refs/tags/v1.0.0-beta4' ||
         github.ref == 'refs/tags/v1.0.0-beta5' ||
         github.ref == 'refs/tags/v1.0.0')) ||
