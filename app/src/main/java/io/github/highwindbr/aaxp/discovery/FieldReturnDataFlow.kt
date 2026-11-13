@@ -63,6 +63,12 @@ object FieldReturnDataFlow {
             opcode.startsWith("RETURN") && opcode != "RETURN_VOID" && instruction is OneRegisterInstruction -> {
                 return state.copy(registers = registers, pending = Origin()) to (registers[instruction.registerA] ?: Origin(unknown = true))
             }
+            opcode.startsWith("CONST") && instruction is OneRegisterInstruction -> {
+                // A known constant (including the null sentinel in generated flag getters)
+                // contributes no field provenance. Treating it as unknown contaminates
+                // an otherwise proven sget -> invoke -> return path.
+                registers[instruction.registerA] = Origin(); pending = Origin()
+            }
             writesRegisterA(instruction, opcode) && instruction is OneRegisterInstruction -> {
                 registers[instruction.registerA] = Origin(unknown = true); pending = Origin()
             }
@@ -72,7 +78,7 @@ object FieldReturnDataFlow {
     }
 
     private fun writesRegisterA(instruction: Instruction, opcode: String): Boolean =
-        instruction is OneRegisterInstruction && (opcode.startsWith("CONST") || opcode == "NEW_INSTANCE" || opcode.startsWith("NEW_ARRAY"))
+        instruction is OneRegisterInstruction && (opcode == "NEW_INSTANCE" || opcode.startsWith("NEW_ARRAY"))
 
     private fun field(value: FieldReference) = "${value.definingClass}->${value.name}:${value.type}"
     private fun argumentRegisters(instruction: Instruction): List<Int> = when (instruction) {
