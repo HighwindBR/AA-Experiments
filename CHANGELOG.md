@@ -4,6 +4,16 @@ Entries describe their named release or development stage. Historical pending
 statements are not the current release status; use [Release process](docs/RELEASE.md)
 and [candidate readiness](docs/STABLE_1.0.0_READINESS.md) for ongoing work.
 
+## 1.0.1 — Android Auto 18.2 compatibility (candidate)
+
+- Recover Fenotype getter field provenance when new Android Auto builds pass known constants such as `null` through wrapper calls.
+- Preserve conservative rejection of unknown inputs and competing field origins.
+- Restore inferred storage/semantic types only after a unique, type-compatible structural getter match.
+- Show **Type unresolved (getter not proven)** instead of incorrectly reporting an actual type change when the current mapping has type `UNKNOWN`.
+- Advance resolver schema to 17 to reanalyze cached installed Android Auto inventories after upgrading AA Experiments, while keeping stored overrides.
+- Add regression tests for Android Auto 18.2-style getters and type-recovery / suspension safeguards.
+- Set `versionName=1.0.1`, `versionCode=181`. Release remains gated on CI and physical-device compatibility checks.
+
 ## 1.0.0 — stable candidate
 
 - Set versionName `1.0.0` and versionCode `180`, preserving package identity.
