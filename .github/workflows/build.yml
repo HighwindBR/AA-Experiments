@@ -55,6 +55,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.9' }
       - run: gradle --no-daemon --max-workers=1 :app:assembleDebug :app:assembleDebugAndroidTest
+      # Temporary PR #15 test-delivery gate; remove before merging into main.
+      - name: Upload AA Experiments 1.0.1 debug test APK
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 15
+        uses: actions/upload-artifact@v4
+        with:
+          name: AA-Experiments-1.0.1-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
 
   # Opt-in Beta6 preflight: run real SQLite v7->v8 migration/pruning tests.
   # Temporarily enabled for PR #14 so the stable-promotion candidate gets the same emulator gate.

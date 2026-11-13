@@ -20,6 +20,26 @@ class CompatibilityRediscoveryTest {
         assertEquals("old-hash", result.metadata["rediscoveryPreviousBaseSha256"])
     }
 
+    @Test fun structuralRecoveryAlsoRestoresUnknownType() {
+        val old = identifier("Feature__enabled", listOf(method("Lold;", "a", 12)), editable = true)
+        val current = identifier("Feature__enabled", listOf(
+            method("Lnoise;", "c", 40, "different"), method("Lnew;", "b", 12)
+        ), editable = false).copy(
+            inferredType = DiscoveredType.UNKNOWN,
+            storageType = StorageValueType.UNKNOWN,
+            semanticType = SemanticValueType.UNKNOWN
+        )
+
+        val result = CompatibilityRediscovery.apply(listOf(old), listOf(current), "old-hash").single()
+
+        assertTrue(result.editable)
+        assertEquals(DiscoveredType.BOOLEAN, result.inferredType)
+        assertEquals(StorageValueType.BOOLEAN, result.storageType)
+        assertEquals(SemanticValueType.BOOLEAN, result.semanticType)
+        assertEquals(EvidenceStrength.PROVEN, result.evidenceConfidence.storageType)
+        assertEquals("Lnew;", result.getterCandidates.single().className)
+    }
+
     @Test fun missingStableKeyIsNeverAttachedToSimilarNewKey() {
         val old = identifier("Removed__enabled", listOf(method("Lold;", "a", 12)), editable = true)
         val current = identifier("Different__enabled", listOf(method("Lnew;", "b", 12)), editable = true)

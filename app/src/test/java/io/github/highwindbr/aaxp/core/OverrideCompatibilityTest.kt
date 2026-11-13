@@ -21,6 +21,12 @@ class OverrideCompatibilityTest {
             suspendedOverrideReason(identifier(DiscoveredType.LONG), TypedOverride(DiscoveredType.BOOLEAN, "true")))
     }
 
+    @Test fun unknownCurrentTypeIsNotMistakenForTypeChange() {
+        val value = TypedOverride(DiscoveredType.BOOLEAN, "true")
+        assertEquals(SuspendedOverrideReason.SUSPENDED_TYPE_UNRESOLVED,
+            suspendedOverrideReason(identifier(DiscoveredType.UNKNOWN, editable = false, getters = emptyList()), value))
+    }
+
     @Test fun incorrectGetterAbiIsSuspended() {
         val value = TypedOverride(DiscoveredType.BOOLEAN, "true")
         assertEquals(SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS,

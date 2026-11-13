@@ -30,7 +30,17 @@ object CompatibilityRediscovery {
                     previousBaseSha256,
                     resolution?.reason
                 )
-                selected != null && old.editable && selected.returnType == old.inferredType && SafetyPolicy.blockedReason(identifier.key) == null -> identifier.copy(
+                selected != null && old.editable && selected.returnType == old.inferredType &&
+                    selected.parameterTypes.isEmpty() && !selected.isStaticInitializer &&
+                    selected.instructionCount > 0 && selected.opcodeSha256.isNotBlank() &&
+                    SemanticClassifier.isConfigurable(identifier.kind) &&
+                    SafetyPolicy.blockedReason(identifier.key) == null -> identifier.copy(
+                    // A unique historical structural match is also proof of the
+                    // current getter's return type. Do not retain UNKNOWN from the
+                    // earlier, unresolved current-build catalog entry.
+                    inferredType = selected.returnType,
+                    storageType = SemanticClassifier.storageTypeOf(selected.returnType),
+                    semanticType = SemanticClassifier.semanticTypeOf(identifier.key, selected.returnType),
                     getterCandidates = listOf(selected),
                     confidence = ResolutionConfidence.STRUCTURALLY_VALIDATED,
                     resolution = MappingResolution.STRUCTURAL,
@@ -39,6 +49,7 @@ object CompatibilityRediscovery {
                     reason = "Recovered from the previous build by a unique structural match.",
                     evidenceConfidence = identifier.evidenceConfidence.copy(
                         getter = EvidenceStrength.PROVEN,
+                        storageType = EvidenceStrength.PROVEN,
                         evidence = (identifier.evidenceConfidence.evidence + "cross-build one-to-one structural rediscovery").distinct()
                     ),
                     metadata = identifier.metadata + rediscoveryMetadata("REDISCOVERED_STRUCTURAL", previousBaseSha256, resolution.reason)

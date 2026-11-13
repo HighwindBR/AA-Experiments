@@ -745,6 +745,7 @@ private enum class ExperimentFilter { ALL, MODIFIED, SUSPENDED, ADDED, REMOVED, 
 
 private fun suspendedReasonLabel(reason: SuspendedOverrideReason): String = when (reason) {
     SuspendedOverrideReason.SUSPENDED_TYPE_CHANGED -> "Type changed"
+    SuspendedOverrideReason.SUSPENDED_TYPE_UNRESOLVED -> "Type unresolved (getter not proven)"
     SuspendedOverrideReason.SUSPENDED_MAPPING_MISSING -> "Not found in this build"
     SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS -> "Resolver mapping unavailable or ambiguous"
     SuspendedOverrideReason.SUSPENDED_INVALID_VALUE -> "Stored value invalid"

@@ -52,6 +52,7 @@ fun suspendedOverrideReason(
 ): SuspendedOverrideReason? = when {
     identifier == null -> SuspendedOverrideReason.SUSPENDED_MAPPING_MISSING
     value == null -> SuspendedOverrideReason.SUSPENDED_INVALID_VALUE
+    identifier.inferredType == io.github.highwindbr.aaxp.discovery.DiscoveredType.UNKNOWN -> SuspendedOverrideReason.SUSPENDED_TYPE_UNRESOLVED
     value.type != identifier.inferredType -> SuspendedOverrideReason.SUSPENDED_TYPE_CHANGED
     !identifier.editable || !hasCompatibleNormalGetter(identifier) -> SuspendedOverrideReason.SUSPENDED_MAPPING_AMBIGUOUS
     !fitsGetterRange(identifier, value) -> SuspendedOverrideReason.SUSPENDED_INVALID_VALUE
